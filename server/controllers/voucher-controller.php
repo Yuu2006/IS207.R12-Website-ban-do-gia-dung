@@ -1,0 +1,2 @@
+<?php
+// Voucher controller

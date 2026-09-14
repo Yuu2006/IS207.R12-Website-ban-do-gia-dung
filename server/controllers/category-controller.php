@@ -1,0 +1,2 @@
+<?php
+// Category controller
