@@ -1,0 +1,53 @@
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./server/db:/docker-entrypoint-initdb.d
+
+  api:
+    build:
+      context: ./server
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - ./server:/var/www/html
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      CLIENT_URL: ${CLIENT_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      VNPAY_TMN_CODE: ${VNPAY_TMN_CODE}
+      VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET}
+      VNPAY_RETURN_URL: ${VNPAY_RETURN_URL}
+    ports:
+      - "8080:80"
+    depends_on:
+      - db
+
+  client:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - ./client:/app
+    environment:
+      VITE_API_URL: http://localhost:8080
+    ports:
+      - "5173:5173"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      - api
+
+volumes:
+  mysql_data:
