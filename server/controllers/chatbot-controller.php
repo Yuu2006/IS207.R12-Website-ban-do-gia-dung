@@ -1,0 +1,2 @@
+<?php
+// Chatbot controller
