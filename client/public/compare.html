@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>So sánh sản phẩm</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, sans-serif; }
+    button, select { font: inherit; }
+    .comparison { width: 100%; overflow-x: auto; }
+    .grid { display: grid; grid-template-columns: minmax(210px, 28%) repeat(2, minmax(270px, 1fr)); min-width: 750px; }
+    .cell { padding: 28px 32px; border-bottom: 1px solid; }
+    .cell:nth-child(3n + 3) { border-left: 1px solid; }
+    .cell:nth-last-child(-n + 3) { border-bottom: 0; }
+    .heading { min-height: 285px; }
+    .product-button .caption { margin: 0; font-size: 18px; font-weight: 700; }
+    .product-button { display: flex; flex-direction: column; align-items: flex-start; gap: 20px; width: 100%; padding: 25px 0 0; border: 0; background: none; text-align: left; cursor: pointer; }
+    .product-button .plus { display: grid; place-items: center; width: 81px; height: 81px; border: 1px dashed; border-radius: 20px; font-size: 36px; font-weight: 300; }
+    .product-button .name { font-size: 24px; font-weight: 700; }
+    .row-label { font-size: 18px; font-weight: 700; }
+    .value { font-size: 18px; }
+    .product-button:focus-visible, .picker button:focus-visible, .picker select:focus-visible { outline: 2px solid; outline-offset: 4px; }
+    .picker { max-width: min(460px, calc(100vw - 32px)); padding: 24px; border: 1px solid; }
+    .picker h2 { margin: 0 0 16px; font-size: 20px; }
+    .picker label { display: block; margin-bottom: 8px; }
+    .picker select { width: 100%; min-height: 44px; margin-bottom: 18px; }
+    .picker button { padding: 9px 15px; cursor: pointer; }
+    .picker-actions { display: flex; gap: 10px; justify-content: flex-end; }
+    @media (max-width: 800px) { .cell { padding: 22px 18px; } .heading { min-height: 255px; } }
+  </style>
+</head>
+<body>
+  <main class="comparison" aria-label="So sánh sản phẩm">
+    <div class="grid" id="grid" aria-live="polite"></div>
+  </main>
+
+  <dialog class="picker" id="picker" aria-labelledby="picker-title">
+    <form method="dialog" id="picker-form">
+      <h2 id="picker-title">Chọn sản phẩm</h2>
+      <label for="product-choice">Sản phẩm</label>
+      <select id="product-choice" required></select>
+      <div class="picker-actions">
+        <button type="button" id="clear-choice">Bỏ chọn</button>
+        <button type="button" id="cancel-choice">Hủy</button>
+        <button type="submit">Chọn</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    // Dữ liệu minh họa. productionYear chưa có trong schema_database.sql.
+    const products = [
+      { id: "table-01", name: "Bàn làm việc Mộc 120", categoryId: "desk", price: 2490000, productionYear: 2025, brand: "Mộc Việt" },
+      { id: "table-02", name: "Bàn làm việc Nord 140", categoryId: "desk", price: 3290000, productionYear: 2024, brand: "Nội thất Nord" },
+      { id: "table-03", name: "Bàn làm việc Flex 120", categoryId: "desk", price: 2890000, productionYear: 2026, brand: "FlexiHome" },
+      { id: "chair-01", name: "Ghế văn phòng Comfy", categoryId: "chair", price: 1790000, productionYear: 2025, brand: "FlexiHome" },
+      { id: "chair-02", name: "Ghế văn phòng Ergo", categoryId: "chair", price: 2590000, productionYear: 2026, brand: "Nội thất Nord" }
+    ];
+
+    const grid = document.querySelector("#grid");
+    const picker = document.querySelector("#picker");
+    const form = document.querySelector("#picker-form");
+    const choice = document.querySelector("#product-choice");
+    const currency = new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 0 });
+    const getProduct = id => products.find(product => product.id === id);
+    const params = new URLSearchParams(window.location.search);
+    let firstId = getProduct(params.get("product"))?.id ?? "";
+    let secondId = "";
+    let editingColumn = 0;
+
+    function cell(text, className = "") {
+      const element = document.createElement("div");
+      element.className = `cell ${className}`;
+      element.textContent = text;
+      grid.append(element);
+      return element;
+    }
+
+    function productCell(product, number) {
+      const container = cell("", "heading");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "product-button";
+      button.setAttribute("aria-label", `${product ? "Thay đổi" : "Chọn"} sản phẩm ${number}`);
+      const caption = document.createElement("span");
+      caption.className = "caption";
+      caption.textContent = `SẢN PHẨM 0${number}`;
+      const plus = document.createElement("span");
+      plus.className = "plus";
+      plus.setAttribute("aria-hidden", "true");
+      plus.textContent = "+";
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = product?.name ?? "Chưa chọn sản phẩm";
+      button.append(caption, plus, name);
+      button.addEventListener("click", () => openPicker(number));
+      container.append(button);
+    }
+
+    function render() {
+      const first = getProduct(firstId);
+      const second = getProduct(secondId);
+      grid.replaceChildren();
+      cell("SẢN PHẨM", "heading row-label");
+      productCell(first, 1);
+      productCell(second, 2);
+      const rows = [
+        ["Tên sản phẩm", product => product.name],
+        ["Giá", product => currency.format(product.price)],
+        ["Năm sản xuất", product => String(product.productionYear)],
+        ["Hãng sản xuất", product => product.brand]
+      ];
+      for (const [label, display] of rows) {
+        cell(label, "row-label");
+        cell(first ? display(first) : "—", "value");
+        cell(second ? display(second) : "—", "value");
+      }
+    }
+
+    function openPicker(number) {
+      if (number === 2 && !firstId) number = 1;
+      editingColumn = number;
+      choice.replaceChildren();
+      choice.add(new Option("Chọn sản phẩm", ""));
+      const first = getProduct(firstId);
+      const candidates = number === 2 && first
+        ? products.filter(product => product.categoryId === first.categoryId && product.id !== first.id)
+        : products.filter(product => number === 1 || product.id !== firstId);
+      for (const product of candidates) choice.add(new Option(product.name, product.id));
+      choice.value = number === 1 ? firstId : secondId;
+      if (!candidates.some(product => product.id === choice.value)) choice.value = "";
+      document.querySelector("#picker-title").textContent = `Chọn sản phẩm 0${number}`;
+      picker.showModal();
+    }
+
+    form.addEventListener("submit", event => {
+      if (!choice.value) { event.preventDefault(); return; }
+      if (editingColumn === 1) {
+        firstId = choice.value;
+        const first = getProduct(firstId);
+        if (getProduct(secondId)?.categoryId !== first.categoryId || secondId === firstId) secondId = "";
+      } else {
+        secondId = choice.value;
+      }
+      render();
+    });
+    document.querySelector("#clear-choice").addEventListener("click", () => {
+      if (editingColumn === 1) { firstId = ""; secondId = ""; }
+      else secondId = "";
+      picker.close();
+      render();
+    });
+    document.querySelector("#cancel-choice").addEventListener("click", () => picker.close());
+    render();
+  </script>
+</body>
+</html>
