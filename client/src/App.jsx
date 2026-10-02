@@ -1,8 +1,7 @@
+import LoginForm from './pages/login-form/LoginForm.jsx';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import OrderWorkspace from './pages/customer/OrderWorkspace.jsx';
+
 export default function App() {
-  return (
-    <main className="app-shell">
-      <h1>Household E-commerce</h1>
-      <p>React frontend scaffold is ready.</p>
-    </main>
-  );
+  return <BrowserRouter><Routes><Route path="/login" element={<LoginForm />} /><Route path="/*" element={<OrderWorkspace />} /></Routes></BrowserRouter>;
 }
