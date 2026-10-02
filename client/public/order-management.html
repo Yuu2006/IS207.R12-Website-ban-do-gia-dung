@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quản lý đơn hàng</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, sans-serif; }
+    button { font: inherit; cursor: pointer; }
+    .page { max-width: 1180px; margin: 0 auto; padding: 24px 24px 80px; }
+    .tabs { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 26px; padding-bottom: 1px; border-bottom: 1px solid; }
+    .tab { flex: none; padding: 14px 16px; border: 0; border-bottom: 3px solid transparent; background: none; white-space: nowrap; }
+    .tab[aria-selected="true"] { border-bottom-color: currentColor; font-weight: 700; }
+    .tab:focus-visible { outline: 2px solid; outline-offset: -3px; }
+    .panel { border: 1px solid; border-radius: 12px; overflow: hidden; }
+    .panel[hidden] { display: none; }
+    .panel-heading { padding: 24px 28px; border-bottom: 1px solid; }
+    .panel-heading h2 { margin: 0 0 8px; font-size: 24px; }
+    .panel-heading p { margin: 0; line-height: 1.5; opacity: .7; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; min-width: 650px; border-collapse: collapse; text-align: left; }
+    th, td { padding: 18px 28px; border-bottom: 1px solid; }
+    th { font-size: 14px; }
+    .empty { padding: 54px 28px; text-align: center; }
+    .empty strong { display: block; margin-bottom: 8px; font-size: 19px; }
+    .empty p { margin: 0; line-height: 1.5; opacity: .7; }
+    @media (max-width: 640px) {
+      .page { padding: 28px 16px 48px; }
+      .panel-heading { padding: 22px 18px; }
+      th, td { padding: 16px 18px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="tabs" role="tablist" aria-label="Các mục quản lý đơn hàng">
+      <button class="tab" id="tab-cart" role="tab" type="button" aria-selected="true" aria-controls="panel-cart">Giỏ hàng</button>
+      <button class="tab" id="tab-placed" role="tab" type="button" aria-selected="false" aria-controls="panel-placed">Đã đặt</button>
+      <button class="tab" id="tab-shipping" role="tab" type="button" aria-selected="false" aria-controls="panel-shipping">Đang giao</button>
+      <button class="tab" id="tab-received" role="tab" type="button" aria-selected="false" aria-controls="panel-received">Đã nhận hàng</button>
+      <button class="tab" id="tab-cancelled" role="tab" type="button" aria-selected="false" aria-controls="panel-cancelled">Đã hủy</button>
+    </div>
+
+    <section class="panel" id="panel-cart" role="tabpanel" aria-labelledby="tab-cart" tabindex="0">
+      <div class="panel-heading"><h2>Giỏ hàng</h2><p>Các sản phẩm bạn đã thêm vào giỏ.</p></div>
+      <div class="table-wrap">
+        <table><thead><tr><th scope="col">Sản phẩm</th><th scope="col">Đơn giá</th><th scope="col">Số lượng</th><th scope="col">Thành tiền</th></tr></thead></table>
+      </div>
+      <div class="empty"><strong>Giỏ hàng đang trống</strong><p>Sản phẩm được thêm vào giỏ sẽ hiển thị tại đây.</p></div>
+    </section>
+
+    <section class="panel" id="panel-placed" role="tabpanel" aria-labelledby="tab-placed" tabindex="0" hidden>
+      <div class="panel-heading"><h2>Đã đặt</h2><p>Đơn hàng đã được ghi nhận và đang chờ xử lý.</p></div>
+      <div class="table-wrap">
+        <table><thead><tr><th scope="col">Mã đơn</th><th scope="col">Ngày đặt</th><th scope="col">Sản phẩm</th><th scope="col">Tổng tiền</th><th scope="col">Trạng thái</th></tr></thead></table>
+      </div>
+      <div class="empty"><strong>Chưa có đơn đã đặt</strong><p>Đơn hàng mới sẽ hiển thị tại đây.</p></div>
+    </section>
+
+    <section class="panel" id="panel-shipping" role="tabpanel" aria-labelledby="tab-shipping" tabindex="0" hidden>
+      <div class="panel-heading"><h2>Đang giao</h2><p>Đơn hàng đang trên đường đến bạn.</p></div>
+      <div class="table-wrap">
+        <table><thead><tr><th scope="col">Mã đơn</th><th scope="col">Ngày đặt</th><th scope="col">Sản phẩm</th><th scope="col">Tổng tiền</th><th scope="col">Trạng thái</th></tr></thead></table>
+      </div>
+      <div class="empty"><strong>Chưa có đơn đang giao</strong><p>Đơn hàng được bàn giao vận chuyển sẽ hiển thị tại đây.</p></div>
+    </section>
+
+    <section class="panel" id="panel-received" role="tabpanel" aria-labelledby="tab-received" tabindex="0" hidden>
+      <div class="panel-heading"><h2>Đã nhận hàng</h2><p>Những đơn hàng đã được giao thành công.</p></div>
+      <div class="table-wrap">
+        <table><thead><tr><th scope="col">Mã đơn</th><th scope="col">Ngày đặt</th><th scope="col">Sản phẩm</th><th scope="col">Tổng tiền</th><th scope="col">Trạng thái</th></tr></thead></table>
+      </div>
+      <div class="empty"><strong>Chưa có đơn đã nhận</strong><p>Đơn hàng giao thành công sẽ hiển thị tại đây.</p></div>
+    </section>
+
+    <section class="panel" id="panel-cancelled" role="tabpanel" aria-labelledby="tab-cancelled" tabindex="0" hidden>
+      <div class="panel-heading"><h2>Đã hủy</h2><p>Những đơn hàng đã dừng xử lý.</p></div>
+      <div class="table-wrap">
+        <table><thead><tr><th scope="col">Mã đơn</th><th scope="col">Ngày đặt</th><th scope="col">Sản phẩm</th><th scope="col">Tổng tiền</th><th scope="col">Trạng thái</th></tr></thead></table>
+      </div>
+      <div class="empty"><strong>Chưa có đơn đã hủy</strong><p>Đơn hàng bị hủy sẽ hiển thị tại đây.</p></div>
+    </section>
+  </main>
+
+  <script>
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+
+    function selectTab(tab) {
+      for (const item of tabs) {
+        const active = item === tab;
+        item.setAttribute('aria-selected', String(active));
+        item.tabIndex = active ? 0 : -1;
+      }
+      for (const panel of panels) panel.hidden = panel.id !== tab.getAttribute('aria-controls');
+    }
+
+    tabs.forEach((tab, index) => {
+      tab.tabIndex = index === 0 ? 0 : -1;
+      tab.addEventListener('click', () => selectTab(tab));
+      tab.addEventListener('keydown', (event) => {
+        const direction = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+        if (!direction) return;
+        event.preventDefault();
+        const next = tabs[(index + direction + tabs.length) % tabs.length];
+        selectTab(next);
+        next.focus();
+      });
+    });
+  </script>
+</body>
+</html>
