@@ -40,31 +40,32 @@ const reviews = [
 export default function ProductDetailPage() {
   const { id } = useParams();
 
-const product = products.find(
-  (item) => String(item.id) === String(id)
-);
-
-if (!product) {
-  return (
-    <main className="min-h-screen bg-[#F7FAFC] px-4 py-16">
-      <div className="mx-auto max-w-7xl text-center">
-        <h1 className="text-2xl font-bold text-[#1F2937]">
-          Không tìm thấy sản phẩm
-        </h1>
-
-        <Link
-          to="/products"
-          className="mt-4 inline-block text-[#176B87]"
-        >
-          ← Quay lại danh sách sản phẩm
-        </Link>
-      </div>
-    </main>
+  const product = products.find(
+    (item) => String(item.id) === String(id)
   );
-}
+
   const [selectedImg, setSelectedImg] = useState(0);
   const [qty, setQty] = useState(1);
   const [tab, setTab] = useState("specs");
+
+  if (!product) {
+    return (
+      <main className="min-h-screen bg-[#F7FAFC] px-4 py-16">
+        <div className="mx-auto max-w-7xl text-center">
+          <h1 className="text-2xl font-bold text-[#1F2937]">
+            Không tìm thấy sản phẩm
+          </h1>
+
+          <Link
+            to="/products"
+            className="mt-4 inline-block text-[#176B87]"
+          >
+            ← Quay lại danh sách sản phẩm
+          </Link>
+        </div>
+      </main>
+    );
+  }
 
   const images =
     product.images?.length > 0
