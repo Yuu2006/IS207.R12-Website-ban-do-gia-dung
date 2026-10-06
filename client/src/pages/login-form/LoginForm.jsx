@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { isDemoAuth, requestCustomerOtp, verifyCustomerOtp } from './auth-client.js';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth, roleHome } from '../../context/auth-context.js';
 import './login-form.css';
 
 const FADE_OUT_MS = 180;
@@ -32,8 +34,11 @@ function contactError(value) {
   return 'Hãy nhập email hoặc số điện thoại hợp lệ.';
 }
 
-export default function LoginForm() {
-  const [screen, setScreen] = useState('login');
+export default function LoginForm({ initialScreen = 'login' }) {
+  const [screen, setScreen] = useState(initialScreen);
+  const { refreshSession, demo } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [values, setValues] = useState({ loginContact: '', fullName: '', registerContact: '', otpCode: '' });
   const [errors, setErrors] = useState({});
   const [serverError, setServerError] = useState('');
@@ -41,13 +46,16 @@ export default function LoginForm() {
   const [request, setRequest] = useState(null);
   const [remaining, setRemaining] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [completedDemo, setCompletedDemo] = useState(false);
   const [fadingOut, setFadingOut] = useState(false);
   const stage = useRef(null);
   const panels = useRef({});
   const switchTimer = useRef(null);
 
   useEffect(() => () => window.clearTimeout(switchTimer.current), []);
+
+  useEffect(() => {
+    document.title = `${{ login: 'Đăng nhập', register: 'Đăng ký', verify: 'Xác nhận mã' }[screen]} · Đồ gia dụng`;
+  }, [screen]);
 
   useEffect(() => {
     if (screen === 'verify') document.getElementById('otpCode')?.focus();
@@ -76,7 +84,6 @@ export default function LoginForm() {
       setServerError('');
       setScreen(next);
       setFadingOut(false);
-      document.title = `${{ login: 'Đăng nhập', register: 'Đăng ký', verify: 'Xác nhận mã', done: 'Hoàn tất' }[next]} · Đồ gia dụng`;
     };
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       activate();
@@ -157,9 +164,10 @@ export default function LoginForm() {
     setBusy(true);
     setServerError('');
     try {
-      const response = await verifyCustomerOtp({ challengeId: request.challengeId, code });
-      setCompletedDemo(Boolean(response.demo));
-      go('done', true);
+      await verifyCustomerOtp({ challengeId: request.challengeId, code });
+      const session = await refreshSession();
+      const from = location.state?.from;
+      navigate(from?.startsWith('/') && !from.startsWith('//') ? from : roleHome[session.user.role], { replace: true });
     } catch (error) {
       setServerError(error.message || 'Không thể xác nhận mã. Hãy thử lại.');
     } finally {
@@ -173,7 +181,7 @@ export default function LoginForm() {
     'aria-hidden': screen !== name,
     inert: screen !== name || fadingOut ? true : undefined,
   });
-  const selectedTab = screen === 'register' || ((screen === 'verify' || screen === 'done') && source === 'register') ? 'register' : 'login';
+  const selectedTab = screen === 'register' || (screen === 'verify' && source === 'register') ? 'register' : 'login';
 
   function handleTabKey(event) {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -200,6 +208,7 @@ export default function LoginForm() {
       <div className="panel-stage" ref={stage}>
         <section {...panel('login')} id="login-panel" role="tabpanel" aria-labelledby="login-tab">
           <span className="step">Rất vui được gặp lại bạn</span><h1 id="login-title">Chào mừng trở lại</h1><p className="intro">Nhập email hoặc số điện thoại để nhận mã đăng nhập.</p>
+          {(isDemoAuth() || demo) && <p className="demo-note">Bản demo · Dùng <strong>customer@example.test</strong> hoặc <strong>0901234567</strong>. Mã thử nghiệm sẽ hiển thị ở bước tiếp theo.</p>}
           <form noValidate onSubmit={event => sendCode(event, 'login')}>
             <Field id="loginContact" label="Email hoặc số điện thoại" value={values.loginContact} onChange={value => change('loginContact', value)} error={errors.loginContact} autoComplete="username" />
             {screen === 'login' && serverError && <p className="form-error" role="alert">{serverError}</p>}
@@ -221,7 +230,7 @@ export default function LoginForm() {
           <button className="back" type="button" disabled={busy} onClick={() => go(source)}>← <span>Thay đổi thông tin</span></button>
           <span className="step">{source === 'login' ? 'Đăng nhập' : 'Đăng ký'} · Bước 2 / 2</span><h1 id="verify-title">Xác nhận mã OTP</h1>
           <p className="intro">Nhập mã gồm 6 chữ số được gửi tới <strong>{request?.contact}</strong>. Mã có hiệu lực trong 5 phút.</p>
-          {isDemoAuth() && request?.previewCode && <p className="demo-note" role="status">Chế độ thử nghiệm: chưa gửi SMS/email. Mã để kiểm tra giao diện là <strong>{request.previewCode}</strong>.</p>}
+          {request?.demo && request?.previewCode && <p className="demo-note" role="status">Chế độ thử nghiệm: chưa gửi SMS/email. Mã để kiểm tra giao diện là <strong>{request.previewCode}</strong>.</p>}
           <form noValidate onSubmit={confirmCode}>
             <Field id="otpCode" label="Mã xác nhận" value={values.otpCode} onChange={value => change('otpCode', value.replace(/\D/g, '').slice(0, 6))} error={errors.otpCode} hint="Nhập đúng 6 chữ số trong email hoặc tin nhắn." autoComplete="one-time-code" inputMode="numeric" maxLength={6} />
             {screen === 'verify' && serverError && <p className="form-error" role="alert">{serverError}</p>}
@@ -229,14 +238,8 @@ export default function LoginForm() {
           </form>
           <div className="resend-row"><span>Chưa nhận được mã?</span><button className="text-button" type="button" disabled={busy || remaining > 0} onClick={resendCode}>{remaining > 0 ? `Gửi lại sau ${remaining}s` : 'Gửi lại mã'}</button></div>
         </section>
-        <section {...panel('done')} aria-labelledby="done-title">
-          <span className="success-mark" aria-hidden="true">✓</span><span className="step">Hoàn tất</span>
-          <h1 id="done-title">{source === 'login' ? 'Đăng nhập thành công' : 'Đăng ký hoàn tất'}</h1>
-          <p className="intro">{source === 'login' ? 'Bạn đã xác nhận mã đăng nhập.' : 'Bạn đã xác nhận thông tin để tạo tài khoản.'}</p>
-          {completedDemo && <p className="result-note">Đây là bản thử nghiệm giao diện. Tài khoản và phiên đăng nhập thật chưa được tạo.</p>}
-          <button className="primary" type="button" onClick={() => go('login')}>Về trang đăng nhập <span aria-hidden="true">→</span></button>
-        </section>
       </div>
+      <p className="switch-line"><Link to="/">Về trang chủ</Link><span>·</span><Link to="/internal/login" state={location.state}>Đăng nhập nội bộ</Link></p>
     </div></div>
   </div></main>;
 }

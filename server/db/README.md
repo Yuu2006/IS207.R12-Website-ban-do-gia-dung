@@ -1,7 +1,8 @@
 # Database
 
-Đặt các file SQL theo thứ tự:
-- `migrations/001_users_roles.sql`
+Migration đã có: `migrations/001_auth_profile.sql` cho schema CUS-01..05 trên database mới. Chưa chạy lên DB chung; API auth/profile hiện dùng mock. Xem `docs/database/AUTH-PROFILE.md` trước khi áp dụng, không import cùng baseline `database/schema_database.sql`.
+
+Các migration/seed tiếp theo là kế hoạch, chưa phải file đã triển khai:
 - `migrations/002_catalog.sql`
 - `migrations/003_cart_order_payment.sql`
 - `migrations/004_inventory_supplier.sql`

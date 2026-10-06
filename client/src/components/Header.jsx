@@ -1,126 +1,18 @@
-import {
-  Search,
-  ShoppingCart,
-  User,
-  Menu,
-} from "lucide-react";
+import { Menu, ShoppingCart, User, X } from 'lucide-react';
+import { useState } from 'react';
+import { Link, NavLink } from 'react-router-dom';
+import { roleHome, useAuth } from '../context/auth-context.js';
 
-import { Link, useLocation } from "react-router-dom";
-
+// Điều hướng công khai và tài khoản; menu mobile dùng state React.
 export default function Header() {
-  const location = useLocation();
-
-  return (
-    <header className="sticky top-0 z-50 border-b border-[#E2E8F0] bg-white">
-      <div className="mx-auto flex h-16 max-w-7xl items-center gap-6 px-4">
-
-        {/* LOGO */}
-        <Link
-          to="/"
-          className="flex items-center gap-2"
-        >
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#176B87] text-white">
-            <span className="text-lg font-bold">H</span>
-          </div>
-
-          <div>
-            <div className="text-lg font-bold leading-none text-[#176B87]">
-              HomeCare
-            </div>
-
-            <div className="mt-1 text-[10px] text-[#64748B]">
-              Thiết bị tốt – Chăm sóc tận tâm
-            </div>
-          </div>
-        </Link>
-
-        {/* NAVIGATION */}
-        <nav className="hidden flex-1 items-center justify-center gap-3 md:flex">
-
-          {/* TRANG CHỦ */}
-          <Link
-            to="/"
-            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
-              location.pathname === "/"
-                ? "bg-[#E8F4F7] text-[#176B87]"
-                : "text-[#1F2937] hover:text-[#176B87]"
-            }`}
-          >
-            Trang chủ
-          </Link>
-
-          {/* SẢN PHẨM */}
-          <Link
-            to="/products"
-            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
-              location.pathname.startsWith("/products")
-                ? "bg-[#E8F4F7] text-[#176B87]"
-                : "text-[#1F2937] hover:text-[#176B87]"
-            }`}
-          >
-            Sản phẩm
-          </Link>
-
-          {/* BẢO HÀNH */}
-          <Link
-            to="/warranty"
-            className={`whitespace-nowrap rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
-              location.pathname.startsWith("/warranty")
-                ? "bg-[#E8F4F7] text-[#176B87]"
-                : "text-[#1F2937] hover:text-[#176B87]"
-            }`}
-          >
-            Bảo hành & Sửa chữa
-          </Link>
-
-          {/* ĐƠN HÀNG */}
-          <Link
-            to="/orders"
-            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
-              location.pathname.startsWith("/orders")
-                ? "bg-[#E8F4F7] text-[#176B87]"
-                : "text-[#1F2937] hover:text-[#176B87]"
-            }`}
-          >
-            Đơn hàng
-          </Link>
-
-        </nav>
-
-        {/* ACTIONS */}
-        <div className="ml-auto flex items-center gap-2">
-
-          <Link
-            to="/products"
-            className="hidden h-9 items-center gap-2 rounded-xl border border-[#E2E8F0] px-3 text-sm text-[#64748B] transition-colors hover:border-[#176B87] hover:text-[#176B87] sm:flex"
-          >
-            <Search size={16} />
-            <span>Tìm kiếm</span>
-          </Link>
-
-          <button
-            type="button"
-            className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-[#E2E8F0] text-[#64748B] transition-colors hover:border-[#176B87] hover:text-[#176B87]"
-          >
-            <ShoppingCart size={17} />
-          </button>
-
-          <button
-            type="button"
-            className="hidden h-9 w-9 items-center justify-center rounded-xl border border-[#E2E8F0] text-[#64748B] transition-colors hover:border-[#176B87] hover:text-[#176B87] sm:flex"
-          >
-            <User size={17} />
-          </button>
-
-          <button
-            type="button"
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E2E8F0] text-[#64748B] md:hidden"
-          >
-            <Menu size={18} />
-          </button>
-
-        </div>
-      </div>
-    </header>
-  );
+  const { user } = useAuth();
+  const [open, setOpen] = useState(false);
+  return <header className="hc-header">
+    <div className="hc-header-inner">
+      <Link className="hc-brand" to="/" onClick={() => setOpen(false)}><span className="hc-brand-mark">H</span><span><strong>HomeCare</strong><small>Thiết bị tốt – Chăm sóc tận tâm</small></span></Link>
+      <nav className="hc-shop-nav" aria-label="Mua sắm"><NavLink to="/" end>Trang chủ</NavLink><NavLink to="/products">Sản phẩm</NavLink><Link to={user ? roleHome[user.role] : '/login'}>Không gian của tôi</Link></nav>
+      <div className="hc-header-actions">{(!user || user.role === 'CUSTOMER') && <Link to="/checkout" aria-label="Đến thanh toán"><ShoppingCart size={19} /></Link>}<Link to={user ? '/profile' : '/login'} aria-label={user ? `Hồ sơ của ${user.fullName}` : 'Đăng nhập'}><User size={18} /><span>{user ? user.fullName : 'Đăng nhập'}</span></Link><button type="button" className="hc-menu-toggle" aria-label={open ? 'Đóng menu' : 'Mở menu'} aria-expanded={open} aria-controls="mobile-menu" onClick={() => setOpen(!open)}>{open ? <X size={21} /> : <Menu size={21} />}</button></div>
+    </div>
+    {open && <nav className="hc-mobile-menu" id="mobile-menu" aria-label="Mua sắm trên điện thoại"><Link to="/" onClick={() => setOpen(false)}>Trang chủ</Link><Link to="/products" onClick={() => setOpen(false)}>Sản phẩm</Link><Link to={user ? roleHome[user.role] : '/login'} onClick={() => setOpen(false)}>Không gian của tôi</Link></nav>}
+  </header>;
 }

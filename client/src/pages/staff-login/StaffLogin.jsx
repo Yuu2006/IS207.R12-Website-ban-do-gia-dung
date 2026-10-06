@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { confirmStaffReset, isDemoReset, requestStaffReset, signInStaff, verifyStaffReset } from './staff-auth-client.js';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { roleHome, useAuth } from '../../context/auth-context.js';
+import { demoMode } from '../../services/auth-service.js';
+import { demoAccounts, demoPassword } from '../../services/demo-service.js';
 import './staff-login.css';
 
 const FADE_OUT_MS = 180;
@@ -37,6 +41,9 @@ function validateContact(value) {
 }
 
 export default function StaffLogin() {
+  const { refreshSession, demo } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [view, setView] = useState('login');
   const [leaving, setLeaving] = useState(false);
   const [values, setValues] = useState({ identifier: '', password: '', contact: '', otp: '', newPassword: '', confirmPassword: '' });
@@ -47,7 +54,6 @@ export default function StaffLogin() {
   const [resetToken, setResetToken] = useState('');
   const [remaining, setRemaining] = useState(0);
   const [demoCompleted, setDemoCompleted] = useState(false);
-  const [role, setRole] = useState('');
   const switchTimer = useRef(null);
 
   useEffect(() => () => window.clearTimeout(switchTimer.current), []);
@@ -57,7 +63,7 @@ export default function StaffLogin() {
     return () => window.clearTimeout(timer);
   }, [remaining]);
   useEffect(() => {
-    const titles = { login: 'Đăng nhập nhân viên', recover: 'Quên mật khẩu', otp: 'Xác nhận OTP', reset: 'Mật khẩu mới', done: 'Đặt lại mật khẩu', signedIn: 'Đã đăng nhập' };
+    const titles = { login: 'Đăng nhập nhân viên', recover: 'Quên mật khẩu', otp: 'Xác nhận OTP', reset: 'Mật khẩu mới', done: 'Đặt lại mật khẩu' };
     document.title = `${titles[view]} · Đồ gia dụng`;
   }, [view]);
 
@@ -100,10 +106,10 @@ export default function StaffLogin() {
     setBusy(true);
     setServerError('');
     try {
-      const response = await signInStaff({ identifier: values.identifier.trim(), password: values.password });
-      setRole(response.role || 'nhân viên');
-      change('password', '');
-      switchView('signedIn', true);
+      await signInStaff({ identifier: values.identifier.trim(), password: values.password });
+      const session = await refreshSession();
+      const from = location.state?.from;
+      navigate(from?.startsWith('/') && !from.startsWith('//') ? from : roleHome[session.user.role], { replace: true });
     } catch (error) {
       setServerError(error.message || 'Không thể đăng nhập. Hãy thử lại.');
     } finally {
@@ -192,6 +198,7 @@ export default function StaffLogin() {
     <div key={view} className={`staff-panel${leaving ? ' is-leaving' : ''}`}>
       {view === 'login' && <>
         <h1 className="staff-centered">Đăng nhập</h1><p className="staff-intro staff-centered">Dành cho nhân viên và quản trị viên.</p>
+        {(demoMode || demo) && <div className="staff-demo-note"><p>Bản demo · Chọn tài khoản để điền sẵn:</p><div className="hc-demo-choices">{demoAccounts.filter(user => user.role !== 'CUSTOMER').map(user => <button type="button" key={user.id} disabled={busy} onClick={() => { setValues(current => ({ ...current, identifier: user.email, password: demoPassword })); setErrors({}); setServerError(''); }}>{user.role}</button>)}</div><p>Mật khẩu: <strong>{demoPassword}</strong></p></div>}
         <form className="staff-form" noValidate onSubmit={login}>
           <InputField id="identifier" label="Tên đăng nhập hoặc email" icon="user" value={values.identifier} onChange={value => change('identifier', value)} error={errors.identifier} autoComplete="username" />
           <InputField id="password" label="Mật khẩu" icon="lock" type="password" value={values.password} onChange={value => change('password', value)} error={errors.password} autoComplete="current-password" />
@@ -234,7 +241,7 @@ export default function StaffLogin() {
       </>}
 
       {view === 'done' && <div className="staff-complete"><span className="staff-check" aria-hidden="true">✓</span><h1>Đã đặt lại mật khẩu</h1><p className="staff-intro">Hãy đăng nhập bằng mật khẩu mới của bạn.</p>{demoCompleted && <p className="staff-demo-note">Đây là bản thử nghiệm giao diện. Mật khẩu thật chưa được thay đổi.</p>}<button className="staff-primary" type="button" onClick={() => switchView('login')}>Quay lại đăng nhập</button></div>}
-      {view === 'signedIn' && <div className="staff-complete"><span className="staff-check" aria-hidden="true">✓</span><h1>Đăng nhập thành công</h1><p className="staff-intro">Phiên làm việc của {role} đã được tạo. Trang quản lý sẽ được kết nối ở bước tiếp theo.</p></div>}
+      <p className="switch-line"><Link to="/">Trang chủ</Link><span>·</span><Link to="/login" state={location.state}>Đăng nhập khách hàng</Link></p>
     </div>
   </div></main>;
 }

@@ -1,24 +1,11 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
-const DEMO_RESET = import.meta.env.DEV && import.meta.env.VITE_AUTH_DEMO !== 'false';
+import { demoMode, loginStaff } from '../../services/auth-service.js';
+import { requestApi } from '../../services/http-client.js';
+const DEMO_RESET = demoMode;
 
 let demoReset = null;
 
 async function post(path, body) {
-  let response;
-  try {
-    response = await fetch(`${API_URL}${path}`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    throw new Error('Không thể kết nối máy chủ. Hãy thử lại sau.');
-  }
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || 'Yêu cầu chưa thực hiện được. Hãy thử lại.');
-  return data;
+  return requestApi(path, { method: 'POST', body });
 }
 
 export function isDemoReset() {
@@ -26,11 +13,7 @@ export function isDemoReset() {
 }
 
 export async function signInStaff({ identifier, password }) {
-  const response = await post('/auth/staff/login', { identifier, password });
-  if (response.success !== true || response.sessionEstablished !== true) {
-    throw new Error('Máy chủ chưa hỗ trợ đăng nhập nhân viên.');
-  }
-  return response;
+  return loginStaff({ identifier, password });
 }
 
 export async function requestStaffReset(contact) {

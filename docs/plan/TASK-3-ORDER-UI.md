@@ -8,6 +8,8 @@ Từ `client/`: `npm ci`, `npm run dev`. Các route: `/`, `/products`, `/product
 
 UI hỗ trợ lọc trạng thái, chi tiết/timeline, mua lại, kiểm tra form checkout, nhập mã ưu đãi, hủy có lý do trước giao hàng, tra cứu đơn nhân viên và chuyển trạng thái trên giao diện. Dữ liệu trang được khởi tạo để trình bày đầy đủ các trạng thái; thao tác hiện tại chưa được lưu vào hệ thống.
 
+Tích hợp auth/profile demo ngày 06/10/2026: checkout và đơn khách hàng yêu cầu CUSTOMER; `/sales/orders` yêu cầu SALES. Header/sidebar dùng chung AppShell, không còn liên kết cho phép chuyển qua workspace khác role. Guard này bảo vệ UX; dữ liệu đơn vẫn là mock UI, chưa phải API có phân quyền/quyền sở hữu.
+
 ## Thiết kế dữ liệu đề xuất — chưa phải migration áp dụng
 
 | Bảng | Trường và ràng buộc chính |
