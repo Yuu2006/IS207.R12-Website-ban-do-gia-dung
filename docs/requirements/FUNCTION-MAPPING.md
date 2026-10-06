@@ -2,7 +2,7 @@
 
 | Nhóm yêu cầu | Frontend | Backend domain |
 |---|---|---|
-| CUS-01..05 | auth/profile/address | Auth, User |
+| CUS-01..05 | auth/profile/address: shell bốn role, đăng nhập/đăng ký demo, hồ sơ và CRUD địa chỉ mock | Auth, User: contract, role guard, validation và API mock; chưa persistence MySQL |
 | CUS-06..12 | home/catalog/product/wishlist/review | Product, Category, Brand, Review |
 | BOT-01..07 | chatbot | Chatbot, Product |
 | CART / PROMO / CHK / PAY | cart/checkout/payment | Cart, Voucher, Checkout, Payment |

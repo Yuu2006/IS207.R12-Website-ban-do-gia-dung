@@ -69,3 +69,15 @@ Ví dụ: `feature/product-filter`, `feature/vnpay-payment`, `feature/repair-tra
 2. Chạy `docker compose up -d --build`.
 3. Frontend: `cd client && npm install && npm run dev`.
 4. Import schema/seed trong `server/db` nếu cần.
+
+## Auth, hồ sơ và địa chỉ demo (CUS-01..05)
+
+Chạy Vite dev để dùng demo độc lập. CUSTOMER đăng nhập tại `/login` bằng `customer@example.test` hoặc `0901234567`; mã OTP thử nghiệm hiển thị trên trang. Đăng ký tại `/register` chỉ tạo CUSTOMER demo. ADMIN, SALES, WAREHOUSE đăng nhập tại `/internal/login`, chọn nút role để điền tài khoản giả; mật khẩu chung `Demo@1234567890!`.
+
+Sau đăng nhập có shell/menu và route guard theo bốn role, trang `/profile`; CUSTOMER có `/addresses` với thêm/sửa/xóa và địa chỉ mặc định. Hồ sơ/địa chỉ browser demo lưu trong localStorage của trình duyệt, phiên có hạn một giờ trong sessionStorage. Các workspace quản trị/kho và module chưa có nghiệp vụ được ghi rõ là placeholder. Checkout/đơn hàng vẫn là UI mẫu.
+
+`client`: `npm test` kiểm tra mock service; `npm run build` kiểm tra build. Backend: `php server/tests/auth-profile-test.php` kiểm tra guard với principal giả và bất biến hồ sơ/địa chỉ. API mock có thể thử bằng `node --test scripts/auth-profile-api.test.mjs` khi đã chạy PHP và bật `AUTH_DEMO=true` ở môi trường development.
+
+Xem `docs/api/AUTH-PROFILE.md` để nối FE với cookie/CSRF và API mock bằng `VITE_AUTH_DEMO=false`; xem `docs/database/AUTH-PROFILE.md` cho schema mới. Auth thật và PDO persistence chưa triển khai; migration chưa chạy lên database chung.
+
+Kết quả triển khai, kiểm thử và cách chạy lại: [Task 1 — Auth/Profile demo](docs/plan/TASK-1-AUTH-PROFILE.md).

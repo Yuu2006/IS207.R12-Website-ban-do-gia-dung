@@ -4,13 +4,14 @@ Trang nhận **email hoặc số điện thoại** ở bước đăng nhập. Đ
 
 ## Chế độ phát triển
 
-Khi chạy Vite ở chế độ phát triển, giao diện dùng mã thử nghiệm tạo trong trình duyệt và hiển thị rõ rằng SMS/email chưa được gửi. Mã có hiệu lực 5 phút, tối đa 5 lần nhập sai, bị hủy sau khi dùng hoặc khi gửi lại. Đặt `VITE_AUTH_DEMO=false` trong `client/.env.local` để thử kết nối API thật ngay khi phát triển.
+Mặc định khi chạy Vite dev, `services/demo-service.js` tạo mã trong trình duyệt, không gửi SMS/email. Dùng `customer@example.test` hoặc `0901234567`, nhập mã hiển thị trên trang. Đăng ký tạo CUSTOMER mới. Mã có hiệu lực 5 phút, tối đa 5 lần thử; phiên demo có hạn một giờ trong tab, hồ sơ/địa chỉ lưu bằng localStorage.
 
-## API cần triển khai để gửi thật
+## Luồng và contract
 
-`VITE_API_URL` mặc định là `http://localhost:8080`. Bản build gọi:
+`LoginForm.jsx` → `auth-client.js` → `services/auth-service.js` → browser mock hoặc PHP API. Xác nhận thành công gọi `refreshSession()` của AuthProvider rồi chuyển tới workspace/route yêu cầu trước đăng nhập.
 
-- `POST /auth/customer/otp/request` với `{ "flow": "login" | "register", "contact": "...", "fullName": "..." }`. `fullName` chỉ có ở đăng ký. Trả về `{ "challengeId": "...", "retryAfterSeconds": 30, "expiresInSeconds": 300 }` sau khi dịch vụ gửi đã nhận mã.
-- `POST /auth/customer/otp/verify` với `{ "challengeId": "...", "code": "123456" }`. Sau khi xác nhận thành công, tạo phiên đăng nhập bằng cookie `HttpOnly`, `Secure`, `SameSite` phù hợp và trả về `{ "success": true, "sessionEstablished": true }`.
+- `POST /auth/customer/otp/request`: `{ flow, contact, fullName? }` → envelope `{ success, message, data: { challengeId, retryAfterSeconds, expiresInSeconds, previewCode, demo } }`.
+- `POST /auth/customer/otp/verify`: `{ challengeId, code }` → envelope `data: { user, expiresAt, csrfToken, demo }`.
+- `GET /auth/me` và `POST /auth/logout` dùng contract phiên chung.
 
-Máy chủ phải kiểm tra tài khoản đã tồn tại khi đăng nhập, tránh đăng ký trùng, giới hạn tần suất gửi và số lần xác nhận, lưu mã an toàn, đặt hạn dùng ngắn và vô hiệu hóa mã sau khi xác nhận. Giao diện không được dùng làm nơi xác thực OTP thật.
+Đặt `VITE_AUTH_DEMO=false`, cấu hình `VITE_API_URL`, bật `AUTH_DEMO=true` trên PHP để thử API mock với cookie HttpOnly và CSRF. Bản production mặc định gọi API; PHP demo bị chặn trong production. Contract/lỗi/quyền được ghi tại `docs/api/AUTH-PROFILE.md`. Email/SMS và lưu MySQL chưa triển khai. Các lỗi 404 tài khoản chưa có, 409 liên hệ trùng, 422 dữ liệu/mã sai, 429 giới hạn được hiển thị trên form; không báo đăng nhập thành công khi request lỗi.
