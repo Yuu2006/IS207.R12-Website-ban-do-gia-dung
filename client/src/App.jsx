@@ -1,18 +1,16 @@
-import { useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AppRoutes from "./routes/AppRoutes";
 import LoginForm from "./pages/login-form/LoginForm.jsx";
 import StaffLogin from "./pages/staff-login/StaffLogin.jsx";
 import OrderWorkspace from "./pages/customer/OrderWorkspace.jsx";
-import { initialCart, initialOrders } from "./services/order-ui-data.js";
+import { CustomerAuthProvider } from "./context/CustomerAuthContext.jsx";
+import { OrderServiceProvider } from "./context/OrderServiceContext.jsx";
 
 export default function App() {
-  const [orders, setOrders] = useState(initialOrders);
-  const [cart, setCart] = useState(initialCart);
-  const orderWorkspace = <OrderWorkspace orders={orders} setOrders={setOrders} cart={cart} setCart={setCart} />;
+  const orderWorkspace = <OrderWorkspace />;
 
   return (
-    <BrowserRouter>
+    <BrowserRouter><CustomerAuthProvider><OrderServiceProvider>
       <Routes>
         <Route path="/login" element={<LoginForm />} />
         <Route path="/internal/login" element={<StaffLogin />} />
@@ -23,6 +21,6 @@ export default function App() {
         <Route path="/sales/orders" element={orderWorkspace} />
         <Route path="/*" element={<AppRoutes />} />
       </Routes>
-    </BrowserRouter>
+    </OrderServiceProvider></CustomerAuthProvider></BrowserRouter>
   );
 }
