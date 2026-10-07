@@ -1,0 +1,3508 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "HomeCare — Task 3 checkout & orders",
+    "version": "1.2.0",
+    "description": "Contract tuần 1 của Lê Tấn Vĩ, 07/10/2026. Frontend service/mock API và 9 PHP route/controller/service skeleton đã có. Service mặc định trả 503 khi storage chưa tích hợp; chưa triển khai checkout/đơn hàng MySQL. Đọc mapping trong docs/plan/TASK-3-ORDER-UI.md."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "Ví dụ môi trường local; frontend dùng VITE_API_URL."
+    }
+  ],
+  "x-inventory-decision": {
+    "approvedBy": "Lê Tấn Vĩ",
+    "date": "2026-10-07",
+    "deduct": "Một lần khi transaction tạo đơn commit.",
+    "vnpayHoldMinutes": 15,
+    "cancel": "Hoàn lượng đã giữ một lần trước giao.",
+    "integrationReview": "Chờ Lan Chi xác nhận SKU, cột tồn khả dụng và inventory movement."
+  },
+  "paths": {
+    "/orders": {
+      "get": {
+        "operationId": "listCustomerOrders",
+        "summary": "Danh sách đơn của session user, không nhận customerId.",
+        "x-roles": [
+          "CUSTOMER"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "example": "confirmed,preparing",
+            "description": "CSV tối đa 7 trạng thái hợp lệ; bỏ tham số để lấy tất cả. Lọc trước phân trang."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Thành công.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/OrderPage"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "message": "Thành công.",
+                  "data": {
+                    "items": [
+                      {
+                        "id": "101",
+                        "code": "HC2026100001",
+                        "version": 1,
+                        "orderStatus": "pending",
+                        "paymentStatus": "unpaid",
+                        "paymentMethod": "COD",
+                        "createdAt": "2026-10-07T09:00:00+07:00",
+                        "items": [
+                          {
+                            "skuId": "1",
+                            "skuCode": "SS-RT38-382",
+                            "productName": "Tủ lạnh Samsung",
+                            "variantName": "Bạc",
+                            "unitPrice": 8990000,
+                            "quantity": 1,
+                            "discount": 0,
+                            "lineTotal": 8990000,
+                            "warrantyMonths": 24,
+                            "imageUrl": null
+                          }
+                        ],
+                        "totals": {
+                          "subtotal": 8990000,
+                          "discount": 0,
+                          "shipping": 0,
+                          "total": 8990000
+                        }
+                      }
+                    ],
+                    "pagination": {
+                      "page": 1,
+                      "pageSize": 10,
+                      "totalItems": 1,
+                      "totalPages": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Vui lòng đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Vui lòng đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không có quyền hoặc CSRF không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không có quyền hoặc CSRF không hợp lệ.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "HTTP method không được hỗ trợ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "HTTP method không được hỗ trợ.",
+                  "errors": {
+                    "code": "METHOD_NOT_ALLOWED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dữ liệu không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Dữ liệu không hợp lệ.",
+                  "errors": {
+                    "code": "INVALID_INPUT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Máy chủ không thể xử lý yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ không thể xử lý yêu cầu.",
+                  "errors": {
+                    "code": "INTERNAL_ERROR",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Máy chủ chưa xử lý được yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ chưa xử lý được yêu cầu.",
+                  "errors": {
+                    "code": "SERVICE_UNAVAILABLE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{orderId}": {
+      "get": {
+        "operationId": "getCustomerOrder",
+        "summary": "Detail/timeline; đơn không thuộc khách trả cùng 404 với đơn không tồn tại.",
+        "x-roles": [
+          "CUSTOMER"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "example": "101"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Thành công.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Order"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "message": "Thành công.",
+                  "data": {
+                    "id": "101",
+                    "code": "HC2026100001",
+                    "version": 1,
+                    "orderStatus": "pending",
+                    "paymentStatus": "unpaid",
+                    "paymentMethod": "COD",
+                    "createdAt": "2026-10-07T09:00:00+07:00",
+                    "items": [
+                      {
+                        "skuId": "1",
+                        "skuCode": "SS-RT38-382",
+                        "productName": "Tủ lạnh Samsung",
+                        "variantName": "Bạc",
+                        "unitPrice": 8990000,
+                        "quantity": 1,
+                        "discount": 0,
+                        "lineTotal": 8990000,
+                        "warrantyMonths": 24,
+                        "imageUrl": null
+                      }
+                    ],
+                    "totals": {
+                      "subtotal": 8990000,
+                      "discount": 0,
+                      "shipping": 0,
+                      "total": 8990000
+                    },
+                    "shippingAddress": {
+                      "recipientName": "Khách hàng",
+                      "phone": "0900000000",
+                      "addressLine": "12 Nguyễn Văn Bảo, TP. Hồ Chí Minh"
+                    },
+                    "note": "",
+                    "refundRequired": false,
+                    "history": [
+                      {
+                        "fromStatus": null,
+                        "toStatus": "pending",
+                        "actorId": "1",
+                        "actorRole": "CUSTOMER",
+                        "createdAt": "2026-10-07T09:00:00+07:00",
+                        "reason": null
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Vui lòng đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Vui lòng đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không có quyền hoặc CSRF không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không có quyền hoặc CSRF không hợp lệ.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy dữ liệu hoặc dữ liệu không thuộc tài khoản.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không tìm thấy dữ liệu hoặc dữ liệu không thuộc tài khoản.",
+                  "errors": {
+                    "code": "ORDER_NOT_FOUND",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "HTTP method không được hỗ trợ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "HTTP method không được hỗ trợ.",
+                  "errors": {
+                    "code": "METHOD_NOT_ALLOWED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Máy chủ không thể xử lý yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ không thể xử lý yêu cầu.",
+                  "errors": {
+                    "code": "INTERNAL_ERROR",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Máy chủ chưa xử lý được yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ chưa xử lý được yêu cầu.",
+                  "errors": {
+                    "code": "SERVICE_UNAVAILABLE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{orderId}/cancel": {
+      "post": {
+        "operationId": "cancelOrder",
+        "summary": "Chỉ chủ đơn, trước giao, reason 1–500 trim. Version/state/hoàn tồn/history trong transaction.",
+        "x-roles": [
+          "CUSTOMER"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "example": "101"
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Auth module cấp token qua cookie đọc được XSRF-TOKEN; backend xác minh token với phiên."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9._:-]{16,128}$"
+            },
+            "example": "b5576303-2f2f-469a-b90c-5a7a99fb37d3",
+            "description": "Scope user+operation; cùng key/body trả kết quả cũ; khác body trả 409."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelInput"
+              },
+              "example": {
+                "expectedVersion": 1,
+                "reason": "Thay đổi nhu cầu."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Thành công.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Order"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "message": "Thành công.",
+                  "data": {
+                    "id": "101",
+                    "code": "HC2026100001",
+                    "version": 2,
+                    "orderStatus": "cancelled",
+                    "paymentStatus": "unpaid",
+                    "paymentMethod": "COD",
+                    "createdAt": "2026-10-07T09:00:00+07:00",
+                    "items": [
+                      {
+                        "skuId": "1",
+                        "skuCode": "SS-RT38-382",
+                        "productName": "Tủ lạnh Samsung",
+                        "variantName": "Bạc",
+                        "unitPrice": 8990000,
+                        "quantity": 1,
+                        "discount": 0,
+                        "lineTotal": 8990000,
+                        "warrantyMonths": 24,
+                        "imageUrl": null
+                      }
+                    ],
+                    "totals": {
+                      "subtotal": 8990000,
+                      "discount": 0,
+                      "shipping": 0,
+                      "total": 8990000
+                    },
+                    "shippingAddress": {
+                      "recipientName": "Khách hàng",
+                      "phone": "0900000000",
+                      "addressLine": "12 Nguyễn Văn Bảo, TP. Hồ Chí Minh"
+                    },
+                    "note": "",
+                    "refundRequired": false,
+                    "history": [
+                      {
+                        "fromStatus": null,
+                        "toStatus": "pending",
+                        "actorId": "1",
+                        "actorRole": "CUSTOMER",
+                        "createdAt": "2026-10-07T09:00:00+07:00",
+                        "reason": null
+                      },
+                      {
+                        "fromStatus": "pending",
+                        "toStatus": "cancelled",
+                        "actorId": "1",
+                        "actorRole": "CUSTOMER",
+                        "createdAt": "2026-10-07T09:10:00+07:00",
+                        "reason": "Thay đổi nhu cầu."
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Vui lòng đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Vui lòng đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không có quyền hoặc CSRF không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không có quyền hoặc CSRF không hợp lệ.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy dữ liệu hoặc dữ liệu không thuộc tài khoản.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không tìm thấy dữ liệu hoặc dữ liệu không thuộc tài khoản.",
+                  "errors": {
+                    "code": "ORDER_NOT_FOUND",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "HTTP method không được hỗ trợ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "HTTP method không được hỗ trợ.",
+                  "errors": {
+                    "code": "METHOD_NOT_ALLOWED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Dữ liệu đã thay đổi. Hãy tải lại.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Dữ liệu đã thay đổi. Hãy tải lại.",
+                  "errors": {
+                    "code": "ORDER_VERSION_CONFLICT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Nội dung yêu cầu quá lớn.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Nội dung yêu cầu quá lớn.",
+                  "errors": {
+                    "code": "REQUEST_BODY_TOO_LARGE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Yêu cầu phải dùng application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Yêu cầu phải dùng application/json.",
+                  "errors": {
+                    "code": "UNSUPPORTED_MEDIA_TYPE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dữ liệu không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Dữ liệu không hợp lệ.",
+                  "errors": {
+                    "code": "INVALID_INPUT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Máy chủ không thể xử lý yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ không thể xử lý yêu cầu.",
+                  "errors": {
+                    "code": "INTERNAL_ERROR",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Máy chủ chưa xử lý được yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ chưa xử lý được yêu cầu.",
+                  "errors": {
+                    "code": "SERVICE_UNAVAILABLE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{orderId}/reorder": {
+      "post": {
+        "operationId": "reorder",
+        "summary": "Delivered/completed/cancelled; dùng giá/tồn hiện tại, gộp SKU vào giỏ, không sao chép snapshot giá.",
+        "x-roles": [
+          "CUSTOMER"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "example": "101"
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Auth module cấp token qua cookie đọc được XSRF-TOKEN; backend xác minh token với phiên."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9._:-]{16,128}$"
+            },
+            "example": "b5576303-2f2f-469a-b90c-5a7a99fb37d3",
+            "description": "Scope user+operation; cùng key/body trả kết quả cũ; khác body trả 409."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderInput"
+              },
+              "example": {
+                "expectedCartVersion": 3
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Thành công.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Cart"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "message": "Thành công.",
+                  "data": {
+                    "cartVersion": 4,
+                    "items": [
+                      {
+                        "skuId": "1",
+                        "skuCode": "SS-RT38-382",
+                        "productName": "Tủ lạnh Samsung",
+                        "variantName": "Bạc",
+                        "unitPrice": 8990000,
+                        "quantity": 1,
+                        "discount": 0,
+                        "lineTotal": 8990000,
+                        "warrantyMonths": 24,
+                        "imageUrl": null
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Vui lòng đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Vui lòng đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không có quyền hoặc CSRF không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không có quyền hoặc CSRF không hợp lệ.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy dữ liệu hoặc dữ liệu không thuộc tài khoản.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không tìm thấy dữ liệu hoặc dữ liệu không thuộc tài khoản.",
+                  "errors": {
+                    "code": "ORDER_NOT_FOUND",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "HTTP method không được hỗ trợ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "HTTP method không được hỗ trợ.",
+                  "errors": {
+                    "code": "METHOD_NOT_ALLOWED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Dữ liệu đã thay đổi. Hãy tải lại.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Dữ liệu đã thay đổi. Hãy tải lại.",
+                  "errors": {
+                    "code": "ORDER_VERSION_CONFLICT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Nội dung yêu cầu quá lớn.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Nội dung yêu cầu quá lớn.",
+                  "errors": {
+                    "code": "REQUEST_BODY_TOO_LARGE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Yêu cầu phải dùng application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Yêu cầu phải dùng application/json.",
+                  "errors": {
+                    "code": "UNSUPPORTED_MEDIA_TYPE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dữ liệu không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Dữ liệu không hợp lệ.",
+                  "errors": {
+                    "code": "INVALID_INPUT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Máy chủ không thể xử lý yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ không thể xử lý yêu cầu.",
+                  "errors": {
+                    "code": "INTERNAL_ERROR",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Máy chủ chưa xử lý được yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ chưa xử lý được yêu cầu.",
+                  "errors": {
+                    "code": "SERVICE_UNAVAILABLE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sales/orders": {
+      "get": {
+        "operationId": "listSalesOrders",
+        "summary": "Tra cứu mã/tên/phone; CUSTOMER và WAREHOUSE bị từ chối.",
+        "x-roles": [
+          "SALES",
+          "ADMIN"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "example": "confirmed,preparing",
+            "description": "CSV tối đa 7 trạng thái hợp lệ; bỏ tham số để lấy tất cả. Lọc trước phân trang."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 10
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "example": "HC202610"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Thành công.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SalesOrderPage"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "message": "Thành công.",
+                  "data": {
+                    "items": [
+                      {
+                        "id": "101",
+                        "code": "HC2026100001",
+                        "version": 1,
+                        "orderStatus": "pending",
+                        "paymentStatus": "unpaid",
+                        "paymentMethod": "COD",
+                        "createdAt": "2026-10-07T09:00:00+07:00",
+                        "items": [
+                          {
+                            "skuId": "1",
+                            "skuCode": "SS-RT38-382",
+                            "productName": "Tủ lạnh Samsung",
+                            "variantName": "Bạc",
+                            "unitPrice": 8990000,
+                            "quantity": 1,
+                            "discount": 0,
+                            "lineTotal": 8990000,
+                            "warrantyMonths": 24,
+                            "imageUrl": null
+                          }
+                        ],
+                        "totals": {
+                          "subtotal": 8990000,
+                          "discount": 0,
+                          "shipping": 0,
+                          "total": 8990000
+                        },
+                        "customerName": "Khách hàng",
+                        "customerPhone": "0900000000"
+                      }
+                    ],
+                    "pagination": {
+                      "page": 1,
+                      "pageSize": 10,
+                      "totalItems": 1,
+                      "totalPages": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Vui lòng đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Vui lòng đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không có quyền hoặc CSRF không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không có quyền hoặc CSRF không hợp lệ.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "HTTP method không được hỗ trợ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "HTTP method không được hỗ trợ.",
+                  "errors": {
+                    "code": "METHOD_NOT_ALLOWED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dữ liệu không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Dữ liệu không hợp lệ.",
+                  "errors": {
+                    "code": "INVALID_INPUT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Máy chủ không thể xử lý yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ không thể xử lý yêu cầu.",
+                  "errors": {
+                    "code": "INTERNAL_ERROR",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Máy chủ chưa xử lý được yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ chưa xử lý được yêu cầu.",
+                  "errors": {
+                    "code": "SERVICE_UNAVAILABLE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sales/orders/{orderId}": {
+      "get": {
+        "operationId": "getSalesOrder",
+        "summary": "Detail/timeline nhân viên; không dùng endpoint khách để vượt ownership.",
+        "x-roles": [
+          "SALES",
+          "ADMIN"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "example": "101"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Thành công.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Order"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "message": "Thành công.",
+                  "data": {
+                    "id": "101",
+                    "code": "HC2026100001",
+                    "version": 1,
+                    "orderStatus": "pending",
+                    "paymentStatus": "unpaid",
+                    "paymentMethod": "COD",
+                    "createdAt": "2026-10-07T09:00:00+07:00",
+                    "items": [
+                      {
+                        "skuId": "1",
+                        "skuCode": "SS-RT38-382",
+                        "productName": "Tủ lạnh Samsung",
+                        "variantName": "Bạc",
+                        "unitPrice": 8990000,
+                        "quantity": 1,
+                        "discount": 0,
+                        "lineTotal": 8990000,
+                        "warrantyMonths": 24,
+                        "imageUrl": null
+                      }
+                    ],
+                    "totals": {
+                      "subtotal": 8990000,
+                      "discount": 0,
+                      "shipping": 0,
+                      "total": 8990000
+                    },
+                    "shippingAddress": {
+                      "recipientName": "Khách hàng",
+                      "phone": "0900000000",
+                      "addressLine": "12 Nguyễn Văn Bảo, TP. Hồ Chí Minh"
+                    },
+                    "note": "",
+                    "refundRequired": false,
+                    "history": [
+                      {
+                        "fromStatus": null,
+                        "toStatus": "pending",
+                        "actorId": "1",
+                        "actorRole": "CUSTOMER",
+                        "createdAt": "2026-10-07T09:00:00+07:00",
+                        "reason": null
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Vui lòng đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Vui lòng đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không có quyền hoặc CSRF không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không có quyền hoặc CSRF không hợp lệ.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy dữ liệu hoặc dữ liệu không thuộc tài khoản.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không tìm thấy dữ liệu hoặc dữ liệu không thuộc tài khoản.",
+                  "errors": {
+                    "code": "ORDER_NOT_FOUND",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "HTTP method không được hỗ trợ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "HTTP method không được hỗ trợ.",
+                  "errors": {
+                    "code": "METHOD_NOT_ALLOWED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Máy chủ không thể xử lý yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ không thể xử lý yêu cầu.",
+                  "errors": {
+                    "code": "INTERNAL_ERROR",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Máy chủ chưa xử lý được yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ chưa xử lý được yêu cầu.",
+                  "errors": {
+                    "code": "SERVICE_UNAVAILABLE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sales/orders/{orderId}/status": {
+      "patch": {
+        "operationId": "updateSalesStatus",
+        "summary": "Chuyển một bước hoặc hủy trước giao. Không nhận actor/role/paymentStatus. COD thu tiền tại shipping→delivered.",
+        "x-roles": [
+          "SALES",
+          "ADMIN"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "example": "101"
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Auth module cấp token qua cookie đọc được XSRF-TOKEN; backend xác minh token với phiên."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9._:-]{16,128}$"
+            },
+            "example": "b5576303-2f2f-469a-b90c-5a7a99fb37d3",
+            "description": "Scope user+operation; cùng key/body trả kết quả cũ; khác body trả 409."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusInput"
+              },
+              "example": {
+                "expectedVersion": 1,
+                "toStatus": "confirmed"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Thành công.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Order"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "message": "Thành công.",
+                  "data": {
+                    "id": "101",
+                    "code": "HC2026100001",
+                    "version": 2,
+                    "orderStatus": "confirmed",
+                    "paymentStatus": "unpaid",
+                    "paymentMethod": "COD",
+                    "createdAt": "2026-10-07T09:00:00+07:00",
+                    "items": [
+                      {
+                        "skuId": "1",
+                        "skuCode": "SS-RT38-382",
+                        "productName": "Tủ lạnh Samsung",
+                        "variantName": "Bạc",
+                        "unitPrice": 8990000,
+                        "quantity": 1,
+                        "discount": 0,
+                        "lineTotal": 8990000,
+                        "warrantyMonths": 24,
+                        "imageUrl": null
+                      }
+                    ],
+                    "totals": {
+                      "subtotal": 8990000,
+                      "discount": 0,
+                      "shipping": 0,
+                      "total": 8990000
+                    },
+                    "shippingAddress": {
+                      "recipientName": "Khách hàng",
+                      "phone": "0900000000",
+                      "addressLine": "12 Nguyễn Văn Bảo, TP. Hồ Chí Minh"
+                    },
+                    "note": "",
+                    "refundRequired": false,
+                    "history": [
+                      {
+                        "fromStatus": null,
+                        "toStatus": "pending",
+                        "actorId": "1",
+                        "actorRole": "CUSTOMER",
+                        "createdAt": "2026-10-07T09:00:00+07:00",
+                        "reason": null
+                      },
+                      {
+                        "fromStatus": "pending",
+                        "toStatus": "confirmed",
+                        "actorId": "2",
+                        "actorRole": "SALES",
+                        "createdAt": "2026-10-07T09:10:00+07:00",
+                        "reason": null
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Vui lòng đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Vui lòng đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không có quyền hoặc CSRF không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không có quyền hoặc CSRF không hợp lệ.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy dữ liệu hoặc dữ liệu không thuộc tài khoản.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không tìm thấy dữ liệu hoặc dữ liệu không thuộc tài khoản.",
+                  "errors": {
+                    "code": "ORDER_NOT_FOUND",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "HTTP method không được hỗ trợ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "HTTP method không được hỗ trợ.",
+                  "errors": {
+                    "code": "METHOD_NOT_ALLOWED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Dữ liệu đã thay đổi. Hãy tải lại.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Dữ liệu đã thay đổi. Hãy tải lại.",
+                  "errors": {
+                    "code": "ORDER_VERSION_CONFLICT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Nội dung yêu cầu quá lớn.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Nội dung yêu cầu quá lớn.",
+                  "errors": {
+                    "code": "REQUEST_BODY_TOO_LARGE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Yêu cầu phải dùng application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Yêu cầu phải dùng application/json.",
+                  "errors": {
+                    "code": "UNSUPPORTED_MEDIA_TYPE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dữ liệu không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Dữ liệu không hợp lệ.",
+                  "errors": {
+                    "code": "INVALID_INPUT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Máy chủ không thể xử lý yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ không thể xử lý yêu cầu.",
+                  "errors": {
+                    "code": "INTERNAL_ERROR",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Máy chủ chưa xử lý được yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ chưa xử lý được yêu cầu.",
+                  "errors": {
+                    "code": "SERVICE_UNAVAILABLE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/checkout/quote": {
+      "post": {
+        "operationId": "quoteCheckout",
+        "summary": "Tính lại giỏ/giá/tồn/voucher/phí; không giữ kho, không giữ giá. Address phải thuộc khách.",
+        "x-roles": [
+          "CUSTOMER"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Auth module cấp token qua cookie đọc được XSRF-TOKEN; backend xác minh token với phiên."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutInput"
+              },
+              "example": {
+                "cartVersion": 3,
+                "addressId": "12",
+                "paymentMethod": "COD",
+                "voucherCode": null
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Thành công.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Quote"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "message": "Thành công.",
+                  "data": {
+                    "cartVersion": 3,
+                    "items": [
+                      {
+                        "skuId": "1",
+                        "skuCode": "SS-RT38-382",
+                        "productName": "Tủ lạnh Samsung",
+                        "variantName": "Bạc",
+                        "unitPrice": 8990000,
+                        "quantity": 1,
+                        "discount": 0,
+                        "lineTotal": 8990000,
+                        "warrantyMonths": 24,
+                        "imageUrl": null
+                      }
+                    ],
+                    "shippingAddress": {
+                      "recipientName": "Khách hàng",
+                      "phone": "0900000000",
+                      "addressLine": "12 Nguyễn Văn Bảo, TP. Hồ Chí Minh"
+                    },
+                    "totals": {
+                      "subtotal": 8990000,
+                      "discount": 0,
+                      "shipping": 0,
+                      "total": 8990000
+                    },
+                    "quoteFingerprint": "opaque-server-fingerprint"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Vui lòng đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Vui lòng đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không có quyền hoặc CSRF không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không có quyền hoặc CSRF không hợp lệ.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy dữ liệu hoặc dữ liệu không thuộc tài khoản.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không tìm thấy dữ liệu hoặc dữ liệu không thuộc tài khoản.",
+                  "errors": {
+                    "code": "ORDER_NOT_FOUND",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "HTTP method không được hỗ trợ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "HTTP method không được hỗ trợ.",
+                  "errors": {
+                    "code": "METHOD_NOT_ALLOWED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Dữ liệu đã thay đổi. Hãy tải lại.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Dữ liệu đã thay đổi. Hãy tải lại.",
+                  "errors": {
+                    "code": "ORDER_VERSION_CONFLICT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Nội dung yêu cầu quá lớn.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Nội dung yêu cầu quá lớn.",
+                  "errors": {
+                    "code": "REQUEST_BODY_TOO_LARGE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Yêu cầu phải dùng application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Yêu cầu phải dùng application/json.",
+                  "errors": {
+                    "code": "UNSUPPORTED_MEDIA_TYPE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dữ liệu không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Dữ liệu không hợp lệ.",
+                  "errors": {
+                    "code": "INVALID_INPUT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Máy chủ không thể xử lý yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ không thể xử lý yêu cầu.",
+                  "errors": {
+                    "code": "INTERNAL_ERROR",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Máy chủ chưa xử lý được yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ chưa xử lý được yêu cầu.",
+                  "errors": {
+                    "code": "SERVICE_UNAVAILABLE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/checkout/orders": {
+      "post": {
+        "operationId": "createOrder",
+        "summary": "Revalidate fingerprint; tạo order/items/history/payment, giữ kho/voucher, cập nhật giỏ và idempotency atomically.",
+        "x-roles": [
+          "CUSTOMER"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Auth module cấp token qua cookie đọc được XSRF-TOKEN; backend xác minh token với phiên."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9._:-]{16,128}$"
+            },
+            "example": "b5576303-2f2f-469a-b90c-5a7a99fb37d3",
+            "description": "Scope user+operation; cùng key/body trả kết quả cũ; khác body trả 409."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrderInput"
+              },
+              "example": {
+                "cartVersion": 3,
+                "addressId": "12",
+                "paymentMethod": "COD",
+                "voucherCode": null,
+                "quoteFingerprint": "opaque-server-fingerprint",
+                "note": "Gọi trước khi giao"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Tạo mới; replay idempotency trả nguyên status/body đã commit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CreateOrderResult"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "message": "Thành công.",
+                  "data": {
+                    "order": {
+                      "id": "101",
+                      "code": "HC2026100001",
+                      "version": 1,
+                      "orderStatus": "pending",
+                      "paymentStatus": "unpaid",
+                      "paymentMethod": "COD",
+                      "createdAt": "2026-10-07T09:00:00+07:00",
+                      "items": [
+                        {
+                          "skuId": "1",
+                          "skuCode": "SS-RT38-382",
+                          "productName": "Tủ lạnh Samsung",
+                          "variantName": "Bạc",
+                          "unitPrice": 8990000,
+                          "quantity": 1,
+                          "discount": 0,
+                          "lineTotal": 8990000,
+                          "warrantyMonths": 24,
+                          "imageUrl": null
+                        }
+                      ],
+                      "totals": {
+                        "subtotal": 8990000,
+                        "discount": 0,
+                        "shipping": 0,
+                        "total": 8990000
+                      },
+                      "shippingAddress": {
+                        "recipientName": "Khách hàng",
+                        "phone": "0900000000",
+                        "addressLine": "12 Nguyễn Văn Bảo, TP. Hồ Chí Minh"
+                      },
+                      "note": "",
+                      "refundRequired": false,
+                      "history": [
+                        {
+                          "fromStatus": null,
+                          "toStatus": "pending",
+                          "actorId": "1",
+                          "actorRole": "CUSTOMER",
+                          "createdAt": "2026-10-07T09:00:00+07:00",
+                          "reason": null
+                        }
+                      ]
+                    },
+                    "payment": null
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Vui lòng đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Vui lòng đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không có quyền hoặc CSRF không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không có quyền hoặc CSRF không hợp lệ.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy dữ liệu hoặc dữ liệu không thuộc tài khoản.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không tìm thấy dữ liệu hoặc dữ liệu không thuộc tài khoản.",
+                  "errors": {
+                    "code": "ORDER_NOT_FOUND",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "HTTP method không được hỗ trợ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "HTTP method không được hỗ trợ.",
+                  "errors": {
+                    "code": "METHOD_NOT_ALLOWED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Dữ liệu đã thay đổi. Hãy tải lại.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Dữ liệu đã thay đổi. Hãy tải lại.",
+                  "errors": {
+                    "code": "ORDER_VERSION_CONFLICT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Nội dung yêu cầu quá lớn.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Nội dung yêu cầu quá lớn.",
+                  "errors": {
+                    "code": "REQUEST_BODY_TOO_LARGE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Yêu cầu phải dùng application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Yêu cầu phải dùng application/json.",
+                  "errors": {
+                    "code": "UNSUPPORTED_MEDIA_TYPE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dữ liệu không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Dữ liệu không hợp lệ.",
+                  "errors": {
+                    "code": "INVALID_INPUT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Máy chủ không thể xử lý yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ không thể xử lý yêu cầu.",
+                  "errors": {
+                    "code": "INTERNAL_ERROR",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Máy chủ chưa xử lý được yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ chưa xử lý được yêu cầu.",
+                  "errors": {
+                    "code": "SERVICE_UNAVAILABLE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cart": {
+      "get": {
+        "operationId": "getCart",
+        "summary": "Đầu vào phụ thuộc Tuấn Vũ: giỏ của session, SKU gộp và cartVersion.",
+        "x-roles": [
+          "CUSTOMER"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Thành công.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Cart"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "message": "Thành công.",
+                  "data": {
+                    "cartVersion": 3,
+                    "items": [
+                      {
+                        "skuId": "1",
+                        "skuCode": "SS-RT38-382",
+                        "productName": "Tủ lạnh Samsung",
+                        "variantName": "Bạc",
+                        "unitPrice": 8990000,
+                        "quantity": 1,
+                        "discount": 0,
+                        "lineTotal": 8990000,
+                        "warrantyMonths": 24,
+                        "imageUrl": null
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Vui lòng đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Vui lòng đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không có quyền hoặc CSRF không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không có quyền hoặc CSRF không hợp lệ.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "HTTP method không được hỗ trợ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "HTTP method không được hỗ trợ.",
+                  "errors": {
+                    "code": "METHOD_NOT_ALLOWED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Máy chủ không thể xử lý yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ không thể xử lý yêu cầu.",
+                  "errors": {
+                    "code": "INTERNAL_ERROR",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Máy chủ chưa xử lý được yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ chưa xử lý được yêu cầu.",
+                  "errors": {
+                    "code": "SERVICE_UNAVAILABLE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/addresses": {
+      "get": {
+        "operationId": "getAddresses",
+        "summary": "Đầu vào phụ thuộc Tuấn Vũ: địa chỉ chỉ thuộc session, chuẩn hóa addressLine.",
+        "x-roles": [
+          "CUSTOMER"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Thành công.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AddressList"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "message": "Thành công.",
+                  "data": {
+                    "items": [
+                      {
+                        "id": "12",
+                        "recipientName": "Khách hàng",
+                        "phone": "0900000000",
+                        "addressLine": "12 Nguyễn Văn Bảo, TP. Hồ Chí Minh",
+                        "isDefault": true
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Vui lòng đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Vui lòng đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không có quyền hoặc CSRF không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không có quyền hoặc CSRF không hợp lệ.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "HTTP method không được hỗ trợ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "HTTP method không được hỗ trợ.",
+                  "errors": {
+                    "code": "METHOD_NOT_ALLOWED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Máy chủ không thể xử lý yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ không thể xử lý yêu cầu.",
+                  "errors": {
+                    "code": "INTERNAL_ERROR",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Máy chủ chưa xử lý được yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ chưa xử lý được yêu cầu.",
+                  "errors": {
+                    "code": "SERVICE_UNAVAILABLE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "PHPSESSID",
+        "description": "Tên cookie cần Tuấn Vũ xác nhận; HttpOnly/SameSite/Secure, backend role/owner guard."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "errors"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "errors": {
+            "type": "object",
+            "required": [
+              "code"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "fields": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Line": {
+        "type": "object",
+        "required": [
+          "skuId",
+          "skuCode",
+          "productName",
+          "unitPrice",
+          "quantity"
+        ],
+        "properties": {
+          "skuId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
+            "pattern": "^[1-9][0-9]*$"
+          },
+          "skuCode": {
+            "type": "string"
+          },
+          "productName": {
+            "type": "string"
+          },
+          "variantName": {
+            "type": "string"
+          },
+          "unitPrice": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "VND nguyên, không nhân 100 trong REST API."
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "discount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "VND nguyên, không nhân 100 trong REST API."
+          },
+          "lineTotal": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "VND nguyên, không nhân 100 trong REST API."
+          },
+          "warrantyMonths": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "Totals": {
+        "type": "object",
+        "required": [
+          "subtotal",
+          "discount",
+          "shipping",
+          "total"
+        ],
+        "description": "total=subtotal-discount+shipping; item.discount là giảm cả dòng, không trừ lại ở UI.",
+        "properties": {
+          "subtotal": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "VND nguyên, không nhân 100 trong REST API."
+          },
+          "discount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "VND nguyên, không nhân 100 trong REST API."
+          },
+          "shipping": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "VND nguyên, không nhân 100 trong REST API."
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "VND nguyên, không nhân 100 trong REST API."
+          }
+        }
+      },
+      "Address": {
+        "type": "object",
+        "required": [
+          "recipientName",
+          "phone",
+          "addressLine"
+        ],
+        "properties": {
+          "recipientName": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "addressLine": {
+            "type": "string"
+          }
+        }
+      },
+      "History": {
+        "type": "object",
+        "required": [
+          "fromStatus",
+          "toStatus",
+          "actorRole",
+          "createdAt"
+        ],
+        "properties": {
+          "fromStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "confirmed",
+              "preparing",
+              "shipping",
+              "delivered",
+              "completed",
+              "cancelled",
+              null
+            ],
+            "nullable": true
+          },
+          "toStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "confirmed",
+              "preparing",
+              "shipping",
+              "delivered",
+              "completed",
+              "cancelled"
+            ]
+          },
+          "actorId": {
+            "type": "string",
+            "nullable": true
+          },
+          "actorRole": {
+            "type": "string",
+            "enum": [
+              "CUSTOMER",
+              "SALES",
+              "ADMIN",
+              "SYSTEM"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          }
+        }
+      },
+      "OrderSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "code",
+          "version",
+          "orderStatus",
+          "paymentStatus",
+          "paymentMethod",
+          "createdAt",
+          "items",
+          "totals"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
+            "pattern": "^[1-9][0-9]*$"
+          },
+          "code": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "orderStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "confirmed",
+              "preparing",
+              "shipping",
+              "delivered",
+              "completed",
+              "cancelled"
+            ]
+          },
+          "paymentStatus": {
+            "type": "string",
+            "enum": [
+              "unpaid",
+              "pending",
+              "paid",
+              "failed",
+              "refunded"
+            ]
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "COD",
+              "VNPAY"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Line"
+            }
+          },
+          "totals": {
+            "$ref": "#/components/schemas/Totals"
+          }
+        }
+      },
+      "Order": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/OrderSummary"
+          },
+          {
+            "type": "object",
+            "required": [
+              "shippingAddress",
+              "history"
+            ],
+            "properties": {
+              "shippingAddress": {
+                "$ref": "#/components/schemas/Address"
+              },
+              "note": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "refundRequired": {
+                "type": "boolean"
+              },
+              "history": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/History"
+                }
+              },
+              "paymentExpiresAt": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+              },
+              "inventoryState": {
+                "type": "string",
+                "enum": [
+                  "reserved",
+                  "released",
+                  "consumed"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "SalesOrderSummary": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/OrderSummary"
+          },
+          {
+            "type": "object",
+            "required": [
+              "customerName",
+              "customerPhone"
+            ],
+            "properties": {
+              "customerName": {
+                "type": "string"
+              },
+              "customerPhone": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "Pagination": {
+        "type": "object",
+        "required": [
+          "page",
+          "pageSize",
+          "totalItems",
+          "totalPages"
+        ],
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "totalItems": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "totalPages": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "OrderPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "pagination"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderSummary"
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
+          }
+        }
+      },
+      "SalesOrderPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "pagination"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SalesOrderSummary"
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
+          }
+        }
+      },
+      "Cart": {
+        "type": "object",
+        "required": [
+          "cartVersion",
+          "items"
+        ],
+        "properties": {
+          "cartVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Line"
+            }
+          }
+        }
+      },
+      "AddressList": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Address"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "isDefault"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
+                      "pattern": "^[1-9][0-9]*$"
+                    },
+                    "isDefault": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Quote": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Cart"
+          },
+          {
+            "type": "object",
+            "required": [
+              "shippingAddress",
+              "totals",
+              "quoteFingerprint"
+            ],
+            "properties": {
+              "shippingAddress": {
+                "$ref": "#/components/schemas/Address"
+              },
+              "totals": {
+                "$ref": "#/components/schemas/Totals"
+              },
+              "quoteFingerprint": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        ]
+      },
+      "CheckoutInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "cartVersion",
+          "addressId",
+          "paymentMethod"
+        ],
+        "properties": {
+          "cartVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "addressId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
+            "pattern": "^[1-9][0-9]*$"
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "COD",
+              "VNPAY"
+            ]
+          },
+          "voucherCode": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 50
+          }
+        }
+      },
+      "CreateOrderInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "cartVersion",
+          "addressId",
+          "paymentMethod",
+          "quoteFingerprint"
+        ],
+        "properties": {
+          "cartVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "addressId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
+            "pattern": "^[1-9][0-9]*$"
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "COD",
+              "VNPAY"
+            ]
+          },
+          "voucherCode": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 50
+          },
+          "quoteFingerprint": {
+            "type": "string",
+            "minLength": 1
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      },
+      "CreateOrderResult": {
+        "type": "object",
+        "required": [
+          "order",
+          "payment"
+        ],
+        "properties": {
+          "order": {
+            "$ref": "#/components/schemas/Order"
+          },
+          "payment": {
+            "type": "object",
+            "nullable": true,
+            "required": [
+              "attemptReference",
+              "redirectUrl",
+              "expiresAt"
+            ],
+            "description": "COD=null; VNPay Sandbox HTTPS redirect đã ký server, không đồng nghĩa paid.",
+            "properties": {
+              "attemptReference": {
+                "type": "string"
+              },
+              "redirectUrl": {
+                "type": "string",
+                "format": "uri"
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
+      "CancelInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "expectedVersion",
+          "reason"
+        ],
+        "properties": {
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        }
+      },
+      "ReorderInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "expectedCartVersion"
+        ],
+        "properties": {
+          "expectedCartVersion": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "StatusInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "expectedVersion",
+          "toStatus"
+        ],
+        "properties": {
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "toStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "confirmed",
+              "preparing",
+              "shipping",
+              "delivered",
+              "completed",
+              "cancelled"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "codCollected": {
+            "type": "boolean",
+            "description": "Chỉ shipping→delivered của COD, bắt buộc true."
+          }
+        }
+      }
+    }
+  },
+  "x-error-codes": {
+    "403": [
+      "FORBIDDEN",
+      "CSRF_INVALID",
+      "ORIGIN_NOT_ALLOWED"
+    ],
+    "409": [
+      "ORDER_VERSION_CONFLICT",
+      "CART_VERSION_CONFLICT",
+      "INVALID_ORDER_TRANSITION",
+      "PAYMENT_NOT_PAID",
+      "PAYMENT_NOT_AVAILABLE",
+      "OUT_OF_STOCK",
+      "CHECKOUT_CHANGED",
+      "VOUCHER_EXHAUSTED",
+      "REORDER_UNAVAILABLE",
+      "IDEMPOTENCY_CONFLICT",
+      "REQUEST_IN_PROGRESS"
+    ],
+    "422": [
+      "INVALID_INPUT",
+      "EMPTY_CART",
+      "VOUCHER_INVALID",
+      "REASON_REQUIRED",
+      "COD_COLLECTION_REQUIRED",
+      "IDEMPOTENCY_KEY_REQUIRED"
+    ]
+  },
+  "x-vnpay-phase": "Tích hợp IPN, return/retry và worker hết hạn là task Tuần 3 #21 của Vĩ; mock tuần 1 chỉ COD, VNPay trả 409 PAYMENT_NOT_AVAILABLE, không giả chữ ký hay paid.",
+  "x-runtime-stage": {
+    "phpRoutes": "9 operation thuộc checkout/orders/sales đã nối; validation/role/CSRF hoạt động.",
+    "storage": "Chưa tích hợp MySQL; request hợp lệ trả 503 SERVICE_UNAVAILABLE, không success giả.",
+    "authentication": "Chưa có login/session endpoint. Auth owner cấp $_SESSION.user{id,role,fullName}, expiresAt (Unix integer), csrfToken; HTTP không nhận principal giả.",
+    "dependencies": "GET /cart và /addresses thuộc Tuấn Vũ, chưa đăng ký ở router này.",
+    "idempotency": "Skeleton validate header; storage hash/result, replay và transaction ở task backend tiếp theo."
+  },
+  "x-max-body-bytes": 16384
+}
