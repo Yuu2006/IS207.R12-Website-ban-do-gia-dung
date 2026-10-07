@@ -1,4 +1,6 @@
 RewriteEngine On
+# Test doubles must never be reachable from the public API.
+RewriteRule ^tests(?:/|$) - [F,L]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.php [QSA,L]
