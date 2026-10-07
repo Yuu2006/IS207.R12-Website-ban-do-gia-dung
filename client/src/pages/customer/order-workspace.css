@@ -1,4 +1,16 @@
 .order-app { --oc-primary: #0f5f73; --oc-primary-hover: #0b4e60; --oc-text: #1f2937; --oc-title: #1d2939; --oc-muted: #667085; --oc-border: #e5e7eb; min-height: 100vh; background: #f7f8fa; color: var(--oc-text); font-size: 14px; line-height: 1.65; }
+.order-app--storefront { min-height: calc(100vh - 64px); display: flow-root; }
+.order-app--storefront .oc-main { width: min(100% - 32px, 896px); }
+.order-app--storefront .oc-main--wide { width: min(100% - 32px, 1100px); }
+.order-app--storefront h1 { font-size: clamp(24px, 3vw, 30px); font-weight: 700; letter-spacing: -.025em; }
+.order-app--storefront .oc-title-row p { font-size: 14px; }
+.order-app--storefront .oc-filter-tabs button { font-size: 13px; min-height: 48px; }
+.order-app--storefront .oc-order-meta strong, .order-app--storefront .oc-product-copy strong, .order-app--storefront .oc-price { font-size: 14px; }
+.order-app--storefront .oc-order-footer strong { font-size: 16px; }
+.order-app--storefront .oc-order-meta small, .order-app--storefront .oc-product-copy span, .order-app--storefront .oc-product-copy small { font-size: 12px; }
+.order-app--storefront .oc-button, .order-app--storefront .oc-text-action { font-size: 12px !important; }
+.order-app--storefront .oc-order-header { flex-wrap: wrap; }
+.order-app--storefront .oc-order-meta { min-width: 130px; }
 .order-app a { color: inherit; text-decoration: none; }
 .order-app button, .order-app input, .order-app select, .order-app textarea { font: inherit; }
 .order-app button, .order-app a, .order-app input, .order-app select, .order-app textarea { -webkit-tap-highlight-color: transparent; }
@@ -96,9 +108,9 @@
 .oc-form-section h2>svg { color: var(--oc-primary); }
 .oc-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .oc-field { display: grid; gap: 8px; margin-bottom: 18px; color: #25384a; font-size: 12px; font-weight: 600; }
-.oc-field input, .oc-field textarea, .oc-voucher input, .oc-toolbar select { width: 100%; min-width: 0; padding: 12px 14px; border: 1px solid var(--oc-border); border-radius: 6px; color: var(--oc-text); background: white; font-size: 12px; }
+.oc-field input, .oc-field textarea, .oc-field select, .oc-voucher input, .oc-toolbar select { width: 100%; min-width: 0; padding: 12px 14px; border: 1px solid var(--oc-border); border-radius: 6px; color: var(--oc-text); background: white; font-size: 12px; }
 .oc-field textarea { resize: vertical; }
-.oc-field input:focus, .oc-field textarea:focus { border-color: #397fa5; }
+.oc-field input:focus, .oc-field textarea:focus, .oc-field select:focus { border-color: #397fa5; }
 .oc-field [aria-invalid=true] { border-color: #c45a60; }
 .oc-error { color: #a82932; font-weight: 400; }
 .oc-muted { color: var(--oc-muted); font-weight: 400; }

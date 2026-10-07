@@ -1,4 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useCustomerAuth } from '../../context/CustomerAuthContext.jsx';
+import { customerReturnPath } from '../../utils/customer-session.js';
 import { isDemoAuth, requestCustomerOtp, verifyCustomerOtp } from './auth-client.js';
 import './login-form.css';
 
@@ -33,6 +36,10 @@ function contactError(value) {
 }
 
 export default function LoginForm() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { refreshSession } = useCustomerAuth();
+  const returnTo = customerReturnPath(location.state?.returnTo);
   const [screen, setScreen] = useState('login');
   const [values, setValues] = useState({ loginContact: '', fullName: '', registerContact: '', otpCode: '' });
   const [errors, setErrors] = useState({});
@@ -158,6 +165,8 @@ export default function LoginForm() {
     setServerError('');
     try {
       const response = await verifyCustomerOtp({ challengeId: request.challengeId, code });
+      const session = await refreshSession();
+      if (!session) throw new Error('Phiên đăng nhập chưa được xác nhận. Hãy thử lại.');
       setCompletedDemo(Boolean(response.demo));
       go('done', true);
     } catch (error) {
@@ -233,8 +242,8 @@ export default function LoginForm() {
           <span className="success-mark" aria-hidden="true">✓</span><span className="step">Hoàn tất</span>
           <h1 id="done-title">{source === 'login' ? 'Đăng nhập thành công' : 'Đăng ký hoàn tất'}</h1>
           <p className="intro">{source === 'login' ? 'Bạn đã xác nhận mã đăng nhập.' : 'Bạn đã xác nhận thông tin để tạo tài khoản.'}</p>
-          {completedDemo && <p className="result-note">Đây là bản thử nghiệm giao diện. Tài khoản và phiên đăng nhập thật chưa được tạo.</p>}
-          <button className="primary" type="button" onClick={() => go('login')}>Về trang đăng nhập <span aria-hidden="true">→</span></button>
+          {completedDemo && <p className="result-note">Phiên kiểm tra giao diện đã sẵn sàng trong trình duyệt này. Chưa tạo tài khoản trên máy chủ.</p>}
+          <button className="primary" type="button" onClick={() => navigate(returnTo, { replace: true })}>{returnTo.startsWith('/checkout') ? 'Tiếp tục thanh toán' : 'Xem đơn hàng'} <span aria-hidden="true">→</span></button>
         </section>
       </div>
     </div></div>
