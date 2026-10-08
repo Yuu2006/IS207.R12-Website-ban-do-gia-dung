@@ -76,6 +76,12 @@ test('customer identity rejects missing ID, invalid ID and staff roles', () => {
   }
 });
 
+test('return action is visible only on delivered paid owner detail, not shipping/pending/list', () => {
+  assert.match(renderWorkspace('/orders/HC2026100001'), /Yêu cầu trả hàng/);
+  for (const path of ['/orders', '/orders/HC2026100002', '/orders/HC2026100003']) assert.doesNotMatch(renderWorkspace(path), /Yêu cầu trả hàng/);
+  assert.doesNotMatch(renderWorkspace('/orders/HC2026100001', other), /Yêu cầu trả hàng/);
+});
+
 test('return URL keeps own order/detail and rejects external, staff and malformed URLs', () => {
   for (const path of ['/orders', '/orders/HC2026100002', '/orders/HC2026100002?view=tracking#history', '/checkout']) assert.equal(customerReturnPath(path), path);
   for (const path of [undefined, 'https://example.com', '//example.com', '/sales/orders', '/login', '/orders/../sales', '/orders\\example.com', '/orders-malicious']) assert.equal(customerReturnPath(path), '/orders');

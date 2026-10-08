@@ -218,3 +218,29 @@ test('mock reorder merges current catalog SKU once and respects cart version', a
   assert.deepEqual(first, second); assert.equal(first.cartVersion, before.cartVersion + 1); assert.equal(first.items[0].quantity, 2);
   await assert.rejects(service.reorder('HC2026100001', input, { idempotencyKey: crypto.randomUUID() }), isError(409, 'CART_VERSION_CONFLICT'));
 });
+
+test('return service whitelists version/reason and validates response', async () => {
+  let received;
+  const result = api.paths['/orders/{orderId}/returns'].post.responses['201'].content['application/json'].example.data;
+  const service = createOrderService(async (path, input) => { received = { path, input }; return result; });
+  assert.deepEqual(await service.createReturnRequest('101', { expectedVersion: 5, reason: 'Hỏng khi nhận', actorId: 'attacker', approved: true, refundAmount: 9999 }, options), result);
+  assert.equal(received.path, '/orders/101/returns');
+  assert.deepEqual(received.input.body, { expectedVersion: 5, reason: 'Hỏng khi nhận' });
+  await assert.rejects(createOrderService(async () => ({ ...result, status: 'paid' })).createReturnRequest('101', {}, options), isError(200, 'INVALID_API_RESPONSE'));
+});
+
+test('return mock owner/version/eligibility/replay matches separate lifecycle', async () => {
+  const service = mock(); const before = await service.getCustomerOrder('HC2026100001');
+  const input = { expectedVersion: before.version, reason: 'Sản phẩm bị hỏng' };
+  const first = await service.createReturnRequest(before.id, input, options);
+  assert.deepEqual(await service.createReturnRequest(before.id, input, options), first);
+  const after = await service.getCustomerOrder(before.id);
+  assert.equal(after.version, before.version); assert.equal(after.payment, before.payment); assert.equal(after.status, before.status);
+  assert.deepEqual(after.history, before.history); assert.deepEqual(after.returnRequest, first);
+  await assert.rejects(service.createReturnRequest(before.id, input, { idempotencyKey: crypto.randomUUID() }), isError(409, 'RETURN_REQUEST_EXISTS'));
+  await assert.rejects(service.createReturnRequest(before.id, { ...input, reason: 'Khác' }, options), isError(409, 'IDEMPOTENCY_CONFLICT'));
+  await assert.rejects(service.createReturnRequest(before.id, { ...input, expectedVersion: before.version + 1 }, { idempotencyKey: crypto.randomUUID() }), isError(409, 'ORDER_VERSION_CONFLICT'));
+  const pending = await service.getCustomerOrder('HC2026100003');
+  await assert.rejects(service.createReturnRequest(pending.id, { ...input, expectedVersion: pending.version }, options), isError(409, 'RETURN_UNAVAILABLE'));
+  await assert.rejects(mock({ getCustomer: async () => ({ id: 'preview:other@example.com', role: 'CUSTOMER' }) }).createReturnRequest(before.id, input, options), isError(404, 'ORDER_NOT_FOUND'));
+});

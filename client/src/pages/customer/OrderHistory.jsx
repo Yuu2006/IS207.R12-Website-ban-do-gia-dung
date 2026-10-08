@@ -30,6 +30,8 @@ export default function OrderHistory({ initialOrders, detail = false }) {
   const [notice, setNotice] = useState('');
   const [reason, setReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
+  const [returning, setReturning] = useState(false);
+  const [returnReason, setReturnReason] = useState('');
   const action = useOrderAction({ onUnauthorized: () => refreshSession().catch(() => {}) });
   const busy = action.busy;
   const [tabDirection, setTabDirection] = useState('forward');
@@ -110,6 +112,18 @@ export default function OrderHistory({ initialOrders, detail = false }) {
     setNotice('Yêu cầu hủy đơn đã được ghi nhận.');
   }
 
+  // Retry keeps the same idempotency key; creation is not approval/refund/restocking.
+  async function requestReturn(event) {
+    event.preventDefault();
+    if (!selected || busy) return;
+    const request = { expectedVersion: selected.version, reason: returnReason.trim() };
+    const result = await action.run(`return:${selected.id}`, request, options => service.createReturnRequest(selected.id, request, options));
+    if (!result) return;
+    resource.setData({ ...selected, returnRequest: result });
+    setReturning(false);
+    setNotice('Yêu cầu trả hàng đã được gửi để xét duyệt.');
+  }
+
   if (detail) return <main className="oc-main"><Link className="oc-back-link" to="/orders">← Tất cả đơn hàng</Link>
     {resource.loading || (resource.error && resource.error.status !== 404) ? <OrderApiState {...resource} retry={resource.reload} /> : !selected ? <div className="oc-empty"><Icon name="box" size={40} /><h1>Không tìm thấy đơn hàng</h1><p>Đơn hàng không tồn tại hoặc không thuộc tài khoản của bạn.</p><Link className="oc-button" to="/orders">Xem đơn hàng</Link></div> : <>
       <div className="oc-title-row"><div><span className="oc-eyebrow">CHI TIẾT ĐƠN HÀNG</span><h1>#{selected.code || selected.id}</h1><p>Đặt ngày {selected.date}</p></div><StatusBadge status={selected.status} /></div>
@@ -119,7 +133,10 @@ export default function OrderHistory({ initialOrders, detail = false }) {
       <div className="oc-stack"><OrderDetailContent order={selected} /><div className="oc-detail-actions">
         {canCancel(selected.status) && <button className="oc-button oc-button--danger" disabled={busy || action.uncertain} onClick={() => setCancelling(!cancelling)}>Yêu cầu hủy đơn</button>}
         {['delivered', 'completed', 'cancelled'].includes(selected.status) && <button className="oc-button oc-button--outline" disabled={busy} onClick={() => buyAgain(selected)}>Mua lại</button>}
+        {['delivered', 'completed'].includes(selected.status) && selected.payment === 'paid' && !selected.returnRequest && <button className="oc-button oc-button--outline" disabled={busy || action.uncertain} onClick={() => setReturning(!returning)}>Yêu cầu trả hàng</button>}
       </div>
+      {selected.returnRequest && <section className="oc-card oc-form-section" aria-label="Yêu cầu trả hàng"><h2>Yêu cầu trả hàng</h2><p>{selected.returnRequest.status === 'requested' ? 'Đã gửi yêu cầu · Chờ xét duyệt' : 'Yêu cầu đã được cập nhật'}</p><p>{selected.returnRequest.reason}</p><small className="oc-muted">Gửi yêu cầu không đồng nghĩa với chấp thuận trả hàng hoặc hoàn tiền.</small></section>}
+      {returning && <form className="oc-card oc-form-section" onSubmit={requestReturn}><h2>Lý do trả hàng</h2><label className="oc-field">Mô tả vấn đề với sản phẩm<textarea value={returnReason} onChange={event => setReturnReason(event.target.value)} required maxLength={500} disabled={busy || action.uncertain} /></label><div className="oc-detail-actions"><button type="button" className="oc-button oc-button--outline" disabled={busy || action.uncertain} onClick={() => setReturning(false)}>Đóng</button><button className="oc-button" disabled={!returnReason.trim() || busy}>{busy ? 'Đang gửi…' : action.uncertain ? 'Thử lại yêu cầu trả hàng' : 'Gửi yêu cầu'}</button></div></form>}
       {cancelling && <form className="oc-card oc-form-section" onSubmit={cancelOrder}><h2>Lý do hủy đơn</h2><label className="oc-field">Vui lòng cho biết lý do<textarea value={reason} onChange={event => setReason(event.target.value)} required maxLength={500} disabled={busy || action.uncertain} /></label><div className="oc-detail-actions"><button type="button" className="oc-button oc-button--outline" disabled={busy || action.uncertain} onClick={() => setCancelling(false)}>Giữ đơn hàng</button><button className="oc-button oc-button--danger" disabled={!reason.trim() || busy}>{busy ? 'Đang gửi…' : action.uncertain ? 'Thử lại yêu cầu hủy' : 'Xác nhận hủy'}</button></div></form>}</div>
     </>}
   </main>;
