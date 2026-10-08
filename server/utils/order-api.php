@@ -7,6 +7,12 @@ require_once __DIR__ . '/api-response.php';
 require_once __DIR__ . '/../middleware/auth-middleware.php';
 require_once __DIR__ . '/../middleware/role-middleware.php';
 require_once __DIR__ . '/../middleware/validation-middleware.php';
+require_once __DIR__ . '/order-domain.php';
+require_once __DIR__ . '/../models/order-model.php';
+require_once __DIR__ . '/../models/payment-model.php';
+require_once __DIR__ . '/../models/order-idempotency-model.php';
+require_once __DIR__ . '/../models/checkout-model.php';
+require_once __DIR__ . '/../services/checkout-dependencies.php';
 require_once __DIR__ . '/../services/order-service.php';
 require_once __DIR__ . '/../services/checkout-service.php';
 require_once __DIR__ . '/../controllers/order-controller.php';
@@ -33,6 +39,32 @@ function orderCorsHeaders(string $origin, string $allowedOrigin): array
     ];
 }
 
+// Opt-in MySQL runtime; neither test credentials nor principal fixtures are exposed via HTTP.
+function runtimeOrderService(): OrderServiceInterface
+{
+    if (getenv('ORDER_STORAGE_MODE') !== 'mysql') return new OrderService();
+    try {
+        require_once __DIR__ . '/../config/database.php';
+        return new OrderService(new OrderModel(\db()));
+    } catch (\PDOException $error) {
+        error_log('Order database unavailable: ' . $error->getCode());
+        throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Chưa thể kết nối dữ liệu đơn hàng.');
+    }
+}
+
+// Checkout opt-in still requires an explicit reviewed owner adapter; never load test adapters here.
+function runtimeCheckoutService(): CheckoutServiceInterface
+{
+    if (getenv('ORDER_STORAGE_MODE') !== 'mysql') return new CheckoutService();
+    try {
+        require_once __DIR__ . '/../config/database.php';
+        return new CheckoutService(new OrderModel(\db()));
+    } catch (\PDOException $error) {
+        error_log('Checkout database unavailable: ' . $error->getCode());
+        throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Chưa thể kết nối dữ liệu checkout.');
+    }
+}
+
 // Hàm thuần điều phối dùng chung HTTP/tests; principal test chỉ truyền trực tiếp trong process.
 function handleOrderApi(
     string $method,
@@ -49,7 +81,7 @@ function handleOrderApi(
         $path = rtrim($path, '/') ?: '/';
         $headers = array_change_key_case($headers, CASE_LOWER);
         if ($path === '/' && $method === 'GET') {
-            return apiSuccess(['version' => '0.1.0', 'orderApi' => 'skeleton', 'storageReady' => false], 'Household E-commerce API');
+            return apiSuccess(['version' => '0.1.0', 'orderApi' => getenv('ORDER_STORAGE_MODE') === 'mysql' ? 'mysql-configured' : 'skeleton', 'storageReady' => false], 'Household E-commerce API');
         }
         $allowedMethods = [];
         $matched = null;
@@ -103,11 +135,16 @@ function handleOrderApi(
         }
         $request = ['principal' => $principal, 'orderId' => $orderId, 'input' => $input, 'idempotencyKey' => $key];
         $controller = $matched['controller'] === 'order'
-            ? new OrderController($orderService ?? new OrderService())
-            : new CheckoutController($checkoutService ?? new CheckoutService());
+            ? new OrderController($orderService ?? runtimeOrderService())
+            : new CheckoutController($checkoutService ?? runtimeCheckoutService());
         return $controller->{$matched['action']}($request);
     } catch (ApiException $error) {
         return apiFailure($error);
+    } catch (\PDOException $error) {
+        error_log('Order database query failed: ' . $error->getCode());
+        if (in_array((int) ($error->errorInfo[1] ?? 0), [1054, 1146], true)) return apiFailure(new ApiException(503, 'ORDER_SCHEMA_NOT_READY', 'Schema đơn hàng chưa sẵn sàng. Cần kiểm tra migration.'));
+        if (in_array((int) ($error->errorInfo[1] ?? 0), [1205, 1213], true)) return apiFailure(new ApiException(503, 'REQUEST_RETRYABLE', 'Dữ liệu đang được xử lý. Vui lòng thử lại.'));
+        return apiFailure(new ApiException(500, 'INTERNAL_ERROR', 'Máy chủ không thể xử lý yêu cầu.'));
     } catch (\Throwable $error) {
         error_log('Order API failed: ' . get_class($error));
         return apiFailure(new ApiException(500, 'INTERNAL_ERROR', 'Máy chủ không thể xử lý yêu cầu.'));

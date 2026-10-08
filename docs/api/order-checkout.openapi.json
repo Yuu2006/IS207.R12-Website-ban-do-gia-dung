@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "HomeCare — Task 3 checkout & orders",
-    "version": "1.2.0",
-    "description": "Contract tuần 1 của Lê Tấn Vĩ, 07/10/2026. Frontend service/mock API và 9 PHP route/controller/service skeleton đã có. Service mặc định trả 503 khi storage chưa tích hợp; chưa triển khai checkout/đơn hàng MySQL. Đọc mapping trong docs/plan/TASK-3-ORDER-UI.md."
+    "version": "1.3.0",
+    "description": "Review 08/10/2026: MySQL đọc đơn và transaction state/payment/audit; frontend tạo yêu cầu trả hàng. Checkout/hủy/mua lại cần adapter auth/giỏ/địa chỉ/voucher/SKU/kho đã review; completed cần bridge thiết bị/bảo trì. Thiếu adapter thì fail closed 503. ID chuỗi BIGINT UNSIGNED dương, tối đa 18446744073709551615; số version/tiền là integer an toàn. Xem docs/plan/TASK-3-ORDER-UI.md."
   },
   "servers": [
     {
@@ -267,7 +267,8 @@
               "type": "string",
               "minLength": 1,
               "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
-              "pattern": "^[1-9][0-9]*$"
+              "pattern": "^[1-9][0-9]{0,19}$",
+              "maxLength": 20
             },
             "example": "101"
           }
@@ -484,7 +485,8 @@
               "type": "string",
               "minLength": 1,
               "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
-              "pattern": "^[1-9][0-9]*$"
+              "pattern": "^[1-9][0-9]{0,19}$",
+              "maxLength": 20
             },
             "example": "101"
           },
@@ -817,7 +819,8 @@
               "type": "string",
               "minLength": 1,
               "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
-              "pattern": "^[1-9][0-9]*$"
+              "pattern": "^[1-9][0-9]{0,19}$",
+              "maxLength": 20
             },
             "example": "101"
           },
@@ -982,6 +985,293 @@
           },
           "409": {
             "description": "Dữ liệu đã thay đổi. Hãy tải lại.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Dữ liệu đã thay đổi. Hãy tải lại.",
+                  "errors": {
+                    "code": "ORDER_VERSION_CONFLICT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Nội dung yêu cầu quá lớn.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Nội dung yêu cầu quá lớn.",
+                  "errors": {
+                    "code": "REQUEST_BODY_TOO_LARGE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Yêu cầu phải dùng application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Yêu cầu phải dùng application/json.",
+                  "errors": {
+                    "code": "UNSUPPORTED_MEDIA_TYPE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dữ liệu không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Dữ liệu không hợp lệ.",
+                  "errors": {
+                    "code": "INVALID_INPUT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Máy chủ không thể xử lý yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ không thể xử lý yêu cầu.",
+                  "errors": {
+                    "code": "INTERNAL_ERROR",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Máy chủ chưa xử lý được yêu cầu.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Máy chủ chưa xử lý được yêu cầu.",
+                  "errors": {
+                    "code": "SERVICE_UNAVAILABLE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{orderId}/returns": {
+      "post": {
+        "operationId": "createReturnRequest",
+        "summary": "CUSTOMER owner only, DELIVERED/COMPLETED and PAID; one request/order. No automatic approval, refund or restock.",
+        "x-roles": [
+          "CUSTOMER"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
+              "pattern": "^[1-9][0-9]{0,19}$",
+              "maxLength": 20
+            },
+            "example": "101"
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Auth module cấp token qua cookie đọc được XSRF-TOKEN; backend xác minh token với phiên."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9._:-]{16,128}$"
+            },
+            "example": "b5576303-2f2f-469a-b90c-5a7a99fb37d3",
+            "description": "Scope user+operation; cùng key/body trả kết quả cũ; khác body trả 409."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnInput"
+              },
+              "example": {
+                "expectedVersion": 5,
+                "reason": "Product damaged on arrival."
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created return request; same-key replay returns same data (201).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ReturnRequest"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "message": "Return request received.",
+                  "data": {
+                    "id": "1",
+                    "orderId": "101",
+                    "status": "requested",
+                    "reason": "Product damaged on arrival.",
+                    "createdAt": "2026-10-08T03:00:00+00:00"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Vui lòng đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Vui lòng đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không có quyền hoặc CSRF không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không có quyền hoặc CSRF không hợp lệ.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy dữ liệu hoặc dữ liệu không thuộc tài khoản.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không tìm thấy dữ liệu hoặc dữ liệu không thuộc tài khoản.",
+                  "errors": {
+                    "code": "ORDER_NOT_FOUND",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "HTTP method không được hỗ trợ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "HTTP method không được hỗ trợ.",
+                  "errors": {
+                    "code": "METHOD_NOT_ALLOWED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ORDER_VERSION_CONFLICT / RETURN_UNAVAILABLE / RETURN_REQUEST_EXISTS / IDEMPOTENCY_CONFLICT.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1351,7 +1641,8 @@
               "type": "string",
               "minLength": 1,
               "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
-              "pattern": "^[1-9][0-9]*$"
+              "pattern": "^[1-9][0-9]{0,19}$",
+              "maxLength": 20
             },
             "example": "101"
           }
@@ -1569,7 +1860,8 @@
               "type": "string",
               "minLength": 1,
               "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
-              "pattern": "^[1-9][0-9]*$"
+              "pattern": "^[1-9][0-9]{0,19}$",
+              "maxLength": 20
             },
             "example": "101"
           },
@@ -2805,6 +3097,71 @@
       }
     },
     "schemas": {
+      "ReturnInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "expectedVersion",
+          "reason"
+        ],
+        "properties": {
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        }
+      },
+      "ReturnRequest": {
+        "type": "object",
+        "required": [
+          "id",
+          "orderId",
+          "status",
+          "reason",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
+            "pattern": "^[1-9][0-9]{0,19}$",
+            "maxLength": 20
+          },
+          "orderId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
+            "pattern": "^[1-9][0-9]{0,19}$",
+            "maxLength": 20
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "requested",
+              "approved",
+              "rejected",
+              "received",
+              "resolved"
+            ],
+            "description": "Only requested implemented; adjudication is a separate task."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "Error": {
         "type": "object",
         "required": [
@@ -2855,7 +3212,8 @@
             "type": "string",
             "minLength": 1,
             "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
-            "pattern": "^[1-9][0-9]*$"
+            "pattern": "^[1-9][0-9]{0,19}$",
+            "maxLength": 20
           },
           "skuCode": {
             "type": "string"
@@ -3023,7 +3381,8 @@
             "type": "string",
             "minLength": 1,
             "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
-            "pattern": "^[1-9][0-9]*$"
+            "pattern": "^[1-9][0-9]{0,19}$",
+            "maxLength": 20
           },
           "code": {
             "type": "string"
@@ -3114,7 +3473,17 @@
                 "enum": [
                   "reserved",
                   "released",
-                  "consumed"
+                  "consumed",
+                  "untracked"
+                ]
+              },
+              "returnRequest": {
+                "type": "object",
+                "nullable": true,
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ReturnRequest"
+                  }
                 ]
               }
             }
@@ -3250,7 +3619,8 @@
                       "type": "string",
                       "minLength": 1,
                       "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
-                      "pattern": "^[1-9][0-9]*$"
+                      "pattern": "^[1-9][0-9]{0,19}$",
+                      "maxLength": 20
                     },
                     "isDefault": {
                       "type": "boolean"
@@ -3306,7 +3676,8 @@
             "type": "string",
             "minLength": 1,
             "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
-            "pattern": "^[1-9][0-9]*$"
+            "pattern": "^[1-9][0-9]{0,19}$",
+            "maxLength": 20
           },
           "paymentMethod": {
             "type": "string",
@@ -3340,7 +3711,8 @@
             "type": "string",
             "minLength": 1,
             "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
-            "pattern": "^[1-9][0-9]*$"
+            "pattern": "^[1-9][0-9]{0,19}$",
+            "maxLength": 20
           },
           "paymentMethod": {
             "type": "string",
@@ -3485,7 +3857,11 @@
       "VOUCHER_EXHAUSTED",
       "REORDER_UNAVAILABLE",
       "IDEMPOTENCY_CONFLICT",
-      "REQUEST_IN_PROGRESS"
+      "REQUEST_IN_PROGRESS",
+      "PAYMENT_CONFLICT",
+      "INVENTORY_UNTRACKED",
+      "RETURN_UNAVAILABLE",
+      "RETURN_REQUEST_EXISTS"
     ],
     "422": [
       "INVALID_INPUT",
@@ -3494,15 +3870,22 @@
       "REASON_REQUIRED",
       "COD_COLLECTION_REQUIRED",
       "IDEMPOTENCY_KEY_REQUIRED"
+    ],
+    "503": [
+      "SERVICE_UNAVAILABLE",
+      "DEPENDENCY_NOT_READY",
+      "ORDER_DATA_INCOMPATIBLE",
+      "ORDER_SCHEMA_NOT_READY",
+      "REQUEST_RETRYABLE"
     ]
   },
   "x-vnpay-phase": "Tích hợp IPN, return/retry và worker hết hạn là task Tuần 3 #21 của Vĩ; mock tuần 1 chỉ COD, VNPay trả 409 PAYMENT_NOT_AVAILABLE, không giả chữ ký hay paid.",
   "x-runtime-stage": {
-    "phpRoutes": "9 operation thuộc checkout/orders/sales đã nối; validation/role/CSRF hoạt động.",
-    "storage": "Chưa tích hợp MySQL; request hợp lệ trả 503 SERVICE_UNAVAILABLE, không success giả.",
-    "authentication": "Chưa có login/session endpoint. Auth owner cấp $_SESSION.user{id,role,fullName}, expiresAt (Unix integer), csrfToken; HTTP không nhận principal giả.",
-    "dependencies": "GET /cart và /addresses thuộc Tuấn Vũ, chưa đăng ký ở router này.",
-    "idempotency": "Skeleton validate header; storage hash/result, replay và transaction ở task backend tiếp theo."
+    "phpRoutes": "10 operation checkout/orders/sales; validation, role, CSRF và ownership MySQL.",
+    "storage": "ORDER_STORAGE_MODE=mysql bật đọc/state/return sau baseline + migration 008; mặc định disabled. Checkout/hủy/mua lại thiếu owner adapter trả 503; completed thiếu device/care bridge trả 503.",
+    "authentication": "Tuấn Vũ cấp server session user{id,role,fullName}, expiresAt integer Unix và csrfToken. DB kiểm tra ACTIVE/role hiện tại; không nhận principal từ client.",
+    "dependencies": "Auth/địa chỉ/giỏ/cartVersion/voucher: Tuấn Vũ; SKU/tồn/movement: Lan Chi; completion device/care bridge: Đinh Tùng. Adapter SQL kiểm thử chỉ ở DB riêng, không import HTTP.",
+    "idempotency": "Khóa actor+operation+key; hash payload và JSON result trong cùng transaction. Cùng payload replay, khác payload 409; rollback không lưu success. Retry deadlock/lock timeout tối đa 3 lần cùng key."
   },
   "x-max-body-bytes": 16384
 }

@@ -46,7 +46,7 @@ function allowOrderFields(array $input, array $allowed): void
 // Chỉ nhận integer JSON dương; không ép kiểu số thập phân hoặc numeric string.
 function orderPositiveInteger(mixed $value, string $field): int
 {
-    if (!is_int($value) || $value < 1) {
+    if (!is_int($value) || $value < 1 || $value > 9007199254740991) {
         invalidOrderInput($field, 'Giá trị phải là số nguyên dương.');
     }
     return $value;
@@ -55,7 +55,7 @@ function orderPositiveInteger(mixed $value, string $field): int
 // ID dùng chuỗi số dương để tránh mất độ chính xác trên frontend.
 function orderDatabaseId(mixed $value, string $field): string
 {
-    if (!is_string($value) || preg_match('/^[1-9][0-9]*$/D', $value) !== 1) {
+    if (!is_string($value) || preg_match('/^[1-9][0-9]*$/D', $value) !== 1 || strlen($value) > 20 || (strlen($value) === 20 && strcmp($value, '18446744073709551615') > 0)) {
         invalidOrderInput($field, 'ID database phải là chuỗi số nguyên dương.');
     }
     return $value;
@@ -142,6 +142,10 @@ function validateCheckoutInput(array $input, bool $create = false): array
 // Chuẩn hóa payload ghi; state/owner/version thật phải kiểm tra lại từ database.
 function validateOrderMutation(array $input, string $operation): array
 {
+    if ($operation === 'return') {
+        allowOrderFields($input, ['expectedVersion', 'reason']);
+        return ['expectedVersion' => orderPositiveInteger($input['expectedVersion'] ?? null, 'expectedVersion'), 'reason' => orderText($input['reason'] ?? '', 'reason', 1, 500)];
+    }
     if ($operation === 'reorder') {
         allowOrderFields($input, ['expectedCartVersion']);
         return ['expectedCartVersion' => orderPositiveInteger($input['expectedCartVersion'] ?? null, 'expectedCartVersion')];
