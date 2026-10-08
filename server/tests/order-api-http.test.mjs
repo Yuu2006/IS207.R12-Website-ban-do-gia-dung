@@ -59,7 +59,7 @@ test('health uses JSON envelope and explicitly reports skeleton/storage not read
   assert.equal(result.data.storageReady, false);
 });
 
-test('all nine real HTTP endpoints are routed and reject anonymous with 401', async () => {
+test('all ten real HTTP endpoints are routed and reject anonymous with 401', async () => {
   for (const [path, operations] of Object.entries(spec.paths)) {
     if (['/cart', '/addresses'].includes(path)) continue;
     for (const [method, operation] of Object.entries(operations)) {

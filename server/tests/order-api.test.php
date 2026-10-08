@@ -60,6 +60,12 @@ class FixtureOrderService implements OrderServiceInterface
         return $this->result('POST', '/orders/{orderId}/reorder', func_get_args());
     }
 
+    public function createReturnRequest(array $principal, string $orderId, array $input, string $key): array
+    {
+        $this->calls[] = ['POST', func_get_args()];
+        return $this->spec['paths']['/orders/{orderId}/returns']['post']['responses']['201']['content']['application/json']['example']['data'];
+    }
+
     public function listSalesOrders(array $principal, array $filters): array
     {
         return $this->result('GET', '/sales/orders', func_get_args());
@@ -137,9 +143,9 @@ function roleSession(string $role): array
     return array_replace($session, ['user' => array_replace($session['user'], ['role' => $role])]);
 }
 
-check('nine PHP routes match OpenAPI methods, operation IDs and role matrix', function () use ($spec): void {
+check('ten PHP routes match OpenAPI methods, operation IDs and role matrix', function () use ($spec): void {
     $routes = array_merge(orderRoutes(), checkoutRoutes());
-    ensure(count($routes) === 9);
+    ensure(count($routes) === 10);
     foreach ($routes as $route) {
         $operation = $spec['paths'][$route['path']][strtolower($route['method'])];
         ensure($operation['operationId'] === $route['action']);
@@ -231,7 +237,7 @@ check('list filters normalize before controller/service; pagination and search a
 });
 
 check('database IDs are positive strings; encoded slash/code/zero fail validation', function (): void {
-    foreach (['0', 'HC2026100001', '101%2Fforeign', '-1'] as $id) {
+    foreach (['0', 'HC2026100001', '101%2Fforeign', '-1', '18446744073709551616', str_repeat('9', 21)] as $id) {
         expectError(request('GET', '/orders/' . $id), 422, 'INVALID_INPUT');
     }
 });
@@ -255,6 +261,15 @@ check('cancel controller passes server actor/id/version/reason/key and returns e
     ensure($arguments[3] === $headers['Idempotency-Key']);
     expectError(request('POST', '/orders/101/cancel', ['expectedVersion' => 1, 'reason' => '   ']), 422, 'REASON_REQUIRED');
     expectError(request('POST', '/orders/101/cancel', ['expectedVersion' => '1', 'reason' => 'Đổi nhu cầu']), 422, 'INVALID_INPUT');
+});
+
+check('return controller validates reason/version and returns 201 without claiming refund', function () use ($spec): void {
+    $service = new FixtureOrderService($spec);
+    $response = request('POST', '/orders/101/returns', ['expectedVersion' => 5, 'reason' => '  Hỏng khi nhận  '], [], null, null, $service);
+    ensure($response['status'] === 201 && $response['body']['data']['status'] === 'requested');
+    ensure($service->calls[0][1][2] === ['expectedVersion' => 5, 'reason' => 'Hỏng khi nhận']);
+    expectError(request('POST', '/orders/101/returns', ['expectedVersion' => 5, 'reason' => '']), 422, 'REASON_REQUIRED');
+    expectError(request('POST', '/orders/101/returns', ['expectedVersion' => 5, 'reason' => 'Test', 'refundAmount' => 1]), 422, 'INVALID_INPUT');
 });
 
 check('reorder controller delegates current-cart version instead of snapshot pricing', function () use ($spec): void {

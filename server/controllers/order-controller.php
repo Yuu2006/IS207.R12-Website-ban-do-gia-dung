@@ -52,4 +52,10 @@ final class OrderController
     {
         return apiSuccess($this->service->updateSalesStatus($request['principal'], $request['orderId'], $request['input'], $request['idempotencyKey']));
     }
+
+    // Request creation is distinct from approval, refunds or restocking.
+    public function createReturnRequest(array $request): array
+    {
+        return apiSuccess($this->service->createReturnRequest($request['principal'], $request['orderId'], $request['input'], $request['idempotencyKey']), 'Đã tiếp nhận yêu cầu trả hàng.', 201);
+    }
 }
