@@ -1,6 +1,6 @@
 # Task 3 — Giao diện checkout và đơn hàng
 
-Phạm vi: CHK-01, ORD-01/02/03/04, SAL-01/02/03; lựa chọn phương thức PAY-01/PAY-02. Đã dựng React, mock API development, HTTP service/contract và khung PHP route/controller/service chạy được. Chưa triển khai nghiệp vụ checkout/đơn hàng qua MySQL.
+Phạm vi: CHK-01, ORD-01/02/03/04, SAL-01/02/03; lựa chọn phương thức PAY-01/PAY-02. **Hiện trạng 08/10/2026:** đã có frontend service, MySQL đọc đơn/timeline và transaction state/COD/audit/idempotency/return request. Checkout transaction được kiểm thử SQL cô lập, nhưng adapter giỏ/địa chỉ/voucher/SKU/kho production còn chờ owner tích hợp. Không đánh dấu checkout end-to-end hoàn thành. Các mục 07/10 bên dưới là lịch sử; xem bản review 08/10 ở cuối tài liệu để lấy hiện trạng mới nhất.
 
 ## Chạy và xem
 
@@ -89,6 +89,7 @@ Tất cả response thành công dùng `{success:true,message,data}`; lỗi dùn
 | GET `/orders/{orderId}` | CUSTOMER chủ đơn | 200 OrderDTO + history | 401/403/404/503 |
 | POST `/orders/{orderId}/cancel` | CUSTOMER chủ đơn | 200 OrderDTO | 401/403/404/409/422/503 |
 | POST `/orders/{orderId}/reorder` | CUSTOMER chủ đơn | 200 Cart | 401/403/404/409/422/503 |
+| POST `/orders/{orderId}/returns` | CUSTOMER chủ đơn; delivered/completed và paid | 201 ReturnRequest | 401/403/404/409/422/503 |
 | GET `/sales/orders` | SALES / ADMIN | 200 SalesOrderPage | 401/403/422/503 |
 | GET `/sales/orders/{orderId}` | SALES / ADMIN | 200 OrderDTO | 401/403/404/503 |
 | PATCH `/sales/orders/{orderId}/status` | SALES / ADMIN | 200 OrderDTO | 401/403/404/409/422/503 |
@@ -184,3 +185,131 @@ Theo yêu cầu người dùng, thay đổi được đóng gói thành commit c
 - Mục 5: đã có UI, state transition, contract và quyết định tồn được ghi trước checkout backend. Chờ Lan Chi xác nhận SKU/tồn và giữ–hoàn kho; Tuấn Vũ xác nhận schema/contract giỏ, địa chỉ, voucher; team duyệt mapping/ERD chung để nghiệm thu tuần 1.
 - Mục 6: đạt phạm vi frontend service/mock + loading/error/empty, OpenAPI và 9 PHP endpoint skeleton; chờ team review/nghiệm thu. Nối auth/cart/address/voucher/SKU và triển khai MySQL/VNPay là bước tích hợp tiếp theo, không phải điều kiện để biến skeleton tuần 1 thành checkout production. Runtime storage hiện trả 503, không báo tạo đơn thành công giả.
 - Kiểm chứng trước bàn giao: 41 test frontend, 20 test PHP, 8 test HTTP pass; lint 13 file PHP, build và diff check pass. Giữ nguyên dữ liệu/tiến độ/kiểm tra của thành viên khác khi cập nhật hai ghi chú cho Vĩ trên Sheet.
+
+## Review ngày 08/10/2026 — Tuần 2 Task 13 và 14
+
+### Kết luận và phạm vi
+
+Đã triển khai phần đơn hàng do Vĩ sở hữu và chuẩn bị transaction checkout có dependency interface, không còn chỉ là skeleton. **Chưa nghiệm thu toàn bộ Task 13/14 production end-to-end**: auth/giỏ/voucher/kho thật và bridge thiết bị/bảo trì còn thiếu. Không tự lấy phần đồng đội hoặc nhập dữ liệu giả vào môi trường production để che dependency thiếu.
+
+Đầu phiên đồng bộ `origin`, nhánh `users/le-tan-vi` tại `3e80d12` đã up to date; các remote branch hiện có đã nằm trong lịch sử tích hợp. Không có remote develop. Tại thời điểm viết review ban đầu, thay đổi còn ở working tree, chưa commit/push/merge và người dùng dự định tự cập nhật Sheet. Các yêu cầu cập nhật Sheet và đóng gói Git được ủy quyền sau đó, ghi tại mục bàn giao bên dưới.
+
+### Task 14 — Lịch sử đơn và xử lý cho SALES, deadline 19/10/2026
+
+- Model MySQL đọc danh sách, chi tiết, snapshot sản phẩm/địa chỉ và timeline. Filter/owner áp trước phân trang; list khách không trả địa chỉ/phone; SALES/ADMIN được tra cứu, wildcard `%`/`_` được escape literal. List/detail có read snapshot REPEATABLE READ.
+- Backend xác minh role và tài khoản ACTIVE từ DB; không lấy customerId/role từ client. Khách mở ID người khác nhận 404. Actor role được lưu tại thời điểm xử lý, không dùng role hiện tại để sửa lịch sử.
+- Transaction chuyển trạng thái kiểm tra bước hợp lệ, expectedVersion, payment và reservation; tăng version và append history một lần. COD chỉ PAID ở shipping→delivered có codCollected=true, khoản payment đúng số tiền và được cập nhật cùng transaction. Header PAID không đủ: ledger phải có khoản thu hợp lệ.
+- Idempotency lưu khóa actor+operation+key, hash payload và JSON response trong MySQL cùng transaction. Cùng key/payload replay cùng giá trị; đổi payload 409. Deadlock/lock timeout retry tối đa 3 lần với cùng key; hết lượt trả 503 REQUEST_RETRYABLE. Không gọi mạng trong callback transaction.
+- Hủy: khóa đơn/payment, kiểm tra còn RESERVED, gọi adapter release cùng PDO/TX, rồi cập nhật status/version/history; không hoàn lại ở mỗi bước. Đơn UNTRACKED không được tự hoàn kho. Mua lại có điểm tích hợp giá/tồn/giỏ hiện tại, không tái sử dụng giá snapshot; adapter production còn chờ.
+- Thêm nút/form yêu cầu trả hàng ở detail đã giao/hoàn thành và đã thanh toán; service whitelist reason/version, loading/error/retry giữ key. POST `/orders/{orderId}/returns` tạo một request REQUESTED/đơn, trả 201; có owner/version/idempotency. Không đổi trạng thái đơn/payment, không hoàn tiền hoặc tự cộng kho. Xét duyệt, hạn trả hàng, nhận hàng và hoàn tiền thuộc task RET riêng.
+- `delivered→completed` cần adapter `OrderCompletionDependencies` của Đinh Tùng tạo device/care idempotent trong cùng transaction. Thiếu adapter trả 503, không âm thầm hoàn thành đơn thiếu thiết bị/bảo trì.
+
+### Task 13 — Checkout COD và tạo đơn, deadline 17/10/2026
+
+- Quote sử dụng dữ liệu server qua `CheckoutDependencies`; snapshot SKU gộp, địa chỉ, giá VND nguyên và tổng tiền được kiểm tra trước khi fingerprint. Fingerprint gắn actor, cartVersion, địa chỉ, phương thức, voucher, dòng hàng và totals; quote không phải reservation.
+- Create dùng cùng PDO transaction cho key → khóa/revalidate dữ liệu → so fingerprint → insert order/items/payment/history → adapter giữ kho/voucher và xóa/tăng version giỏ → lưu response → commit. Lỗi bất kỳ bước rollback toàn bộ; replay kiểm tra trước khi đọc giỏ đã bị xóa.
+- Lưu snapshot tên/SKU/variant/giá/số lượng/bảo hành/hình/địa chỉ; order ban đầu PENDING, COD UNPAID. Các bước xác nhận/chuẩn bị/giao không trừ tồn lại. Guard tiền chính xác và giới hạn DECIMAL(14,2) hiện có, không làm tròn tiền thập phân VND.
+- Quyết định giảm tồn khi tạo đơn, VNPay giữ 15 phút đã được ghi ngày 07/10 **trước** code checkout ngày 08/10. VNPay tạo đơn/redirect/IPN/worker vẫn thuộc Tuần 3 #21, chưa thực hiện; create/quote implementation hiện chỉ COD, VNPay trả 409 PAYMENT_NOT_AVAILABLE.
+- Adapter production chưa có: không bật tạo đơn/hủy/mua lại thật. Adapter SQL kiểm thử chỉ dùng database cô lập, fixture cartVersion và phí giao hàng test; không áp voucher thật, giá sale theo thời gian hoặc API giỏ thật. Đây là kiểm chứng phần transaction của Vĩ, không phải xác nhận hoàn thành module đồng đội.
+
+### Source → luồng → dữ liệu → giới hạn
+
+| Source | Trách nhiệm / đầu vào → đầu ra |
+| --- | --- |
+| `server/utils/order-domain.php` | Locked order + principal + expectedVersion/toStatus → quyết định hợp lệ hoặc 409/422; tiền VND nguyên, UTC và hash canonical. |
+| `server/models/order-model.php` | SQL owner/filter/page và snapshot/history → OrderPage/OrderDTO; không tự nối catalog để đổi giá đã mua. Legacy sai tiền/lịch sử trả 503. |
+| `server/models/payment-model.php` | Lock ledger, kiểm tra paid thực và thu COD → payment PAID chỉ khi service cho phép; không gọi provider. |
+| `server/models/order-idempotency-model.php` | Actor/operation/key/payload + callback DB → replay hoặc transaction duy nhất, retry giới hạn. |
+| `server/models/checkout-model.php` | Quote đáng tin + actor/input, trong TX đang mở → order/items/COD payment/history snapshot. |
+| `server/services/{order,checkout}-service.php` | Điều phối quyền/state/version/quote/TX; SQL ở model. Adapter thiếu trả 503, không success giả. Completion bridge khai báo trong order service. |
+| `server/services/checkout-dependencies.php` | Contract owner adapters: quote/lockForCreate/commitCheckout/release/reorder; cùng PDO, không commit riêng hoặc gọi API trong TX. |
+| `server/db/migrations/008_order_runtime.sql` | Chạy sau baseline, một lần: version/inventory/refund flag, image/history audit, idempotency và return requests. Không thay cột tồn/giỏ/voucher của đồng đội. |
+| `server/utils/order-api.php`, route/controller/validation | 10 operation, HTTP envelope/CSRF/role/input; opt-in storage MySQL; schema thiếu trả 503 ORDER_SCHEMA_NOT_READY. Health chỉ báo cấu hình, không xác nhận storage. |
+| `client/src/services/order-service.js`, `order-mock-service.js`, `OrderHistory.jsx` | Return form → service → POST returns; validate response và quan hệ orderId, retry/error; mock chỉ development. Giữ storefront và animation hiện có. |
+| `docs/api/order-checkout.openapi.json` | v1.3.0: endpoint/role/status/security/schema/example; cập nhật capability/gate, return request và lỗi. |
+| `server/tests/order-mysql.test.php`, `order-test-dependencies.php`, `run-order-mysql-tests.mjs` | MySQL/PDO thật ở datadir mới, dữ liệu giả; fixture SQL adapter không import HTTP. Hai process độc lập cho các test cạnh tranh. |
+
+Ví dụ API trả hàng:
+
+```http
+POST /orders/101/returns
+Content-Type: application/json
+X-CSRF-Token: <token của phiên>
+Idempotency-Key: b5576303-2f2f-469a-b90c-5a7a99fb37d3
+
+{"expectedVersion":5,"reason":"Sản phẩm bị hỏng khi nhận."}
+```
+
+Thành công 201: `{success:true,message,data:{id,orderId,status:"requested",reason,createdAt}}`. Chưa login 401; role/CSRF sai 403; không thuộc chủ 404; version/eligibility/duplicate/key conflict 409; input sai 422; schema/dependency thiếu 503. Không gửi refundAmount/customerId/role từ form.
+
+### Review xung đột giữa các bước
+
+| Cạnh tranh hoặc mâu thuẫn | Cách xử lý / bằng chứng |
+| --- | --- |
+| Hai khách đặt SKU cuối | Khóa SKU + conditional decrement cùng TX; test hai PHP/PDO process chỉ một order/reservation, tồn không âm. |
+| Create lỗi sau khi đã ghi movement | Rollback order/items/payment/history/key/movement/cart/version/stock; test so sánh trước/sau tất cả bảng liên quan. |
+| Giỏ/giá/địa chỉ thay đổi sau quote | Khóa và quote lại trong create; cartVersion/fingerprint mismatch 409, không lưu đơn dựa trên tổng tiền client. |
+| Gửi lặp hoặc đổi payload cùng key | Khóa unique key; replay không ghi lại; đổi payload 409. JSON object key order không phải khác biệt dữ liệu. Test có replay đồng thời hai process. |
+| Hai nhân viên dùng cùng expectedVersion | Khóa order + conditional version; chỉ một bước được ghi, người còn lại 409; test đồng thời. |
+| Hủy cùng lúc chuẩn bị→đang giao | Cùng khóa order; chỉ một thao tác thắng. Test kiểm tra state/version/history và stock khớp, không vừa hoàn tồn vừa ship. |
+| COD delivered nhưng payment lỗi | Payment và order/history cùng TX; amount sai rollback, không có delivered giả hoặc paid giả. |
+| Trả hàng bị hiểu nhầm là hủy/hoàn tiền | Bảng lifecycle riêng; test request/replay không thay đổi order/version/payment/stock/history. |
+| Hoàn thành nhưng chưa tạo thiết bị/bảo trì | Gate completion adapter, thiếu trả 503 và giữ delivered; test regression. |
+| Legacy bị gán reservation/role mới bằng suy diễn | UNTRACKED không release; history thiếu actor role lỗi 503; test riêng, không backfill role hôm nay. |
+
+Thứ tự khóa **bản ghi đã tồn tại**: key → order → payment → cart → address → voucher/usage → SKU; khóa nhiều SKU theo ID tăng dần, bỏ loại không dùng. Checkout chưa có order/payment nên khóa dependency trước rồi INSERT bản ghi mới, không quay lại khóa order cũ sau SKU. Owner phải kiểm tra thêm khóa product/price/FK và voucher usage trong adapter thật; không coi 4 test cạnh tranh là chứng minh mọi deadlock đã bị loại bỏ.
+
+### Kiểm chứng thực tế ngày 08/10
+
+- Frontend: **44/44** (`npm run test:orders`), gồm SSR/session/provider/state/service/contract và return eligibility/replay; build production pass.
+- PHP router/controller/middleware: **21/21**; HTTP thật qua PHP built-in server: **8/8** (anonymous/role spoof/CORS/envelope/router, không phải login end-to-end).
+- MySQL: **33/33** gồm 49 cặp state, snapshot/owner/payment/return/rollback/key/retry/runtime opt-in; thêm **4/4** tình huống hai process: last SKU, same-version, same-key, cancel-vs-shipping. Retry lỗi được fault-injection có rollback thật; không tuyên bố test đó tạo deadlock thật.
+- PHP lint **16 file thay đổi/thêm** pass; `git diff --check` pass; Compose config validate với `.env.example` pass (không khởi chạy stack). Không có secret/dump thật, conflict marker hoặc Markdown mới trong thay đổi; production bundle không chứa fixture kiểm thử.
+- Test DB dùng **MySQL 26.7.0**, PHP **8.3.35**, datadir/port/database riêng; instance test đã dừng. Không kết nối/reset DB đang có hoặc chạy migration lên database dùng chung. Compose dùng MySQL **8.4**: chưa chạy suite trên engine đó hoặc Apache/Docker.
+- Browser skill được dùng để kiểm tra kết nối; hiện không có browser khả dụng. Chưa test click, mobile, animation hoặc production auth/checkout end-to-end; SSR/build không thay thế các bước đó.
+
+Lệnh từ gốc repo:
+
+```powershell
+cd client
+npm run test:orders
+npm run build
+cd ..
+php server/tests/order-api.test.php
+node --test server/tests/order-api-http.test.mjs
+# Cung cấp đúng PHP_BIN, PHP_EXTENSION_DIR và MYSQLD_BIN trên máy Windows:
+node server/tests/run-order-mysql-tests.mjs
+```
+
+Runner MySQL tự tạo datadir/DB test mới, không cần mật khẩu DB cá nhân; tài khoản root trống chỉ nằm trong instance test loopback. Không đưa test adapter vào runtime, không chạy script này với database dùng chung. Lệnh setup/migration thật phải theo `server/db/README.md`, có backup và review.
+
+### Mapping còn chờ / thứ tự tích hợp đề nghị
+
+1. **Tuấn Vũ:** login/customer/staff session + logout và CSRF; GET cart/addresses; cartVersion tăng khi add/update/delete; địa chỉ owner; voucher active/expiry/min/max/total/per-customer usage và release slot. Cấp adapter dùng cùng PDO, cùng TX và đúng lock order. Schema hiện chưa có cartVersion/per-customer usage; fixture test không giải quyết việc này.
+2. **Lan Chi:** ký xác nhận stock_quantity là tồn khả dụng, SKU=id variant, giá sale hiện hành, active/soft-delete; adapter conditional reserve/release và movement reference UNIQUE theo order/item/event, before/after/actor/reason; cả checkout/cart mutation dùng cùng quy tắc khóa. Decision trừ khi tạo đơn/VNPay 15 phút vẫn cần owner review.
+3. **Team/Vĩ:** chốt phí giao hàng thật và nguồn policy server; phí fixture 0/30.000₫ theo ngưỡng 500.000₫ chưa được phê duyệt trong phiên này. Review migration 008, timezone/lịch sử/reservation legacy và error/status contract trước bật MySQL.
+4. **Đinh Tùng:** completion bridge cùng PDO/TX, idempotent orderItemId + quantity → thiết bị/bảo trì, không bắt buộc serial; cung cấp xử lý/retry và test tránh tạo trùng. Thiếu bridge chưa cho completed.
+5. **Vĩ sau mapping:** nối các adapter đã review, kiểm thử tổng hợp auth → cart/voucher → COD → history → SALES → cancel/reorder/return, chạy lại MySQL 8.4/Apache + mobile. Sau đó mới nghiệm thu Task 13/14. VNPay #21 và xét duyệt/refund RET không tự đánh dấu đã làm.
+
+### Hướng dẫn tự cập nhật Google Sheet
+
+Sheet `Công việc`, gid `2034618477`, đọc ngày 08/10/2026: Task **13 ở hàng 17**, Task **14 ở hàng 18**; deadline D17=17/10, D18=19/10. C/F/G hai hàng đang trống và lần đọc không có CellData checkbox/dropdown. Không giả định G là checkbox đã có; không sửa task của người khác.
+
+- Nếu team thống nhất Vĩ nhận hai task: ghi/chọn **Tấn Vĩ ở C17 và C18**.
+- Ghi/chọn **Đang làm ở F17 và F18** (cột Tiến độ). Đây là ô trạng thái đang làm; không tick Hoàn thành.
+- **G17/G18 (Kiểm tra)** để trống/chưa duyệt cho đến khi team review và integration thực tế pass. Không dùng kết quả unit/fixture để tick nghiệm thu toàn task.
+- Dán hai ghi chú bên dưới vào **I17/I18 (Ghi chú)**. Không ghi đè H (Nhận xét của người review), E (Kiểm thử) hoặc deadline.
+
+**I17 — Task 13:**
+
+> 08/10: Đã triển khai transaction checkout COD, re-quote/fingerprint, snapshot đơn/dòng hàng/địa chỉ, payment UNPAID và idempotency; test SQL cô lập pass rollback và tranh SKU cuối. Chưa hoàn thành E2E: chờ Tuấn Vũ tích hợp auth/địa chỉ/giỏ/cartVersion/voucher; Lan Chi duyệt và nối SKU/giữ–hoàn kho; team chốt phí giao hàng và review migration. Chưa bật checkout production.
+
+**I18 — Task 14:**
+
+> 08/10: Đã có MySQL list/detail/timeline, owner/SALES role, state/version/audit/COD transaction và API/UI tạo yêu cầu trả hàng; test replay và hủy-vs-giao pass. Chờ auth khách/nhân viên Tuấn Vũ, adapter kho/giỏ Lan Chi–Tuấn Vũ cho hủy/mua lại, bridge thiết bị/bảo trì Đinh Tùng để hoàn thành đơn; sau đó test tích hợp MySQL 8.4/Apache/mobile và team review. Trả hàng mới tạo request, chưa xét duyệt/refund.
+
+### Bàn giao trên nhánh cá nhân — 08/10/2026
+
+Theo ủy quyền tiếp theo của người dùng, Sheet đã được cập nhật đúng C17/C18 = Tấn Vĩ, F17/F18 = Đang làm và I17/I18 = ghi chú còn chờ tích hợp. Đã đọc lại xác minh; giữ nguyên G/H, deadline, nội dung và định dạng của các hàng khác. Dropdown của bảng ProjectTasks được giữ nguyên, không đánh dấu Đã làm hoặc Đã check.
+
+Người dùng yêu cầu đưa toàn bộ thay đổi hôm nay lên `users/le-tan-vi`. Đóng gói thành các commit backend/contract/SQL tests, frontend return request và tài liệu review/mapping. Chỉ push nhánh cá nhân bằng fast-forward; không force-push, merge hoặc deploy. Remote chưa có develop nên chưa tạo PR vào nhánh tích hợp; không tự chuyển đích PR sang main. Task 13/14 vẫn Đang làm, các dependency và giới hạn nghiệm thu bên trên không thay đổi sau khi push.
