@@ -89,6 +89,19 @@ export function createMockOrderService({ getCustomer, getStaff = async () => sta
       await wait(options?.signal); const user = await customer(); find(id, user);
       return mutate(user, `cancel:${id}`, input, options, () => transition(find(id, user), { expectedVersion: input.expectedVersion, toStatus: 'cancelled', reason: input.reason }, user));
     },
+    async createReturnRequest(id, input, options) {
+      await wait(options?.signal); const user = await customer(); find(id, user);
+      return mutate(user, `return:${id}`, input, options, () => {
+        const order = find(id, user);
+        if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1 || typeof input.reason !== 'string' || !input.reason.trim() || input.reason.trim().length > 500) fail(422, 'INVALID_INPUT', 'Vui lòng nhập lý do trả hàng hợp lệ.');
+        if (order.version !== input.expectedVersion) fail(409, 'ORDER_VERSION_CONFLICT', 'Đơn hàng đã thay đổi.');
+        if (!['delivered', 'completed'].includes(order.status) || order.payment !== 'paid') fail(409, 'RETURN_UNAVAILABLE', 'Chỉ tạo yêu cầu trả hàng cho đơn đã giao và thanh toán.');
+        if (order.returnRequest) fail(409, 'RETURN_REQUEST_EXISTS', 'Đơn đã có yêu cầu trả hàng.');
+        const result = { id: `return:${id}`, orderId: String(id), status: 'requested', reason: input.reason.trim(), createdAt: new Date().toISOString() };
+        orders = orders.map(item => item.id === order.id ? { ...item, returnRequest: result } : item);
+        return result;
+      });
+    },
     async updateSalesStatus(id, input, options) {
       await wait(options?.signal); const user = await sales(); find(id, user);
       return mutate(user, `status:${id}`, input, options, () => transition(find(id, user), input, user));
