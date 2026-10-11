@@ -32,7 +32,7 @@ services:
       VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET}
       VNPAY_RETURN_URL: ${VNPAY_RETURN_URL}
     ports:
-      - "8080:80"
+      - "8081:80"
     depends_on:
       - db
 
@@ -42,7 +42,7 @@ services:
     volumes:
       - ./client:/app
     environment:
-      VITE_API_URL: http://localhost:8080
+      VITE_API_URL: http://localhost:8081
     ports:
       - "5173:5173"
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
