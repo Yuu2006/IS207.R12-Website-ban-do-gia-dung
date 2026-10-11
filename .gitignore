@@ -8,3 +8,11 @@ vendor/
 .idea/
 server/uploads/*
 !server/uploads/**/.gitkeep
+# Authentication cookies and local test files
+cookies.txt
+customer-cookies.txt
+sales-cookies.txt
+test-upload.*
+test-large.*
+
+# Local PHP upload configuration is intentionally tracked
