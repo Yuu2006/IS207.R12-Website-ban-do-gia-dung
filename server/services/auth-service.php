@@ -11,7 +11,8 @@ class AuthService
     private const STAFF_ROLES = ['ADMIN', 'SALES', 'WAREHOUSE'];
     private array $state;
 
-    public function __construct(private UserModel $model, array &$state) { $this->state =& $state; }
+    // clientIp lấy từ REMOTE_ADDR của máy chủ, không đọc X-Forwarded-For do client tự gửi.
+    public function __construct(private UserModel $model, array &$state, private string $clientIp = '') { $this->state =& $state; }
 
     // shortcut: giới hạn theo phiên, client bỏ cookie là reset; khóa theo tài khoản trong UserModel chặn dò mật khẩu.
     private function rateLimit(string $action): void
@@ -58,13 +59,15 @@ class AuthService
         onlyFields($input, ['identifier', 'password']);
         if (!is_string($input['identifier'] ?? null) || !is_string($input['password'] ?? null) || $input['password'] === '' || strlen($input['password']) > 200) throw new ApiException('Tài khoản và mật khẩu chưa hợp lệ.', 422);
         $this->rateLimit('login');
+        // Chặn dò mật khẩu trên nhiều tài khoản từ một IP: mặc định 30 lần sai/15 phút (AUTH_IP_MAX_FAILURES cho máy test).
+        if ($this->clientIp !== '' && $this->model->recentFailedLogins($this->clientIp) >= ((int) getenv('AUTH_IP_MAX_FAILURES') ?: 30)) throw new ApiException('Có quá nhiều lần đăng nhập sai từ thiết bị này. Hãy thử lại sau 15 phút.', 429);
         $user = $this->model->findContact(normalizeContact($input['identifier']));
         if ($user && $user['locked_until'] && strtotime($user['locked_until'] . ' UTC') > time()) throw new ApiException('Đăng nhập sai quá nhiều lần. Hãy thử lại sau 15 phút.', 429);
-        if (!$user || !password_verify($input['password'], $user['password_hash'])) {
-            if ($user) $this->model->recordLoginFailure((int) $user['id']);
-            throw new ApiException('Tài khoản hoặc mật khẩu chưa đúng.', 401);
-        }
-        if ($user['status'] !== 'ACTIVE' || in_array($user['role'], self::STAFF_ROLES, true) !== $staff || !in_array($user['role'], AUTH_ROLES, true)) throw new ApiException('Tài khoản hoặc mật khẩu chưa đúng.', 401);
+        $valid = $user && password_verify($input['password'], $user['password_hash']);
+        if ($user && !$valid) $this->model->recordLoginFailure((int) $user['id']);
+        $allowed = $valid && $user['status'] === 'ACTIVE' && in_array($user['role'], self::STAFF_ROLES, true) === $staff && in_array($user['role'], AUTH_ROLES, true);
+        if ($this->clientIp !== '') $this->model->recordLoginAttempt($this->clientIp, $user ? (int) $user['id'] : null, $allowed);
+        if (!$allowed) throw new ApiException('Tài khoản hoặc mật khẩu chưa đúng.', 401);
         $this->model->resetLoginFailures((int) $user['id']);
         if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
             $user['password_hash'] = password_hash($input['password'], PASSWORD_DEFAULT);
@@ -143,9 +146,48 @@ class AuthService
         return ['passwordChanged' => true];
     }
 
+    // CUS-04: đổi email đăng nhập cần mật khẩu hiện tại + mã gửi tới email mới (mô phỏng: hiển thị mã, chặn ở production).
+    public function requestEmailChange(array $input): array
+    {
+        $principal = requireRole($this->state['principal'] ?? null, AUTH_ROLES);
+        if (getenv('APP_ENV') === 'production') throw new ApiException('Xác minh email chưa được cấu hình.', 503);
+        onlyFields($input, ['newEmail', 'currentPassword']);
+        $errors = [];
+        $email = normalizeContact(textValue($input['newEmail'] ?? '', 'newEmail', 255, true, $errors));
+        if (!isset($errors['newEmail']) && !preg_match('/^[^\s@]+@[^\s@]+\.[^\s@]+$/', $email)) $errors['newEmail'] = 'Email chưa hợp lệ.';
+        if ($errors) throw new ApiException('Hãy kiểm tra email mới.', 422, $errors);
+        $this->rateLimit('email');
+        $user = $this->model->findUser((int) $principal['id']);
+        if (!$user || !is_string($input['currentPassword'] ?? null) || !password_verify($input['currentPassword'], $user['password_hash'])) throw new ApiException('Mật khẩu hiện tại chưa đúng.', 422, ['currentPassword' => 'Mật khẩu hiện tại chưa đúng.']);
+        if ($email === $user['email']) throw new ApiException('Email mới trùng email hiện tại.', 422, ['newEmail' => 'Email mới trùng email hiện tại.']);
+        if ($this->model->findContact($email)) throw new ApiException('Email đã được sử dụng.', 409, ['newEmail' => 'Email đã được sử dụng.']);
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $this->state['emailChange'] = ['id' => bin2hex(random_bytes(16)), 'userId' => (int) $user['id'], 'email' => $email, 'code' => $code, 'expiresAt' => time() + 300, 'attempts' => 0];
+        return ['challengeId' => $this->state['emailChange']['id'], 'email' => $email, 'previewCode' => $code, 'expiresInSeconds' => 300, 'demo' => true];
+    }
+
+    public function confirmEmailChange(array $input): array
+    {
+        $principal = requireRole($this->state['principal'] ?? null, AUTH_ROLES);
+        onlyFields($input, ['challengeId', 'code']);
+        if (!is_string($input['challengeId'] ?? null) || !is_string($input['code'] ?? null) || !preg_match('/^\d{6}$/', $input['code'])) throw new ApiException('Mã xác nhận cần có 6 chữ số.', 422);
+        $change = $this->state['emailChange'] ?? null;
+        if (!$change || $change['userId'] !== (int) $principal['id'] || !hash_equals($change['id'], $input['challengeId']) || $change['expiresAt'] <= time()) throw new ApiException('Mã xác nhận đã hết hạn hoặc không còn hiệu lực.', 422);
+        if (++$this->state['emailChange']['attempts'] > 5) { unset($this->state['emailChange']); throw new ApiException('Bạn đã nhập sai quá nhiều lần. Hãy yêu cầu mã mới.', 429); }
+        if (!hash_equals($change['code'], $input['code'])) throw new ApiException('Mã xác nhận chưa đúng.', 422);
+        try {
+            $this->model->updateEmail($change['userId'], $change['email']);
+        } catch (PDOException $error) {
+            if ($error->getCode() === '23000') throw new ApiException('Email đã được sử dụng.', 409);
+            throw $error;
+        }
+        unset($this->state['emailChange']);
+        return $this->session();
+    }
+
     public function logout(): array
     {
-        unset($this->state['principal'], $this->state['reset']);
+        unset($this->state['principal'], $this->state['reset'], $this->state['emailChange']);
         return ['user' => null, 'expiresAt' => null];
     }
 }

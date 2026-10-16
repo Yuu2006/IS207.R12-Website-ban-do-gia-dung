@@ -19,9 +19,12 @@ function catalogAdminController(string $action, int $id): void
         'variants' => $service->variants($id),
         'createVariant' => $service->createVariant($id, catalogAdminInput()),
         'updateVariant' => $service->updateVariant($id, catalogAdminInput()),
-        'primaryImage' => $service->setPrimaryImage($id, catalogAdminInput()),
+        'images' => $service->images($id),
+        'addImage' => $service->addImage($id, catalogAdminInput()),
+        'updateImage' => $service->updateImage($id, catalogAdminInput()),
+        'deleteImage' => $service->deleteImage($id),
         'createAttribute' => $service->createAttribute($id, catalogAdminInput()),
         'banners' => $service->banners(),
     };
-    respondJson($data, 'Thành công.', in_array($action, ['createVariant', 'createAttribute'], true) ? 201 : 200);
+    respondJson($data, 'Thành công.', in_array($action, ['createVariant', 'createAttribute', 'addImage'], true) ? 201 : 200);
 }

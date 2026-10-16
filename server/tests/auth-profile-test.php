@@ -54,4 +54,26 @@ $address = ['recipientName' => 'Khách demo', 'phone' => '0901234567', 'addressL
 check(validateAddress($address)['district'] === '', 'Address defaults failed');
 rejects(fn () => validateAddress($address + ['userId' => '9']), 422);
 rejects(fn () => validateAddress(array_merge($address, ['isDefault' => 'true'])), 422);
+// Giới hạn theo IP: model giả, không cần DB. Đủ ngưỡng thì 429 trước khi tra tài khoản; dưới ngưỡng thì ghi lần sai.
+require_once __DIR__ . '/../services/auth-service.php';
+$fakeModel = new class extends UserModel {
+    public int $failures = 30;
+    public array $attempts = [];
+    public function __construct() {}
+    public function recentFailedLogins(string $ip): int { return $this->failures; }
+    public function findContact(string $contact): ?array { return null; }
+    public function recordLoginAttempt(string $ip, ?int $userId, bool $succeeded): void { $this->attempts[] = [$ip, $userId, $succeeded]; }
+};
+$ipState = [];
+$ipAuth = new AuthService($fakeModel, $ipState, '203.0.113.7');
+rejects(fn () => $ipAuth->login(['identifier' => 'a@example.test', 'password' => 'x'], false), 429);
+check($fakeModel->attempts === [], 'Blocked IP must not reach account lookup');
+$fakeModel->failures = 29;
+rejects(fn () => $ipAuth->login(['identifier' => 'a@example.test', 'password' => 'x'], false), 401);
+check($fakeModel->attempts === [['203.0.113.7', null, false]], 'Failed login not recorded per IP');
+
+// Ảnh đại diện chỉ nhận file upload tên ngẫu nhiên trong uploads/avatars.
+check(uploadedImageUrl('http://localhost:8080/uploads/avatars/' . str_repeat('a', 32) . '.png', 'avatars'), 'Avatar URL rejected');
+foreach (['http://x/uploads/products/' . str_repeat('a', 32) . '.png', 'javascript:alert(1)', 'http://x/uploads/avatars/../a.php', 'http://x/uploads/avatars/' . str_repeat('a', 32) . '.php'] as $bad) check(!uploadedImageUrl($bad, 'avatars'), "Bad avatar accepted: $bad");
+rejects(fn () => validateProfile(['avatarUrl' => 'https://evil.test/a.png'], $current + ['avatarUrl' => '']), 422);
 echo "PASS: $checks auth guard/validation checks\n";
