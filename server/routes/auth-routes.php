@@ -13,6 +13,8 @@ function dispatchAuthRoute(string $method, string $path, array $input, AuthServi
         '/auth/password-reset/request' => ['POST', 'resetRequest'],
         '/auth/password-reset/verify' => ['POST', 'resetVerify'],
         '/auth/password-reset/confirm' => ['POST', 'resetConfirm'],
+        '/auth/email-change/request' => ['POST', 'emailRequest'],
+        '/auth/email-change/confirm' => ['POST', 'emailConfirm'],
         '/auth/logout' => ['POST', 'logout'],
     ];
     if (!isset($routes[$path])) return false;

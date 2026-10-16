@@ -14,6 +14,8 @@ function authController(string $action, array $input, AuthService $service): voi
         'resetRequest' => $service->requestPasswordReset($input),
         'resetVerify' => $service->verifyPasswordReset($input),
         'resetConfirm' => $service->confirmPasswordReset($input),
+        'emailRequest' => $service->requestEmailChange($input),
+        'emailConfirm' => $service->confirmEmailChange($input),
         'logout' => $service->logout(),
     };
     // Đổi session ID khi quyền đăng nhập thay đổi để chống session fixation.

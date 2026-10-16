@@ -147,3 +147,34 @@ test('Sai mật khẩu 5 lần khóa tài khoản; đổi mật khẩu hủy phi
   await after.init();
   assert.equal((await after.request('/auth/login', 'POST', { identifier: email, password: 'Reset2026x' })).status, 200);
 });
+
+test('Đổi email cần mật khẩu + mã một lần; ảnh đại diện chỉ nhận ảnh đã upload', async () => {
+  const client = new Client();
+  await client.register(`mail${unique}@example.test`);
+  const newEmail = `moi${unique}@example.test`;
+  assert.equal((await client.request('/auth/email-change/request', 'POST', { newEmail, currentPassword: 'Wrong12345' })).status, 422);
+  assert.equal((await client.request('/auth/email-change/request', 'POST', { newEmail: 'admin@example.test', currentPassword: password })).status, 409);
+  assert.equal((await client.request('/auth/email-change/request', 'POST', { newEmail: 'x@', currentPassword: password })).status, 422);
+  const challenge = (await client.request('/auth/email-change/request', 'POST', { newEmail: newEmail.toUpperCase(), currentPassword: password })).json.data;
+  assert.equal(challenge.email, newEmail);
+  const stranger = new Client();
+  await stranger.register(`la${unique}@example.test`);
+  assert.equal((await stranger.request('/auth/email-change/confirm', 'POST', { challengeId: challenge.challengeId, code: challenge.previewCode })).status, 422);
+  const confirmed = await client.request('/auth/email-change/confirm', 'POST', { challengeId: challenge.challengeId, code: challenge.previewCode });
+  assert.equal(confirmed.status, 200);
+  assert.equal(confirmed.json.data.user.email, newEmail);
+  assert.equal((await client.request('/auth/email-change/confirm', 'POST', { challengeId: challenge.challengeId, code: challenge.previewCode })).status, 422);
+  const relogin = new Client();
+  await relogin.init();
+  assert.equal((await relogin.request('/auth/login', 'POST', { identifier: newEmail, password })).status, 200);
+
+  const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), c => c.charCodeAt(0));
+  const form = type => { const data = new FormData(); data.append('type', type); data.append('image', new Blob([png], { type: 'image/png' }), 'avatar.png'); return data; };
+  assert.equal((await client.request('/api/uploads/images', 'POST', form('products'))).status, 403);
+  const avatar = await client.request('/api/uploads/images', 'POST', form('avatars'));
+  assert.equal(avatar.status, 201);
+  const avatarUrl = `http://127.0.0.1${avatar.json.data.image_url}`;
+  assert.equal((await client.request('/users/me', 'PATCH', { avatarUrl: 'https://evil.test/a.png' })).status, 422);
+  assert.equal((await client.request('/users/me', 'PATCH', { avatarUrl })).json.data.avatarUrl, avatarUrl);
+  assert.equal((await client.request('/users/me', 'PATCH', { avatarUrl: '' })).json.data.avatarUrl, '');
+});
