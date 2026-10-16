@@ -25,8 +25,11 @@ function listInventoryMovements(): void
                 im.reference_code,
                 im.note,
                 im.performed_by,
+                u.full_name AS performed_by_name,
                 im.created_at
             FROM inventory_movements im
+            LEFT JOIN users u
+                ON u.id = im.performed_by
             INNER JOIN product_variants pv
                 ON pv.id = im.variant_id
             INNER JOIN products p
@@ -61,7 +64,8 @@ function listInventoryMovements(): void
             $params['movement_type'] = $type;
         }
 
-        $sql .= " ORDER BY im.created_at DESC, im.id DESC";
+        // shortcut: trả 200 dòng mới nhất, chưa phân trang; thêm page/pageSize khi lịch sử lớn.
+        $sql .= " ORDER BY im.created_at DESC, im.id DESC LIMIT 200";
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
@@ -98,7 +102,7 @@ function listInventoryMovements(): void
  *   "note": "Nhap hang"
  * }
  */
-function createInventoryMovement(): void
+function createInventoryMovement(int $performedBy): void
 {
     $input = json_decode(file_get_contents('php://input'), true);
 
@@ -118,7 +122,7 @@ function createInventoryMovement(): void
         FILTER_VALIDATE_INT
     );
     $referenceCode = trim((string) ($input['reference_code'] ?? ''));
-    $note = isset($input['note']) ? trim((string) $input['note']) : null;
+    $note = trim((string) ($input['note'] ?? ''));
 
     if (
         $sku === ''
@@ -127,16 +131,17 @@ function createInventoryMovement(): void
         || $quantity === null
         || $quantity <= 0
         || $referenceCode === ''
+        || $note === ''
     ) {
         http_response_code(400);
         echo json_encode([
             'success' => false,
-            'message' => 'SKU, loại biến động, số lượng dương và mã tham chiếu là bắt buộc.'
+            'message' => 'SKU, loại biến động, số lượng dương, mã tham chiếu và lý do là bắt buộc.'
         ], JSON_UNESCAPED_UNICODE);
         return;
     }
 
-    if (strlen($referenceCode) > 100 || ($note !== null && strlen($note) > 500)) {
+    if (strlen($referenceCode) > 100 || mb_strlen($note) > 500) {
         http_response_code(400);
         echo json_encode([
             'success' => false,
@@ -218,7 +223,8 @@ function createInventoryMovement(): void
                 quantity_before,
                 quantity_after,
                 reference_code,
-                note
+                note,
+                performed_by
             ) VALUES (
                 :variant_id,
                 :movement_type,
@@ -226,7 +232,8 @@ function createInventoryMovement(): void
                 :quantity_before,
                 :quantity_after,
                 :reference_code,
-                :note
+                :note,
+                :performed_by
             )
         ");
 
@@ -237,7 +244,8 @@ function createInventoryMovement(): void
             'quantity_before' => $before,
             'quantity_after' => $after,
             'reference_code' => $referenceCode,
-            'note' => $note
+            'note' => $note,
+            'performed_by' => $performedBy
         ]);
 
         $movementId = (int) $pdo->lastInsertId();

@@ -10,17 +10,18 @@ function handleInventoryMovementRoutes(string $method, string $path): bool
         $method === 'GET'
         && $path === '/api/inventory/movements'
     ) {
+        requireSessionRole(['ADMIN', 'WAREHOUSE']);
         listInventoryMovements();
         return true;
     }
 
-    // POST tao bien dong kho: chi ADMIN
+    // POST tao bien dong kho: ADMIN hoac WAREHOUSE (WH-03), ghi nguoi thuc hien
     if (
         $method === 'POST'
         && $path === '/api/inventory/movements'
     ) {
-        requireAdmin();
-        createInventoryMovement();
+        $actor = requireSessionRole(['ADMIN', 'WAREHOUSE']);
+        createInventoryMovement((int) $actor['id']);
         return true;
     }
 
