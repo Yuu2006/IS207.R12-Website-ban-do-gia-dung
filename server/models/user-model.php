@@ -4,7 +4,7 @@ declare(strict_types=1);
 // Truy vấn users/addresses qua PDO; không xử lý HTTP hay quyền.
 class UserModel
 {
-    private const USER_COLUMNS = 'id, full_name, email, phone, birth_date, password_hash, role, status, failed_login_count, locked_until';
+    private const USER_COLUMNS = 'id, full_name, email, phone, birth_date, avatar_url, password_hash, role, status, failed_login_count, locked_until';
     private const ADDRESS_COLUMNS = 'id, recipient_name, phone, address_line, province, district, ward, is_default';
 
     public function __construct(private PDO $pdo) {}
@@ -48,8 +48,26 @@ class UserModel
 
     public function updateProfile(int $id, array $values): void
     {
-        $stmt = $this->pdo->prepare('UPDATE users SET full_name = ?, phone = ?, birth_date = ? WHERE id = ? AND is_deleted = 0');
-        $stmt->execute([$values['fullName'], $values['phone'] ?: null, $values['birthDate'] ?: null, $id]);
+        $stmt = $this->pdo->prepare('UPDATE users SET full_name = ?, phone = ?, birth_date = ?, avatar_url = ? WHERE id = ? AND is_deleted = 0');
+        $stmt->execute([$values['fullName'], $values['phone'] ?: null, $values['birthDate'] ?: null, $values['avatarUrl'] ?: null, $id]);
+    }
+
+    public function updateEmail(int $id, string $email): void
+    {
+        $this->pdo->prepare('UPDATE users SET email = ? WHERE id = ? AND is_deleted = 0')->execute([$email, $id]);
+    }
+
+    public function recordLoginAttempt(string $ip, ?int $userId, bool $succeeded): void
+    {
+        $this->pdo->prepare('INSERT INTO auth_login_attempts (ip_address, user_id, succeeded, created_at) VALUES (?, ?, ?, UTC_TIMESTAMP())')->execute([$ip, $userId, (int) $succeeded]);
+    }
+
+    // Số lần đăng nhập sai từ một IP trong 15 phút, dùng index (ip_address, created_at).
+    public function recentFailedLogins(string $ip): int
+    {
+        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM auth_login_attempts WHERE ip_address = ? AND created_at > UTC_TIMESTAMP() - INTERVAL 15 MINUTE AND succeeded = 0');
+        $stmt->execute([$ip]);
+        return (int) $stmt->fetchColumn();
     }
 
     // Đổi hash cũng reset bộ đếm sai; phiên cũ tự hết hiệu lực vì dấu hash đổi.
@@ -100,7 +118,7 @@ class UserModel
 
     public static function publicUser(array $user): array
     {
-        return ['id' => (string) $user['id'], 'fullName' => $user['full_name'], 'email' => $user['email'], 'phone' => $user['phone'] ?? '', 'birthDate' => $user['birth_date'] ?? '', 'role' => $user['role']];
+        return ['id' => (string) $user['id'], 'fullName' => $user['full_name'], 'email' => $user['email'], 'phone' => $user['phone'] ?? '', 'birthDate' => $user['birth_date'] ?? '', 'avatarUrl' => $user['avatar_url'] ?? '', 'role' => $user['role']];
     }
 
     public static function publicAddress(array $address): array

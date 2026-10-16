@@ -37,9 +37,15 @@ php -S 127.0.0.1:8080 -t server server/index.php
 
 Terminal khác: `php server/tests/auth-profile-test.php`, `node --test scripts/auth-profile-api.test.mjs` (chỉ trên DB thử nghiệm — test tạo tài khoản mới).
 
+## Bổ sung 16/10/2026 (chiều) — hoàn thiện task 9 và 12
+
+- Task 9: đổi email đăng nhập bằng mật khẩu + mã một lần (CUS-04), ảnh đại diện (upload `type=avatars`), ghi lịch sử đăng nhập và chặn IP sai ≥ 30 lần/15 phút (`auth_login_attempts`, migration 011).
+- Task 12: thư viện tối đa 10 ảnh/sản phẩm (chọn ảnh đại diện, thứ tự, xóa mềm), thứ tự + giới hạn 2 cấp cho danh mục, mô tả thương hiệu, thứ tự banner, phân trang lịch sử kho. Chi tiết: `docs/api/CATALOG-ADMIN-INVENTORY.md`.
+- Kiểm chứng: `auth-profile-test.php` 48 pass; HTTP + MySQL `auth-profile-api` + `catalog-inventory-api` 9/9; order API 21/21, 8/8; client 48/48, build pass; thao tác thật trên trình duyệt (ảnh đại diện, đổi email, đổi ảnh đại diện sản phẩm, danh mục, phân trang lịch sử) — ảnh chụp trong `outputs/ui-20261016/` (không commit).
+
 ## Giới hạn còn lại
 
-- Mã khôi phục mật khẩu hiển thị trên trang (chưa có email); bị chặn ở production. Đổi email đăng nhập và ảnh đại diện chưa làm.
-- Giới hạn tần suất theo phiên có thể bị bỏ qua khi xóa cookie; khóa theo tài khoản là lớp chặn chính. Chưa có giới hạn theo IP.
+- Mã khôi phục mật khẩu và mã đổi email hiển thị trên trang (mô phỏng, chưa có dịch vụ email); bị chặn ở production.
+- Upload ảnh đại diện chưa giới hạn số lần theo người dùng; file cũ không bị xóa khỏi ổ đĩa khi thay ảnh.
 - Checkout thật vẫn chờ adapter `CheckoutDependencies` (giỏ/voucher/kho); trong Vite dev trang đơn dùng order mock của Tấn Vĩ với user thật.
-- Chưa kiểm tra trực quan trên trình duyệt sau khi đổi sang API thật (xem báo cáo bàn giao).
+- Storefront (task 11 của Lan Chi) vẫn cần lọc sản phẩm đang hoạt động.

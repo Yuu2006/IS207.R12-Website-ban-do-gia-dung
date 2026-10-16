@@ -93,16 +93,65 @@ class CatalogAdminService
         return $this->model->variant($id);
     }
 
-    // Chỉ nhận ảnh do /api/uploads/images sinh ra, tránh URL ngoài hoặc tên file tùy ý.
-    public function setPrimaryImage(int $productId, array $input): array
+    // PRD-04: nhiều ảnh, chọn ảnh đại diện, sắp thứ tự; chỉ nhận ảnh do /api/uploads/images sinh ra.
+    public function images(int $productId): array
     {
-        onlyFields($input, ['image_url']);
-        $url = $input['image_url'] ?? null;
-        $path = is_string($url) && strlen($url) <= 500 && in_array(parse_url($url, PHP_URL_SCHEME), ['http', 'https'], true) ? parse_url($url, PHP_URL_PATH) : null;
-        if (!is_string($path) || !preg_match('#^/uploads/products/[a-f0-9]{32}\.(jpg|png|webp)$#', $path)) throw new ApiException('Ảnh phải được tải lên qua hệ thống.', 422, ['image_url' => 'Ảnh chưa hợp lệ.']);
         if (!$this->model->productExists($productId)) throw new ApiException('Không tìm thấy sản phẩm.', 404);
-        $this->model->setPrimaryImage($productId, $url);
-        return ['product_id' => (string) $productId, 'image_url' => $url];
+        return $this->model->images($productId);
+    }
+
+    private static function sortOrder(mixed $value): int
+    {
+        if (!is_int($value) || $value < 0 || $value > 100000) throw new ApiException('Thứ tự ảnh là số nguyên từ 0.', 422, ['sort_order' => 'Thứ tự không hợp lệ.']);
+        return $value;
+    }
+
+    public function addImage(int $productId, array $input): array
+    {
+        onlyFields($input, ['image_url', 'is_primary', 'sort_order']);
+        if (!uploadedImageUrl($input['image_url'] ?? null, 'products')) throw new ApiException('Ảnh phải được tải lên qua hệ thống.', 422, ['image_url' => 'Ảnh chưa hợp lệ.']);
+        $sortOrder = self::sortOrder($input['sort_order'] ?? 0);
+        $primary = $input['is_primary'] ?? false;
+        if (!is_bool($primary)) throw new ApiException('is_primary phải là boolean.', 422);
+        $done = $this->model->transactionOnProduct($productId, function () use ($productId, $input, $sortOrder, $primary) {
+            $current = $this->model->images($productId);
+            // shortcut: tối đa 10 ảnh/sản phẩm để giới hạn dung lượng demo; nâng khi cần thư viện lớn hơn.
+            if (count($current) >= 10) throw new ApiException('Mỗi sản phẩm tối đa 10 ảnh.', 422);
+            $id = $this->model->insertImage($productId, $input['image_url'], $sortOrder);
+            if ($primary || !$current) $this->model->makePrimary($productId, $id);
+            return true;
+        });
+        if (!$done) throw new ApiException('Không tìm thấy sản phẩm.', 404);
+        return $this->model->images($productId);
+    }
+
+    public function updateImage(int $imageId, array $input): array
+    {
+        onlyFields($input, ['is_primary', 'sort_order']);
+        $image = $this->model->image($imageId) ?? throw new ApiException('Không tìm thấy ảnh.', 404);
+        if (array_key_exists('is_primary', $input) && $input['is_primary'] !== true) throw new ApiException('Chọn ảnh khác làm ảnh đại diện thay vì bỏ cờ.', 422, ['is_primary' => 'Chỉ nhận true.']);
+        $sortOrder = array_key_exists('sort_order', $input) ? self::sortOrder($input['sort_order']) : null;
+        $productId = (int) $image['product_id'];
+        $this->model->transactionOnProduct($productId, function () use ($imageId, $productId, $input, $sortOrder) {
+            if ($sortOrder !== null) $this->model->updateImageOrder($imageId, $sortOrder);
+            if (($input['is_primary'] ?? false) === true) $this->model->makePrimary($productId, $imageId);
+            return true;
+        });
+        return $this->model->images($productId);
+    }
+
+    // Xóa mềm; xóa ảnh đại diện thì ảnh đứng đầu còn lại thành ảnh đại diện.
+    public function deleteImage(int $imageId): array
+    {
+        $image = $this->model->image($imageId) ?? throw new ApiException('Không tìm thấy ảnh.', 404);
+        $productId = (int) $image['product_id'];
+        $this->model->transactionOnProduct($productId, function () use ($image, $imageId, $productId) {
+            $this->model->softDeleteImage($imageId);
+            $rest = $this->model->images($productId);
+            if ((int) $image['is_primary'] && $rest) $this->model->makePrimary($productId, (int) $rest[0]['id']);
+            return true;
+        });
+        return $this->model->images($productId);
     }
 
     public function createAttribute(int $categoryId, array $input): array

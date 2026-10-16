@@ -55,7 +55,7 @@ Kiểm chứng sau tích hợp (PHP 8.3.35 + MySQL 8.4.11 tạm): `php -l` toàn
 4. *Trung bình* — Envelope lỗi khác hai module còn lại: order dùng `errors: { code, fields }`, auth dùng `errors: { field: message }`, catalog chỉ có `message`. Cần cả nhóm chốt một contract trước khi nối thêm UI.
 5. *Trung bình* — Nhánh chưa có PR/review chéo theo cặp TV1↔TV3; lần này merge trực tiếp để tích hợp. Lần sau mở PR vào `develop`.
 6. *Thấp* — Code rất đặc (nhiều điều kiện trên một dòng, file > 300 dòng) và OpenAPI ~3.900 dòng — khó giải thích khi bảo vệ đồ án; nên tách hàm/ghi chú ngắn ở chỗ phức tạp.
-7. *Thấp* — Hai migration cùng số 008 (với `008_product_attributes.sql`); thứ tự áp dụng đã ghi trong `server/db/README.md`. Migration mới đánh số từ 011.
+7. *Thấp* — Hai migration cùng số 008 (với `008_product_attributes.sql`); thứ tự áp dụng đã ghi trong `server/db/README.md`. Migration mới đánh số từ 012 (011 đã dùng cho auth/catalog).
 8. Phụ thuộc mở: adapter `CheckoutDependencies` (giỏ/voucher của Lan Chi, kho, địa chỉ của TV1). API địa chỉ MySQL đã sẵn (`GET /users/me/addresses`, ID chuỗi số) để Vĩ viết phần `lockForCreate` địa chỉ.
 
 **Kết luận**: Approve — đã merge, toàn bộ test của Vĩ pass sau tích hợp.

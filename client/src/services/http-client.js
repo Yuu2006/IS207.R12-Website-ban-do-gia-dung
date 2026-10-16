@@ -24,3 +24,12 @@ export async function requestApi(path, { method = 'GET', body, retried = false }
   if (result.data?.csrfToken) csrfToken = result.data.csrfToken;
   return result.data;
 }
+
+// Upload ảnh (avatars cho mọi tài khoản; products/brands/banners cho ADMIN) và trả URL tuyệt đối để lưu vào hồ sơ/catalog.
+export async function uploadImage(file, type) {
+  const form = new FormData();
+  form.append('image', file);
+  form.append('type', type);
+  const data = await requestApi('/api/uploads/images', { method: 'POST', body: form });
+  return `${API_URL}${data.image_url}`;
+}
