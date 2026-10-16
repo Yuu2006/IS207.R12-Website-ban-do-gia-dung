@@ -1,4 +1,21 @@
 <?php
+declare(strict_types=1);
+
+// Order API guard (Tấn Vĩ) dùng namespace; catalog/auth guard dùng global scope.
+namespace HomeCare\OrderApi {
+
+// Bốn role cố định; SYSTEM chỉ là nguồn audit nội bộ, không phải role client.
+function requireOrderRole(array $principal, array $allowedRoles): void
+{
+    if (!in_array($principal['role'], ['CUSTOMER', 'ADMIN', 'SALES', 'WAREHOUSE'], true) ||
+        !in_array($principal['role'], $allowedRoles, true)) {
+        throw new ApiException(403, 'FORBIDDEN', 'Tài khoản không có quyền thực hiện thao tác này.');
+    }
+}
+
+}
+
+namespace {
 
 require_once __DIR__ . '/auth-middleware.php';
 
@@ -30,4 +47,6 @@ function requireRole(array $allowedRoles): array
 function requireAdmin(): array
 {
     return requireRole(['ADMIN']);
+}
+
 }
