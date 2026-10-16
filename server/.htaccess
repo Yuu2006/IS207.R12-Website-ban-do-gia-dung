@@ -1,6 +1,8 @@
 RewriteEngine On
-# Test doubles must never be reachable from the public API.
-RewriteRule ^tests(?:/|$) - [F,L]
+RewriteRule ^(config|controllers|db|middleware|models|services|tests|utils)(/|$) - [F,L]
+RewriteRule ^(Dockerfile|upload\.ini)$ - [F,L]
+# Thư mục upload chỉ phục vụ ảnh; không bao giờ thực thi script.
+RewriteRule ^uploads/.*\.(php\d?|phtml|phar)$ - [F,L,NC]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.php [QSA,L]

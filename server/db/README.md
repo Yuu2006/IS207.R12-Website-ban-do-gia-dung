@@ -2,6 +2,20 @@
 
 Cập nhật 08/10/2026: baseline thực tế là `database/schema_database.sql` ở gốc repo. Các migration 001–007 từng liệt kê trong scaffold **chưa có**, không chạy các tên file giả định. Baseline vẫn chứa bảng phạm vi cũ; không triển khai các module đó và không xóa schema của đồng đội.
 
+## Thứ tự dựng database mới (16/10/2026)
+
+Compose chỉ mount `server/db` và MySQL không tự chạy file trong thư mục con, nên áp thủ công **một lần** trên database mới đã chọn:
+
+1. `database/schema_database.sql` (baseline)
+2. `migrations/008_product_attributes.sql`, `009_product_attribute_values.sql` (catalog — Lan Chi)
+3. `migrations/008_order_runtime.sql` (đơn hàng — Tấn Vĩ)
+4. `migrations/010_auth_profile.sql` (auth/hồ sơ — Tuấn Vũ: unique phone, ngày sinh, khóa đăng nhập tạm)
+5. `seeds/001_auth_demo_users.sql`, `seeds/002_demo_data.sql`
+
+Ví dụ với Compose: `docker compose exec -T db sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < database/schema_database.sql`, lặp lại theo thứ tự trên. Hai file đánh số 008 độc lập nhau; migration mới đánh số từ 011.
+
+`seeds/001_auth_demo_users.sql` tạo 4 tài khoản demo (`customer@`, `admin@`, `sales@`, `warehouse@example.test`, mật khẩu `Demo@1234567890!`). Chỉ dùng cho môi trường demo.
+
 ## Áp dụng module đơn hàng
 
 1. Team kiểm tra/backup database đích và xác nhận baseline đã được áp dụng. Không import lại baseline vào database đang có bảng/dữ liệu.

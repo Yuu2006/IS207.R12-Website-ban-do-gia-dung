@@ -1,64 +1,15 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { getCustomerSession, signOutCustomer } from '../pages/login-form/auth-client.js';
+import { createContext, useContext } from 'react';
+import { AuthContext } from './auth-context.js';
 
+// Test SSR có thể cấp giá trị trực tiếp; ứng dụng dùng chung phiên AuthProvider (TV1), không có phiên khách riêng.
 export const CustomerAuthContext = createContext(null);
 
-// Chia sẻ phiên đã xác nhận với Header, đăng nhập và route đơn hàng.
-export function CustomerAuthProvider({ children }) {
-  const [session, setSession] = useState(null);
-  const [status, setStatus] = useState('loading');
-  const [error, setError] = useState('');
-  const requestVersion = useRef(0);
-
-  const refreshSession = useCallback(async () => {
-    const version = ++requestVersion.current;
-    setStatus('loading');
-    setError('');
-    try {
-      const current = await getCustomerSession();
-      if (version !== requestVersion.current) return null;
-      setSession(current);
-      setStatus(current ? 'authenticated' : 'anonymous');
-      return current;
-    } catch (failure) {
-      if (version !== requestVersion.current) return null;
-      setSession(null);
-      setStatus('error');
-      setError(failure.message || 'Không thể kiểm tra phiên đăng nhập.');
-      throw failure;
-    }
-  }, []);
-
-  useEffect(() => {
-    refreshSession().catch(() => {});
-    return () => { requestVersion.current += 1; };
-  }, [refreshSession]);
-
-  useEffect(() => {
-    if (!session?.expiresAt) return undefined;
-    const timer = window.setTimeout(() => {
-      setSession(null);
-      setStatus('anonymous');
-    }, Math.min(Math.max(0, session.expiresAt - Date.now()), 2147483647));
-    return () => window.clearTimeout(timer);
-  }, [session]);
-
-  // Không xóa trạng thái đăng nhập thật nếu máy chủ chưa đăng xuất thành công.
-  async function signOut() {
-    await signOutCustomer();
-    requestVersion.current += 1;
-    setSession(null);
-    setStatus('anonymous');
-    setError('');
-  }
-
-  return <CustomerAuthContext.Provider value={{ user: session?.user ?? null, status, error, refreshSession, signOut }}>
-    {children}
-  </CustomerAuthContext.Provider>;
-}
-
+// Adapter giữ API cũ { user, status, error, refreshSession, signOut } cho trang đơn hàng.
 export function useCustomerAuth() {
-  const auth = useContext(CustomerAuthContext);
-  if (!auth) throw new Error('CustomerAuthProvider is required.');
-  return auth;
+  const override = useContext(CustomerAuthContext);
+  const auth = useContext(AuthContext);
+  if (override) return override;
+  if (!auth) throw new Error('AuthProvider is required.');
+  const status = auth.loading ? 'loading' : auth.error ? 'error' : auth.user ? 'authenticated' : 'anonymous';
+  return { user: auth.user, status, error: auth.error, refreshSession: auth.refreshSession, signOut: auth.signOut };
 }

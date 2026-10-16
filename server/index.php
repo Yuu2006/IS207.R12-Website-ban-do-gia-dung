@@ -1,12 +1,15 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/utils/response.php';
 require_once __DIR__ . '/utils/order-api.php';
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/routes/auth-routes.php';
+require_once __DIR__ . '/routes/user-routes.php';
 
-use HomeCare\OrderApi\ApiException;
+use HomeCare\OrderApi\ApiException as OrderApiException;
 use function HomeCare\OrderApi\apiFailure;
 use function HomeCare\OrderApi\handleOrderApi;
-use function HomeCare\OrderApi\orderCorsHeaders;
 use const HomeCare\OrderApi\MAX_ORDER_BODY_BYTES;
 
 ini_set('display_errors', '0');
@@ -14,54 +17,82 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
 
+// Một router cho mọi module: auth/users (TV1) → catalog/kho /api/* (TV2) → đơn hàng (TV3).
 try {
-    foreach (orderCorsHeaders($_SERVER['HTTP_ORIGIN'] ?? '', getenv('CLIENT_URL') ?: 'http://localhost:5173') as $name => $value) {
-        header($name . ': ' . $value);
-    }
-    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
-        http_response_code(204);
-        exit;
-    }
-    // Auth owner sẽ cấp session thật; skeleton không tự tạo user/role/fixture từ request.
-    $serverSession = [];
-    if (isset($_COOKIE[session_name()])) {
-        $started = session_start([
-            'read_and_close' => true, 'use_strict_mode' => true, 'use_only_cookies' => true,
-            'cookie_httponly' => true, 'cookie_samesite' => 'Lax',
-            'cookie_secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
-        ]);
-        if (!$started) {
-            throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Chưa thể kiểm tra phiên đăng nhập.');
+    $origins = array_map('trim', explode(',', getenv('CLIENT_URL') ?: 'http://localhost:5173'));
+    $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+    if ($origin !== '') {
+        if (!in_array($origin, $origins, true)) {
+            http_response_code(403);
+            echo json_encode(apiFailure(new OrderApiException(403, 'ORIGIN_NOT_ALLOWED', 'Nguồn truy cập không được phép.'))['body'], JSON_UNESCAPED_UNICODE);
+            exit;
         }
-        $serverSession = $_SESSION;
+        header('Access-Control-Allow-Origin: ' . $origin);
+        header('Access-Control-Allow-Credentials: true');
+        header('Access-Control-Expose-Headers: Allow');
+        header('Vary: Origin');
     }
-    // Catalog/kho/upload (Lan Chi) tự xuất response; chưa khớp route thì về order API.
-    $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
-    if (str_starts_with($path, '/api/') || str_starts_with($path, '/auth/')) {
-        $catalogRoutes = ['product' => 'handleProductRoutes', 'category' => 'handleCategoryRoutes', 'brand' => 'handleBrandRoutes', 'product-attribute' => 'handleProductAttributeRoutes', 'inventory' => 'handleInventoryRoutes', 'inventory-movement' => 'handleInventoryMovementRoutes', 'auth' => 'handleAuthRoutes', 'banner' => 'handleBannerRoutes', 'upload' => 'handleUploadRoutes'];
+    header('Access-Control-Allow-Headers: Content-Type, X-CSRF-Token, Idempotency-Key');
+    header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    $method = $_SERVER['REQUEST_METHOD'];
+    if ($method === 'OPTIONS') { http_response_code(204); exit; }
+    $path = rtrim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/', '/') ?: '/';
+
+    startAppSession();
+    $readOnly = in_array($method, ['GET', 'HEAD'], true);
+    $isAuth = str_starts_with($path, '/auth/') || str_starts_with($path, '/users/');
+    $isCatalog = str_starts_with($path, '/api/');
+    // Order API tự kiểm tra CSRF sau xác thực (401 trước 403) theo contract riêng.
+    if (($isAuth || $isCatalog) && !$readOnly && !hash_equals($_SESSION['csrfToken'], $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '')) throw new ApiException('CSRF token chưa hợp lệ. Hãy tải lại phiên đăng nhập.', 403);
+
+    // Chỉ chạm MySQL khi cần; principal được đối chiếu mỗi request để hủy phiên hết hạn/bị khóa/đổi mật khẩu.
+    $model = null;
+    $auth = null;
+    if ($isAuth || currentPrincipal()) {
+        $model = new UserModel(db());
+        $auth = new AuthService($model, $_SESSION);
+        $auth->session();
+    }
+
+    if ($isAuth) {
+        $raw = $readOnly ? '' : file_get_contents('php://input', false, null, 0, 65537);
+        if (strlen($raw) > 65536) throw new ApiException('Request quá lớn.', 413);
+        $input = [];
+        if ($raw !== '') {
+            try { $decoded = json_decode($raw, false, 32, JSON_THROW_ON_ERROR); }
+            catch (JsonException) { throw new ApiException('JSON chưa hợp lệ.', 400); }
+            if (!$decoded instanceof stdClass) throw new ApiException('Request phải là JSON object.', 422);
+            $input = get_object_vars($decoded);
+        }
+        if (dispatchAuthRoute($method, $path, $input, $auth) || dispatchUserRoute($method, $path, $input, currentPrincipal(), new UserService($model))) exit;
+        throw new ApiException('Endpoint chưa tồn tại.', 404);
+    }
+
+    // Catalog/kho/upload tự xuất response và gọi requireAdmin()/requireSessionRole().
+    if ($isCatalog) {
+        $catalogRoutes = ['product' => 'handleProductRoutes', 'category' => 'handleCategoryRoutes', 'brand' => 'handleBrandRoutes', 'product-attribute' => 'handleProductAttributeRoutes', 'inventory-movement' => 'handleInventoryMovementRoutes', 'inventory' => 'handleInventoryRoutes', 'banner' => 'handleBannerRoutes', 'upload' => 'handleUploadRoutes'];
         foreach ($catalogRoutes as $file => $handler) {
             require_once __DIR__ . "/routes/{$file}-routes.php";
-            if ($handler($_SERVER['REQUEST_METHOD'], $path)) exit;
+            if ($handler($method, $path)) exit;
         }
+        throw new ApiException('Endpoint chưa tồn tại.', 404);
     }
-    $rawBody = file_get_contents('php://input', false, null, 0, MAX_ORDER_BODY_BYTES + 1);
-    $response = handleOrderApi(
-        $_SERVER['REQUEST_METHOD'] ?? 'GET',
-        parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/',
-        $_GET,
-        $rawBody === false ? '' : $rawBody,
-        function_exists('getallheaders') ? getallheaders() : [],
-        $serverSession,
-    );
-} catch (ApiException $error) {
-    $response = apiFailure($error);
-} catch (Throwable $error) {
-    error_log('Order API bootstrap failed: ' . get_class($error));
-    $response = apiFailure(new ApiException(500, 'INTERNAL_ERROR', 'Máy chủ không thể xử lý yêu cầu.'));
-}
 
-http_response_code($response['status']);
-foreach ($response['headers'] as $name => $value) {
-    header($name . ': ' . $value);
+    // Order API nhận bản sao phiên theo contract của nó; đóng session để request đơn không khóa nhau.
+    $principal = currentPrincipal();
+    $orderSession = ['csrfToken' => $_SESSION['csrfToken']];
+    if ($principal) $orderSession += ['user' => ['id' => $principal['id'], 'role' => $principal['role']], 'expiresAt' => $principal['expiresAt']];
+    session_write_close();
+    $raw = $readOnly ? '' : file_get_contents('php://input', false, null, 0, MAX_ORDER_BODY_BYTES + 1);
+    $response = handleOrderApi($method, $path, $_GET, $raw === false ? '' : $raw, function_exists('getallheaders') ? getallheaders() : [], $orderSession);
+    http_response_code($response['status']);
+    foreach ($response['headers'] as $name => $value) header($name . ': ' . $value);
+    echo json_encode($response['body'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+} catch (ApiException $error) {
+    http_response_code($error->status);
+    echo json_encode(['success' => false, 'message' => $error->getMessage(), 'errors' => (object) $error->errors], JSON_UNESCAPED_UNICODE);
+} catch (Throwable $error) {
+    error_log('API failed: ' . get_class($error));
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Máy chủ không thể xử lý yêu cầu.', 'errors' => (object) []], JSON_UNESCAPED_UNICODE);
 }
-echo json_encode($response['body'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);

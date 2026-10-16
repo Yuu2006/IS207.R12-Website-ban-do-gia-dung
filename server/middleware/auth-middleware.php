@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-// Order API guard (Tấn Vĩ) dùng namespace; catalog/auth guard dùng global scope.
+// Order API guard (Tấn Vĩ) dùng namespace; auth/hồ sơ/catalog dùng global scope.
 namespace HomeCare\OrderApi {
 
 // Chỉ nhận dữ liệu phiên server; không đọc principal từ body/query/header client.
@@ -33,80 +33,45 @@ function requireOrderCsrf(array $session, array $headers): void
 
 namespace {
 
-require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../utils/response.php';
 
-/**
- * Cấu hình cookie session trước khi session_start().
- * Chỉ gọi khi session chưa được khởi tạo.
- */
+// Principal chỉ lấy từ phiên máy chủ hoặc truyền trực tiếp trong kiểm tra CLI.
+function requirePrincipal(?array $principal): array
+{
+    if (!$principal || !is_string($principal['id'] ?? null) || $principal['id'] === '' ||
+        ($principal['status'] ?? '') !== 'ACTIVE' || !is_int($principal['expiresAt'] ?? null) ||
+        $principal['expiresAt'] <= time()) {
+        throw new ApiException('Bạn cần đăng nhập hoặc phiên đã hết hạn.', 401);
+    }
+    return $principal;
+}
+
+// Một cookie phiên HttpOnly cho mọi module; Secure khi chạy HTTPS.
 function startAppSession(): void
 {
-    if (session_status() === PHP_SESSION_ACTIVE) {
-        return;
-    }
-
+    if (session_status() === PHP_SESSION_ACTIVE) return;
     ini_set('session.use_strict_mode', '1');
     ini_set('session.use_only_cookies', '1');
-    ini_set('session.cookie_httponly', '1');
-    ini_set('session.cookie_samesite', 'Lax');
-
-    // Môi trường localhost đang dùng HTTP.
-    // Khi triển khai HTTPS, cần bật cookie_secure.
-    ini_set('session.cookie_secure', '0');
-
+    session_cache_limiter(''); // index.php đã gửi Cache-Control: no-store
+    session_name('HOMECARE_SESSION');
+    session_set_cookie_params(['lifetime' => 0, 'path' => '/', 'httponly' => true, 'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off', 'samesite' => 'Lax']);
     session_start();
+    issueCsrfToken();
 }
 
-/**
- * Trả về thông tin user đã được xác thực trong session.
- * Chưa có session hợp lệ thì trả về null.
- */
-function currentAuthenticatedUser(): ?array
+// Token CSRF theo phiên; cookie XSRF-TOKEN đọc được để client đọc lại (double-submit), không phải cookie xác thực.
+function issueCsrfToken(bool $rotate = false): void
 {
-    startAppSession();
-
-    $userId = $_SESSION['user_id'] ?? null;
-
-    if (!is_numeric($userId) || (int) $userId <= 0) {
-        return null;
+    if ($rotate || empty($_SESSION['csrfToken'])) $_SESSION['csrfToken'] = bin2hex(random_bytes(32));
+    if (($_COOKIE['XSRF-TOKEN'] ?? '') !== $_SESSION['csrfToken'] && !headers_sent()) {
+        setcookie('XSRF-TOKEN', $_SESSION['csrfToken'], ['path' => '/', 'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off', 'samesite' => 'Lax']);
     }
-
-    $stmt = db()->prepare(
-        'SELECT id, full_name, email, role, status
-         FROM users
-         WHERE id = :id AND is_deleted = 0
-         LIMIT 1'
-    );
-
-    $stmt->execute(['id' => (int) $userId]);
-    $user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$user || $user['status'] !== 'ACTIVE') {
-        $_SESSION = [];
-        session_destroy();
-        return null;
-    }
-
-    return $user;
 }
 
-/**
- * Yêu cầu người dùng đã đăng nhập.
- */
-function requireAuthenticatedUser(): array
+// Principal của request hiện tại; index.php đã đối chiếu phiên với MySQL trước khi dispatch.
+function currentPrincipal(): ?array
 {
-    $user = currentAuthenticatedUser();
-
-    if ($user === null) {
-        http_response_code(401);
-        echo json_encode([
-            'success' => false,
-            'message' => 'Vui lòng đăng nhập.'
-        ], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-    return $user;
+    return $_SESSION['principal'] ?? null;
 }
 
 }

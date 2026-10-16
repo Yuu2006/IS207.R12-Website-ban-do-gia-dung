@@ -33,6 +33,8 @@ Chạy giao diện: `npm run dev`. Các bước nghiệm thu trên trình duyệ
 
 Chưa kiểm chứng trực tiếp animation/mobile/click chuyển route trên trình duyệt: Browser trong phiên làm việc không có kết nối. Kết quả SSR không được coi là thay thế kiểm tra trực quan hoặc end-to-end.
 
+> **Cập nhật tích hợp 16/10/2026 (Tuấn Vũ):** phiên khách/nhân viên giờ do auth MySQL cấp (`/auth/me`, `/auth/login`, `/auth/staff/login`, `/auth/logout`); các endpoint dự kiến `/auth/customer/session|logout` và OTP không còn dùng. `CustomerAuthContext` chỉ là adapter trên `AuthProvider`. Order mock trong Vite dev nhận user thật (ID số), nên fixture của `preview:nguyen.minh@example.com` không hiện cho tài khoản demo — đúng quy tắc chủ sở hữu. `/sales/orders` cho SALES và ADMIN, khớp role guard PHP.
+
 ## Thiết kế dữ liệu đề xuất — chưa phải migration áp dụng
 
 | Bảng | Trường và ràng buộc chính |

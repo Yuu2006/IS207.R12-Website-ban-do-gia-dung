@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:orders": "node --test tests/customer-orders.test.js tests/order-state.test.js tests/order-service.test.js"
+    "test": "node --test tests/account-validation.test.js tests/customer-orders.test.js tests/order-state.test.js tests/order-service.test.js"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

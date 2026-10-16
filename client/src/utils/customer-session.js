@@ -12,16 +12,3 @@ export function customerReturnPath(path) {
     ? path
     : '/orders';
 }
-
-// Phiên UI chỉ dùng trong development, hết hạn hoặc dữ liệu lỗi đều không được khôi phục.
-export function parsePreviewSession(value, now = Date.now()) {
-  try {
-    const session = JSON.parse(value);
-    return session?.mode === 'preview' && isCustomerUser(session.user) &&
-      typeof session.user.id === 'string' && session.user.id.startsWith('preview:') && Number.isFinite(session.expiresAt) && session.expiresAt > now
-      ? session
-      : null;
-  } catch {
-    return null;
-  }
-}

@@ -68,6 +68,14 @@ Ví dụ: `feature/product-filter`, `feature/vnpay-payment`, `feature/repair-tra
 1. Copy `.env.example` thành `.env`.
 2. Chạy `docker compose up -d --build`.
 3. Frontend: `cd client && npm install && npm run dev`.
-4. Database mới: baseline thực tế là `database/schema_database.sql`; migration đơn hàng `server/db/migrations/008_order_runtime.sql` chạy sau baseline, một lần và có review/backup. Không import lại baseline hoặc reset volume trên database dùng chung. Xem [hướng dẫn database](server/db/README.md).
+4. Database mới: áp baseline `database/schema_database.sql`, rồi migration/seed theo thứ tự trong [hướng dẫn database](server/db/README.md), một lần và có review/backup. Không import lại baseline hoặc reset volume trên database dùng chung.
 
-Hiện trạng đơn hàng và checkout ngày 08/10/2026, kết quả test và mapping còn chờ: [review Task 3](docs/plan/TASK-3-ORDER-UI.md#review-ngày-08102026--tuần-2-task-13-và-14). `ORDER_STORAGE_MODE` mặc định disabled; bật MySQL không đồng nghĩa auth/giỏ/voucher/kho production đã tích hợp.
+Hiện trạng đơn hàng và checkout ngày 08/10/2026, kết quả test và mapping còn chờ: [review Task 3](docs/plan/TASK-3-ORDER-UI.md#review-ngày-08102026--tuần-2-task-13-và-14). `ORDER_STORAGE_MODE` mặc định disabled; bật MySQL không đồng nghĩa giỏ/voucher/kho production đã tích hợp.
+
+## Auth, hồ sơ và địa chỉ (CUS-01..05)
+
+Auth chạy thật trên MySQL qua PHP session (cookie HttpOnly `HOMECARE_SESSION` + CSRF). CUSTOMER đăng ký/đăng nhập tại `/login`, `/register` bằng email + mật khẩu; quên mật khẩu tại `/forgot-password` (mã dùng một lần hiển thị trên trang vì chưa có email). ADMIN, SALES, WAREHOUSE đăng nhập tại `/internal/login`. Tài khoản demo từ `server/db/seeds/001_auth_demo_users.sql`: `customer@`, `admin@`, `sales@`, `warehouse@example.test`, mật khẩu chung `Demo@1234567890!`.
+
+Sau đăng nhập có shell/menu và route guard theo bốn role, trang `/profile` (sửa tên/điện thoại/ngày sinh, đổi mật khẩu); CUSTOMER có `/addresses` với thêm/sửa/xóa và địa chỉ mặc định. Trang đơn hàng trong Vite dev vẫn dùng order mock của Tấn Vĩ (`VITE_ORDER_API_MODE=http` để gọi API thật).
+
+Kiểm thử: `cd client && npm test && npm run build`. Backend auth trên MySQL thật: xem [Task 1/9 — Auth/Profile](docs/plan/TASK-1-AUTH-PROFILE.md). Contract: `docs/api/AUTH-PROFILE.md`.

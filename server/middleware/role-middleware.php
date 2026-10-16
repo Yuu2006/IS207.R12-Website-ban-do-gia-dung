@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-// Order API guard (Tấn Vĩ) dùng namespace; catalog/auth guard dùng global scope.
+// Order API guard (Tấn Vĩ) dùng namespace; auth/hồ sơ/catalog dùng global scope.
 namespace HomeCare\OrderApi {
 
 // Bốn role cố định; SYSTEM chỉ là nguồn audit nội bộ, không phải role client.
@@ -19,34 +19,27 @@ namespace {
 
 require_once __DIR__ . '/auth-middleware.php';
 
-/**
- * Yêu cầu người dùng đã đăng nhập và có một trong các role cho phép.
- *
- * Ví dụ:
- * requireRole(['ADMIN']);
- */
-function requireRole(array $allowedRoles): array
+const AUTH_ROLES = ['CUSTOMER', 'ADMIN', 'SALES', 'WAREHOUSE'];
+
+// Allowlist cố định, từ chối role lạ và không cho ADMIN tự vượt mọi quyền.
+function requireRole(?array $principal, array $allowedRoles): array
 {
-    $user = requireAuthenticatedUser();
-
-    if (!in_array($user['role'], $allowedRoles, true)) {
-        http_response_code(403);
-        echo json_encode([
-            'success' => false,
-            'message' => 'Bạn không có quyền thực hiện thao tác này.'
-        ], JSON_UNESCAPED_UNICODE);
-        exit;
+    $principal = requirePrincipal($principal);
+    if (!in_array($principal['role'] ?? null, AUTH_ROLES, true) || !in_array($principal['role'], $allowedRoles, true)) {
+        throw new ApiException('Bạn không có quyền thực hiện thao tác này.', 403);
     }
-
-    return $user;
+    return $principal;
 }
 
-/**
- * Chỉ cho phép ADMIN quản lý catalog.
- */
+// Guard cho route catalog/kho dạng procedural; lỗi đi qua ApiException để index trả JSON 401/403.
+function requireSessionRole(array $allowedRoles): array
+{
+    return requireRole(currentPrincipal(), $allowedRoles);
+}
+
 function requireAdmin(): array
 {
-    return requireRole(['ADMIN']);
+    return requireSessionRole(['ADMIN']);
 }
 
 }
