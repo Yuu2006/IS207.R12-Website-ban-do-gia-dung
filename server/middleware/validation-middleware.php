@@ -241,20 +241,30 @@ function validateRegistration(array $input): array
 // Email đăng nhập không đổi qua PATCH (cần xác minh riêng theo CUS-04).
 function validateProfile(array $input, array $current): array
 {
-    onlyFields($input, ['fullName', 'phone', 'birthDate']);
+    onlyFields($input, ['fullName', 'phone', 'birthDate', 'avatarUrl']);
     $values = array_merge($current, $input);
     $errors = [];
     $result = [
         'fullName' => textValue($values['fullName'], 'fullName', 150, true, $errors),
         'phone' => phoneValue($values['phone'], 'phone', false, $errors),
         'birthDate' => textValue($values['birthDate'], 'birthDate', 10, false, $errors),
+        'avatarUrl' => textValue($values['avatarUrl'] ?? '', 'avatarUrl', 500, false, $errors),
     ];
+    // Ảnh đại diện chỉ nhận file do /api/uploads/images (type=avatars) sinh ra, không nhận URL ngoài.
+    if ($result['avatarUrl'] !== '' && !uploadedImageUrl($result['avatarUrl'], 'avatars')) $errors['avatarUrl'] = 'Ảnh đại diện phải được tải lên qua hệ thống.';
     if ($result['birthDate'] !== '') {
         $date = DateTimeImmutable::createFromFormat('!Y-m-d', $result['birthDate']);
         if (!$date || $date->format('Y-m-d') !== $result['birthDate'] || $date > new DateTimeImmutable('today') || $date->format('Y') < 1900) $errors['birthDate'] = 'Ngày sinh chưa hợp lệ.';
     }
     if ($errors) throw new ApiException('Hãy kiểm tra thông tin hồ sơ.', 422, $errors);
     return $result;
+}
+
+// URL http(s) trỏ tới ảnh tên ngẫu nhiên trong uploads/<folder>, đúng định dạng upload-controller tạo ra.
+function uploadedImageUrl(mixed $url, string $folder): bool
+{
+    if (!is_string($url) || strlen($url) > 500 || !in_array(parse_url($url, PHP_URL_SCHEME), ['http', 'https'], true)) return false;
+    return (bool) preg_match('#^/uploads/' . $folder . '/[a-f0-9]{32}\.(jpg|png|webp)$#', (string) parse_url($url, PHP_URL_PATH));
 }
 
 function validateAddress(array $input, array $current = []): array
