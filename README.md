@@ -68,4 +68,6 @@ Ví dụ: `feature/product-filter`, `feature/vnpay-payment`, `feature/repair-tra
 1. Copy `.env.example` thành `.env`.
 2. Chạy `docker compose up -d --build`.
 3. Frontend: `cd client && npm install && npm run dev`.
-4. Import schema/seed trong `server/db` nếu cần.
+4. Database mới: baseline thực tế là `database/schema_database.sql`; migration đơn hàng `server/db/migrations/008_order_runtime.sql` chạy sau baseline, một lần và có review/backup. Không import lại baseline hoặc reset volume trên database dùng chung. Xem [hướng dẫn database](server/db/README.md).
+
+Hiện trạng đơn hàng và checkout ngày 08/10/2026, kết quả test và mapping còn chờ: [review Task 3](docs/plan/TASK-3-ORDER-UI.md#review-ngày-08102026--tuần-2-task-13-và-14). `ORDER_STORAGE_MODE` mặc định disabled; bật MySQL không đồng nghĩa auth/giỏ/voucher/kho production đã tích hợp.
