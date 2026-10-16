@@ -17,15 +17,19 @@
 .hc-mobile-menu a { color: #0f5f73; }
 .hc-app { min-height: 100vh; background: #f7f8fa; color: #1f2937; font-family: 'Be Vietnam Pro', 'Segoe UI', sans-serif; }
 .hc-app-body { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 36px; max-width: 1360px; margin: auto; padding: 34px 28px 60px; min-height: calc(100vh - 140px); }
-.hc-sidebar { min-width: 0; align-self: start; }
-.hc-role { display: flex; align-items: center; gap: 10px; padding: 14px 8px 22px; color: #0f5f73; }
+.hc-sidebar { min-width: 0; align-self: start; border-right: 1px solid #e5e7eb; padding-right: 22px; }
+.hc-role { display: flex; align-items: center; gap: 12px; padding: 14px 8px 22px; color: #0f5f73; }
+.hc-role-icon { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #0f5f73, #2a8aa3); color: #fff; }
 .hc-role small { display: block; color: #667085; font-size: 9px; letter-spacing: .08em; margin-bottom: 5px; }
 .hc-role strong { font-size: 14px; }
 .hc-sidebar nav { display: grid; gap: 5px; }
 .hc-sidebar nav a { padding: 13px 14px; text-decoration: none; color: #667085; border-radius: 6px; font-size: 13px; font-weight: 500; }
 .hc-sidebar nav a.active { color: #0f5f73; background: #e7f1f3; font-weight: 700; }
 .hc-sidebar nav a:hover { color: #0f5f73; background: #eef3f5; }
-.hc-logout { display: flex; align-items: center; gap: 9px; margin: 26px 12px 0; padding: 10px 0; border: 0; background: none; color: #667085; font-size: 13px; }
+.hc-logout { display: flex; align-items: center; gap: 9px; margin: 26px 0 0; padding: 11px 14px; border: 0; border-radius: 6px; background: none; color: #b42318; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: background-color .15s ease; }
+.hc-logout:hover:not(:disabled), .hc-logout:focus-visible { background: rgba(180, 35, 24, .12); outline: none; }
+.hc-logout:focus-visible { box-shadow: 0 0 0 2px #b42318; }
+.hc-logout:disabled { opacity: .6; cursor: default; }
 .hc-main { min-width: 0; }
 .hc-demo-banner { padding: 11px 15px; margin-bottom: 28px; border: 1px solid #d5e6eb; background: #edf5f7; color: #0f5f73; font-size: 12px; border-radius: 6px; line-height: 1.8; }
 .hc-page-heading { margin-bottom: 26px; }
@@ -80,10 +84,13 @@
 .hc-empty { text-align: center; padding: 40px 24px; color: #667085; }
 .hc-empty svg { margin: 0 auto 14px; color: #0f5f73; }
 .hc-shortcuts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
-.hc-shortcuts a { display: grid; grid-template-columns: minmax(0, 1fr) 20px; gap: 15px; padding: 25px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; text-decoration: none; color: #0f5f73; }
-.hc-shortcuts a strong { font-size: 14px; }
-.hc-shortcuts a small { grid-column: 1 / -1; color: #667085; font-size: 11px; }
-.hc-app-footer { padding: 20px; text-align: center; color: #667085; font-size: 11px; border-top: 1px solid #e5e7eb; }
+.hc-shortcuts a { display: grid; grid-template-columns: 52px minmax(0, 1fr) 18px; align-items: center; gap: 16px; padding: 18px 20px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; text-decoration: none; color: #0f5f73; transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+.hc-shortcuts a:hover, .hc-shortcuts a:focus-visible { transform: translateY(-2px); border-color: #0f5f73; box-shadow: 0 8px 20px rgba(15, 95, 115, .12); outline: none; }
+.hc-shortcut-icon { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 12px; background: #e7f1f3; color: #0f5f73; }
+.hc-shortcut-text { display: grid; gap: 4px; min-width: 0; }
+.hc-shortcut-text strong { font-size: 15px; }
+.hc-shortcut-text small { color: #667085; font-size: 12px; }
+.hc-shortcuts a > svg { color: #98a2b3; }
 .hc-status { padding: 40px 24px; text-align: center; font-family: 'Be Vietnam Pro', 'Segoe UI', sans-serif; }
 .hc-status h1 { font-size: 26px; font-weight: 700; }
 .hc-status a { color: #0f5f73; text-decoration: underline; }
@@ -126,3 +133,25 @@
 .hc-image-card { display: grid; gap: 8px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
 .hc-image-card img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; }
 .hc-image-card input { width: 70px; height: 34px; padding: 4px 8px; border: 1px solid #d0d5dd; border-radius: 6px; }
+/* Nhân viên: không có thanh điều hướng cửa hàng; sidebar cao hết màn hình, đăng xuất ghim dưới cùng bên trái. */
+/* Desktop: thanh bên sát mép trái, cao hết màn hình, nền khác nội dung. */
+@media (min-width: 761px) {
+  .hc-app--staff .hc-app-body { max-width: none; margin: 0; padding: 0; gap: 0; grid-template-columns: 240px minmax(0, 1fr); min-height: 100vh; }
+  .hc-app--staff .hc-sidebar { position: sticky; top: 0; display: flex; flex-direction: column; align-self: start; height: 100vh; padding: 22px 12px 18px; background: #e4eff2; border-right: 1px solid #c9dde3; }
+  .hc-app--staff .hc-sidebar nav { overflow-y: auto; }
+  .hc-app--staff .hc-sidebar nav a:hover { background: rgba(255, 255, 255, .6); }
+  .hc-app--staff .hc-sidebar nav a.active { background: #fff; box-shadow: 0 1px 3px rgba(15, 95, 115, .15); }
+  .hc-app--staff .hc-main { padding: 34px 40px 60px; }
+}
+.hc-app--staff .hc-logout { margin-top: auto; }
+@media (max-width: 760px) { .hc-app--staff .hc-sidebar { position: static; height: auto; } .hc-app--staff .hc-logout { margin: 6px 0 0; } .hc-shortcuts a { grid-template-columns: 48px minmax(0, 1fr) 18px; } .hc-shortcut-icon { width: 48px; height: 48px; } }
+/* Hồ sơ: ô chỉ đọc, hộp thoại đổi mật khẩu nổi (dialog modal). */
+.hc-field input[readonly] { background: #f7f8fa; color: #475467; cursor: default; }
+.hc-field input[readonly][type="date"] { pointer-events: none; }
+.hc-profile-head { display: flex; align-items: center; gap: 18px; }
+.hc-profile-head .hc-avatar { margin: 0; }
+.hc-dialog-actions { display: inline-flex; flex-wrap: wrap; gap: 10px; }
+.hc-dialog { margin: auto; width: min(440px, calc(100vw - 32px)); padding: 26px; border: 0; border-radius: 12px; color: #1f2937; box-shadow: 0 24px 60px rgba(16, 24, 40, .28); }
+.hc-dialog h2 { font-size: 18px; font-weight: 700; }
+.hc-dialog::backdrop { background: rgba(16, 24, 40, .45); }
+@media (max-width: 760px) { .hc-sidebar { border-right: 0; padding-right: 0; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; } }
