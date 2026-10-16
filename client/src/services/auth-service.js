@@ -9,8 +9,6 @@ export const changePassword = values => post('/auth/password/change', values);
 export const requestPasswordReset = contact => post('/auth/password-reset/request', { contact });
 export const verifyPasswordReset = values => post('/auth/password-reset/verify', values);
 export const confirmPasswordReset = values => post('/auth/password-reset/confirm', values);
-export const requestEmailChange = values => post('/auth/email-change/request', values);
-export const confirmEmailChange = values => post('/auth/email-change/confirm', values);
 export const logout = () => post('/auth/logout');
 
 // Tài khoản giả từ server/db/seeds/001_auth_demo_users.sql, chỉ gợi ý khi chạy Vite dev.
