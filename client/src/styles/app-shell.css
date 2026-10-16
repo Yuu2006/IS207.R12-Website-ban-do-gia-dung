@@ -97,3 +97,22 @@
 @media (max-width: 1000px) { .hc-app-body { grid-template-columns: 190px minmax(0, 1fr); gap: 22px; padding-inline: 20px; } .hc-profile-grid, .hc-address-layout--editing { grid-template-columns: 1fr; } .hc-shop-nav { gap: 15px; } }
 @media (max-width: 760px) { .hc-header-inner { min-height: 67px; padding: 12px 18px; } .hc-shop-nav { display: none; } .hc-header-actions { margin-left: auto; } .hc-menu-toggle { display: block; } .hc-header-actions a span { display: none; } .hc-app-body { display: block; padding: 18px 16px 40px; } .hc-role { padding: 0 0 12px; } .hc-role small { display: none; } .hc-sidebar { margin-bottom: 23px; } .hc-sidebar nav { display: flex; overflow-x: auto; padding-bottom: 5px; } .hc-sidebar nav a { white-space: nowrap; padding: 10px 12px; } .hc-logout { margin: 6px 4px 0 auto; } .hc-demo-banner { margin-bottom: 22px; } .hc-card { padding: 22px; } .hc-heading-actions { align-items: flex-start; flex-direction: column; } .hc-form-footer { align-items: stretch; flex-direction: column; } .hc-form-row { grid-template-columns: 1fr; } .hc-shortcuts { grid-template-columns: 1fr; } .hc-field input { font-size: 16px; } }
 @media (prefers-reduced-motion: reduce) { .hc-app * { scroll-behavior: auto; } }
+/* Quản trị catalog/kho (task 12): bảng cuộn ngang trên mobile, form lưới 2 cột. */
+.hc-tabs { display: flex; gap: 6px; margin-bottom: 18px; overflow-x: auto; border-bottom: 1px solid #e5e7eb; }
+.hc-tabs button { padding: 11px 14px; border: 0; border-bottom: 2px solid transparent; background: none; color: #667085; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.hc-tabs button.is-active { color: #0f5f73; border-bottom-color: #0f5f73; }
+.hc-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
+.hc-inline-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; align-items: end; }
+.hc-subform { padding: 18px; border: 1px solid #d5e6eb; border-radius: 8px; background: #f8fbfc; }
+.hc-subform h3 { margin: 0; font-size: 15px; }
+.hc-field select, .hc-field textarea { width: 100%; padding: 10px 13px; border: 1px solid #d0d5dd; border-radius: 6px; background: #fff; font: inherit; font-size: 13px; }
+.hc-field select { height: 45px; }
+.hc-check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.hc-table-wrap { overflow-x: auto; }
+.hc-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.hc-table th, .hc-table td { padding: 10px 8px; border-bottom: 1px solid #eef0f3; text-align: left; vertical-align: middle; }
+.hc-table th { color: #667085; font-weight: 600; white-space: nowrap; }
+.hc-row-actions { display: flex; gap: 14px; white-space: nowrap; }
+.hc-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid #e5e7eb; }
+.hc-badge--warn { background: #fff4e5; color: #b54708; }
+@media (max-width: 760px) { .hc-form-grid { grid-template-columns: 1fr; } .hc-table td { white-space: nowrap; } }

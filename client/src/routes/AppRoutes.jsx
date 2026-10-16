@@ -10,6 +10,9 @@ import OrderWorkspace from '../pages/customer/OrderWorkspace.jsx';
 import ProfilePage from '../pages/customer/ProfilePage.jsx';
 import AddressesPage from '../pages/customer/AddressesPage.jsx';
 import WorkspacePage from '../pages/auth/WorkspacePage.jsx';
+import CatalogAdminPage from '../pages/admin/CatalogAdminPage.jsx';
+import InventoryPage from '../pages/warehouse/InventoryPage.jsx';
+import InventoryHistoryPage from '../pages/warehouse/InventoryHistoryPage.jsx';
 import AppShell from '../layouts/AppShell.jsx';
 import ProtectedRoute from './ProtectedRoute.jsx';
 
@@ -27,9 +30,10 @@ export default function AppRoutes() {
     <Route element={<ProtectedRoute />}><Route element={<AppShell />}>
       <Route path="/profile" element={<ProfilePage />} />
       <Route element={<ProtectedRoute roles={['CUSTOMER']} />}><Route path="/customer" element={<WorkspacePage />} /><Route path="/addresses" element={<AddressesPage />} /></Route>
-      <Route element={<ProtectedRoute roles={['ADMIN']} />}><Route path="/admin" element={<WorkspacePage />} />{['products', 'users', 'vouchers', 'reports'].map(name => <Route key={name} path={'/admin/' + name} element={<WorkspacePage />} />)}</Route>
+      <Route element={<ProtectedRoute roles={['ADMIN']} />}><Route path="/admin" element={<WorkspacePage />} /><Route path="/admin/products" element={<CatalogAdminPage />} />{['users', 'vouchers', 'reports'].map(name => <Route key={name} path={'/admin/' + name} element={<WorkspacePage />} />)}</Route>
       <Route element={<ProtectedRoute roles={['SALES']} />}><Route path="/sales" element={<WorkspacePage />} /><Route path="/sales/returns" element={<WorkspacePage />} /></Route>
-      <Route element={<ProtectedRoute roles={['WAREHOUSE']} />}><Route path="/warehouse" element={<WorkspacePage />} /><Route path="/warehouse/inventory" element={<WorkspacePage />} /><Route path="/warehouse/history" element={<WorkspacePage />} /></Route>
+      <Route element={<ProtectedRoute roles={['WAREHOUSE']} />}><Route path="/warehouse" element={<WorkspacePage />} /></Route>
+      <Route element={<ProtectedRoute roles={['WAREHOUSE', 'ADMIN']} />}><Route path="/warehouse/inventory" element={<InventoryPage />} /><Route path="/warehouse/history" element={<InventoryHistoryPage />} /></Route>
     </Route></Route>
     <Route path="*" element={<div className="hc-status"><h1>Không tìm thấy trang</h1><Link to="/">Về trang chủ</Link></div>} />
   </Routes>;
