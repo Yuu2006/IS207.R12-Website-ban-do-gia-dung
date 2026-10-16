@@ -28,16 +28,17 @@ Kiểm chứng sau tích hợp (PHP 8.3.35 + MySQL 8.4.11 tạm): `php -l` toàn
 1. ✅ *Cao* — Tự làm đăng nhập nhân viên riêng (`$_SESSION['user_id']`, `/auth/staff/*`, `auth-model.php`) trùng phần TV1 và cho cả role `TECHNICIAN` (ngoài MVP). Đã thay bằng phiên chung; `requireAdmin()` giữ nguyên tên nhưng đọc principal chung và ném `ApiException` (index trả JSON 401/403). `auth-model.php` bị gỡ.
 2. ✅ *Cao* — Các thao tác ghi dùng cookie nhưng không chống CSRF. Router chung bắt buộc `X-CSRF-Token` cho mọi POST/PUT/DELETE `/api/*` (gồm upload).
 3. ✅ *Trung bình* — `docker-compose.yml` đổi cổng API 8080 → 8081 trong khi client/`.env.example` vẫn 8080. Đã trả về 8080.
-4. *Trung bình* — WH-03/04: `inventory_movements.performed_by` không được ghi, lý do (`note`) không bắt buộc, chỉ ADMIN điều chỉnh được (WAREHOUSE không), và `GET /api/inventory`, `/api/inventory/movements` công khai cho người chưa đăng nhập. → Sửa trong task 12 (TV1).
-5. *Trung bình* — `createProduct` ghi `stock_quantity` ban đầu trực tiếp, không tạo movement → vi phạm "điều chỉnh kho luôn có log". → Task 12: SKU mới bắt đầu 0, nhập kho qua movement.
+4. ✅ *Trung bình* — WH-03/04: `inventory_movements.performed_by` không được ghi, lý do (`note`) không bắt buộc, chỉ ADMIN điều chỉnh được (WAREHOUSE không), và `GET /api/inventory`, `/api/inventory/movements` công khai cho người chưa đăng nhập. → Đã sửa trong task 12 (`dabafe5`).
+5. ✅ *Trung bình* — `createProduct` ghi `stock_quantity` ban đầu trực tiếp, không tạo movement → vi phạm "điều chỉnh kho luôn có log". → Đã sửa (`dabafe5`): SKU mới bắt đầu 0, nhập kho qua movement.
 6. *Trung bình* — `GET /api/products` công khai trả cả sản phẩm `is_active = 0` và nhận `is_active` từ client; CUS-06 yêu cầu storefront chỉ hiện bản ghi đang hoạt động. Đề xuất: mặc định lọc active cho khách, chỉ ADMIN xem tất cả (task 11 của Lan Chi).
 7. *Trung bình* — SQL nằm trực tiếp trong controller (inventory, movement, category, brand, banner…), lệch phân lớp AGENTS §5 (controller → service → model). Không refactor trong đợt tích hợp; nên chuyển dần khi sửa từng module.
 8. *Thấp* — Giá ép `(float)` khi tạo SKU; nên kiểm tra chuỗi số thập phân và lưu DECIMAL, tránh float cho tiền.
-9. *Thấp* — Chưa có API thêm/sửa SKU, giá khuyến mãi, định nghĩa thuộc tính theo danh mục, ảnh sản phẩm (PRD-04/05/06, ADM-PRO-03); banner admin chỉ thấy banner đang hiển thị. → Task 12 bổ sung.
+9. ✅ *Thấp* — Chưa có API thêm/sửa SKU, giá khuyến mãi, định nghĩa thuộc tính theo danh mục, ảnh sản phẩm (PRD-04/05/06, ADM-PRO-03); banner admin chỉ thấy banner đang hiển thị. → Task 12 bổ sung (`72187eb`).
 10. *Thấp* — Upload trả `image_url` tương đối (`/uploads/...`) nhưng banner/brand yêu cầu URL http(s) tuyệt đối → client phải ghép `VITE_API_URL`. Nên thống nhất một dạng.
+12. ✅ *Cao* — `GET /api/products?keyword=` lỗi 500: dùng lại placeholder `:keyword` hai lần, vỡ khi `config/database.php` bật native prepared statements (thay đổi của Vĩ). Đã sửa (`72187eb`); khi viết SQL mới không dùng lại tên placeholder.
 11. *Thấp* — Seed demo dùng danh mục nồi chiên/làm sạch/lọc nước, tiếng Việt không dấu; nghiệm thu cần 10–20 sản phẩm mỗi nhóm tủ lạnh/máy giặt/máy lạnh. Migration số 008 trùng với `008_order_runtime.sql`.
 
-**Kết luận**: Approve có điều kiện — đã merge để tích hợp; mục 4–6, 9 do task 12 xử lý, mục 6–8 nhờ Lan Chi xem trong task 11.
+**Kết luận**: Approve có điều kiện — đã merge để tích hợp; mục 4, 5, 9, 12 đã xử lý trong task 12; mục 6–8, 10–11 nhờ Lan Chi xem trong task 11/28 (seed 003 đã có 30 sản phẩm tủ lạnh/máy giặt/máy lạnh).
 
 ---
 
