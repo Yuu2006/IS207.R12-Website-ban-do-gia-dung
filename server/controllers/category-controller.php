@@ -17,12 +17,13 @@ function listCategories(): void
                 parent_id,
                 name,
                 slug,
+                sort_order,
                 is_active,
                 created_at,
                 updated_at
             FROM categories
             WHERE COALESCE(is_deleted, 0) = 0
-            ORDER BY id ASC
+            ORDER BY sort_order ASC, id ASC
         ";
 
         $stmt = $pdo->query($sql);
@@ -61,6 +62,7 @@ function showCategory(int $id): void
                 parent_id,
                 name,
                 slug,
+                sort_order,
                 is_active,
                 created_at,
                 updated_at
@@ -154,9 +156,21 @@ function readCategoryPayload(): ?array
         return null;
     }
 
+    // Thứ tự hiển thị (nhỏ đứng trước); mặc định 0.
+    $sortOrder = filter_var($data['sort_order'] ?? 0, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => 100000]]);
+    if ($sortOrder === false) {
+        http_response_code(422);
+        echo json_encode([
+            'success' => false,
+            'message' => 'sort_order là số nguyên từ 0 đến 100000.'
+        ], JSON_UNESCAPED_UNICODE);
+        return null;
+    }
+
     return [
         'name' => $name,
         'slug' => $slug,
+        'sort_order' => $sortOrder,
         'parent_id' => ($parentId === null || $parentId === '')
             ? null : (int) $parentId,
         'is_active' => (int) $isActive
@@ -179,7 +193,7 @@ function createCategory(): void
         if ($data['parent_id'] !== null) {
             $stmt = $pdo->prepare("
                 SELECT id FROM categories
-                WHERE id = :id AND COALESCE(is_deleted, 0) = 0
+                WHERE id = :id AND COALESCE(is_deleted, 0) = 0 AND parent_id IS NULL
             ");
             $stmt->execute(['id' => $data['parent_id']]);
 
@@ -187,15 +201,15 @@ function createCategory(): void
                 http_response_code(422);
                 echo json_encode([
                     'success' => false,
-                    'message' => 'Danh mục cha không tồn tại hoặc đã bị xóa.'
+                    'message' => 'Danh mục cha phải là danh mục gốc đang tồn tại (tối đa hai cấp).'
                 ], JSON_UNESCAPED_UNICODE);
                 return;
             }
         }
 
         $stmt = $pdo->prepare("
-            INSERT INTO categories (parent_id, name, slug, is_active, is_deleted)
-            VALUES (:parent_id, :name, :slug, :is_active, 0)
+            INSERT INTO categories (parent_id, name, slug, sort_order, is_active, is_deleted)
+            VALUES (:parent_id, :name, :slug, :sort_order, :is_active, 0)
         ");
         $stmt->execute($data);
 
@@ -272,7 +286,7 @@ function updateCategory(int $id): void
         if ($data['parent_id'] !== null) {
             $stmt = $pdo->prepare("
                 SELECT id FROM categories
-                WHERE id = :parent_id AND COALESCE(is_deleted, 0) = 0
+                WHERE id = :parent_id AND COALESCE(is_deleted, 0) = 0 AND parent_id IS NULL
             ");
             $stmt->execute(['parent_id' => $data['parent_id']]);
 
@@ -280,7 +294,24 @@ function updateCategory(int $id): void
                 http_response_code(422);
                 echo json_encode([
                     'success' => false,
-                    'message' => 'Danh mục cha không tồn tại hoặc đã bị xóa.'
+                    'message' => 'Danh mục cha phải là danh mục gốc đang tồn tại (tối đa hai cấp).'
+                ], JSON_UNESCAPED_UNICODE);
+                return;
+            }
+
+            // Danh mục đang có danh mục con thì không thể trở thành cấp 2.
+            $stmt = $pdo->prepare("
+                SELECT id FROM categories
+                WHERE parent_id = :id AND COALESCE(is_deleted, 0) = 0
+                LIMIT 1
+            ");
+            $stmt->execute(['id' => $id]);
+
+            if ($stmt->fetchColumn()) {
+                http_response_code(422);
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Danh mục đang có danh mục con nên không thể đặt làm cấp 2.'
                 ], JSON_UNESCAPED_UNICODE);
                 return;
             }
@@ -317,6 +348,7 @@ function updateCategory(int $id): void
             SET parent_id = :parent_id,
                 name = :name,
                 slug = :slug,
+                sort_order = :sort_order,
                 is_active = :is_active
             WHERE id = :id AND COALESCE(is_deleted, 0) = 0
         ");

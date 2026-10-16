@@ -22,7 +22,10 @@ function getProducts(array $filters = []): array
             b.name AS brand_name,
             COALESCE(v.variant_count, 0) AS variant_count,
             COALESCE(v.min_price, 0) AS min_price,
-            COALESCE(v.total_stock, 0) AS total_stock
+            COALESCE(v.total_stock, 0) AS total_stock,
+            (SELECT pi.image_url FROM product_images pi
+             WHERE pi.product_id = p.id AND pi.is_primary = 1 AND pi.is_deleted = 0
+             ORDER BY pi.id DESC LIMIT 1) AS primary_image
         FROM products p
         INNER JOIN categories c ON c.id = p.category_id
         INNER JOIN brands b ON b.id = p.brand_id
@@ -51,8 +54,9 @@ function getProducts(array $filters = []): array
     $params = [];
 
     if (!empty($filters['keyword'])) {
-        $sql .= " AND (p.name LIKE :keyword OR p.product_code LIKE :keyword)";
-        $params['keyword'] = '%' . $filters['keyword'] . '%';
+        // PDO native prepare (config/database.php) không cho dùng lại một placeholder hai lần.
+        $sql .= " AND (p.name LIKE :keyword_name OR p.product_code LIKE :keyword_code)";
+        $params['keyword_name'] = $params['keyword_code'] = '%' . $filters['keyword'] . '%';
     }
 
     if (!empty($filters['category_id'])) {
@@ -130,6 +134,15 @@ ORDER BY id
 
     $stmt->execute(['product_id' => $id]);
     $product['variants'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $stmt = $pdo->prepare("
+        SELECT id, image_url, is_primary, sort_order
+        FROM product_images
+        WHERE product_id = :product_id AND is_deleted = 0
+        ORDER BY is_primary DESC, sort_order, id
+    ");
+    $stmt->execute(['product_id' => $id]);
+    $product['images'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     return $product;
 }

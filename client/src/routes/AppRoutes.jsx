@@ -1,26 +1,40 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Outlet, Navigate, Link } from 'react-router-dom';
+import Header from '../components/Header.jsx';
+import Footer from '../components/Footer.jsx';
+import HomePage from '../pages/public/HomePage.jsx';
+import ProductListPage from '../pages/public/ProductListPage.jsx';
+import ProductDetailPage from '../pages/public/ProductDetailPage.jsx';
+import LoginForm from '../pages/login-form/LoginForm.jsx';
+import StaffLogin from '../pages/staff-login/StaffLogin.jsx';
+import OrderWorkspace from '../pages/customer/OrderWorkspace.jsx';
+import ProfilePage from '../pages/customer/ProfilePage.jsx';
+import AddressesPage from '../pages/customer/AddressesPage.jsx';
+import WorkspacePage from '../pages/auth/WorkspacePage.jsx';
+import CatalogAdminPage from '../pages/admin/CatalogAdminPage.jsx';
+import InventoryPage from '../pages/warehouse/InventoryPage.jsx';
+import InventoryHistoryPage from '../pages/warehouse/InventoryHistoryPage.jsx';
+import AppShell from '../layouts/AppShell.jsx';
+import ProtectedRoute from './ProtectedRoute.jsx';
 
-import Header from "../components/Header";
-import Footer from "../components/Footer";
+function PublicLayout() { return <><Header /><Outlet /><Footer /></>; }
 
-import HomePage from "../pages/public/HomePage";
-import ProductListPage from "../pages/public/ProductListPage";
-import ProductDetailPage from "../pages/public/ProductDetailPage";
-
+// Giữ route đã tích hợp và đặt guard theo role trước mọi workspace.
 export default function AppRoutes() {
-  return (
-    <>
-      <Header />
-
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-
-        <Route path="/products" element={<ProductListPage />} />
-
-        <Route path="/products/:id" element={<ProductDetailPage />} />
-      </Routes>
-
-      <Footer />
-    </>
-  );
+  // Trang đơn hàng tự dựng header storefront/nhân viên và CustomerRoute; tải dữ liệu qua OrderServiceProvider.
+  const orderWorkspace = <OrderWorkspace />;
+  return <Routes>
+    <Route element={<PublicLayout />}><Route path="/" element={<HomePage />} /><Route path="/products" element={<ProductListPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /></Route>
+    <Route path="/login" element={<LoginForm key="login" />} /><Route path="/register" element={<LoginForm key="register" initialScreen="register" />} /><Route path="/internal/login" element={<StaffLogin />} /><Route path="/forgot-password" element={<StaffLogin audience="customer" />} /><Route path="/internal" element={<Navigate to="/internal/login" replace />} />
+    {['/checkout', '/orders', '/orders/:orderId'].map(path => <Route key={path} path={path} element={orderWorkspace} />)}
+    <Route element={<ProtectedRoute roles={['SALES', 'ADMIN']} />}><Route path="/sales/orders" element={orderWorkspace} /></Route>
+    <Route element={<ProtectedRoute />}><Route element={<AppShell />}>
+      <Route path="/profile" element={<ProfilePage />} />
+      <Route element={<ProtectedRoute roles={['CUSTOMER']} />}><Route path="/customer" element={<WorkspacePage />} /><Route path="/addresses" element={<AddressesPage />} /></Route>
+      <Route element={<ProtectedRoute roles={['ADMIN']} />}><Route path="/admin" element={<WorkspacePage />} /><Route path="/admin/products" element={<CatalogAdminPage />} />{['users', 'vouchers', 'reports'].map(name => <Route key={name} path={'/admin/' + name} element={<WorkspacePage />} />)}</Route>
+      <Route element={<ProtectedRoute roles={['SALES']} />}><Route path="/sales" element={<WorkspacePage />} /><Route path="/sales/returns" element={<WorkspacePage />} /></Route>
+      <Route element={<ProtectedRoute roles={['WAREHOUSE']} />}><Route path="/warehouse" element={<WorkspacePage />} /></Route>
+      <Route element={<ProtectedRoute roles={['WAREHOUSE', 'ADMIN']} />}><Route path="/warehouse/inventory" element={<InventoryPage />} /><Route path="/warehouse/history" element={<InventoryHistoryPage />} /></Route>
+    </Route></Route>
+    <Route path="*" element={<div className="hc-status"><h1>Không tìm thấy trang</h1><Link to="/">Về trang chủ</Link></div>} />
+  </Routes>;
 }

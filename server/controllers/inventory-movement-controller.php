@@ -25,8 +25,11 @@ function listInventoryMovements(): void
                 im.reference_code,
                 im.note,
                 im.performed_by,
+                u.full_name AS performed_by_name,
                 im.created_at
             FROM inventory_movements im
+            LEFT JOIN users u
+                ON u.id = im.performed_by
             INNER JOIN product_variants pv
                 ON pv.id = im.variant_id
             INNER JOIN products p
@@ -61,7 +64,24 @@ function listInventoryMovements(): void
             $params['movement_type'] = $type;
         }
 
-        $sql .= " ORDER BY im.created_at DESC, im.id DESC";
+        // Phân trang phía server: page >= 1, pageSize 1–100 (mặc định 20).
+        $page = filter_var($_GET['page'] ?? 1, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 1000000]]);
+        $pageSize = filter_var($_GET['pageSize'] ?? 20, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 100]]);
+        if ($page === false || $pageSize === false) {
+            http_response_code(400);
+            echo json_encode([
+                'success' => false,
+                'message' => 'page phải từ 1, pageSize từ 1 đến 100.'
+            ], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+
+        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM ({$sql}) counted");
+        $countStmt->execute($params);
+        $totalItems = (int) $countStmt->fetchColumn();
+
+        // LIMIT/OFFSET là số nguyên đã kiểm tra ở trên.
+        $sql .= " ORDER BY im.created_at DESC, im.id DESC LIMIT {$pageSize} OFFSET " . (($page - 1) * $pageSize);
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
@@ -70,8 +90,10 @@ function listInventoryMovements(): void
         http_response_code(200);
         echo json_encode([
             'success' => true,
-            'data' => $items,
-            'total' => count($items)
+            'data' => [
+                'items' => $items,
+                'pagination' => ['page' => $page, 'pageSize' => $pageSize, 'totalItems' => $totalItems, 'totalPages' => (int) ceil($totalItems / $pageSize)]
+            ]
         ], JSON_UNESCAPED_UNICODE);
 
     } catch (Throwable $e) {
@@ -98,7 +120,7 @@ function listInventoryMovements(): void
  *   "note": "Nhap hang"
  * }
  */
-function createInventoryMovement(): void
+function createInventoryMovement(int $performedBy): void
 {
     $input = json_decode(file_get_contents('php://input'), true);
 
@@ -118,7 +140,7 @@ function createInventoryMovement(): void
         FILTER_VALIDATE_INT
     );
     $referenceCode = trim((string) ($input['reference_code'] ?? ''));
-    $note = isset($input['note']) ? trim((string) $input['note']) : null;
+    $note = trim((string) ($input['note'] ?? ''));
 
     if (
         $sku === ''
@@ -127,16 +149,17 @@ function createInventoryMovement(): void
         || $quantity === null
         || $quantity <= 0
         || $referenceCode === ''
+        || $note === ''
     ) {
         http_response_code(400);
         echo json_encode([
             'success' => false,
-            'message' => 'SKU, loại biến động, số lượng dương và mã tham chiếu là bắt buộc.'
+            'message' => 'SKU, loại biến động, số lượng dương, mã tham chiếu và lý do là bắt buộc.'
         ], JSON_UNESCAPED_UNICODE);
         return;
     }
 
-    if (strlen($referenceCode) > 100 || ($note !== null && strlen($note) > 500)) {
+    if (strlen($referenceCode) > 100 || mb_strlen($note) > 500) {
         http_response_code(400);
         echo json_encode([
             'success' => false,
@@ -218,7 +241,8 @@ function createInventoryMovement(): void
                 quantity_before,
                 quantity_after,
                 reference_code,
-                note
+                note,
+                performed_by
             ) VALUES (
                 :variant_id,
                 :movement_type,
@@ -226,7 +250,8 @@ function createInventoryMovement(): void
                 :quantity_before,
                 :quantity_after,
                 :reference_code,
-                :note
+                :note,
+                :performed_by
             )
         ");
 
@@ -237,7 +262,8 @@ function createInventoryMovement(): void
             'quantity_before' => $before,
             'quantity_after' => $after,
             'reference_code' => $referenceCode,
-            'note' => $note
+            'note' => $note,
+            'performed_by' => $performedBy
         ]);
 
         $movementId = (int) $pdo->lastInsertId();
