@@ -135,6 +135,15 @@ ORDER BY id
     $stmt->execute(['product_id' => $id]);
     $product['variants'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    $stmt = $pdo->prepare("
+        SELECT id, image_url, is_primary, sort_order
+        FROM product_images
+        WHERE product_id = :product_id AND is_deleted = 0
+        ORDER BY is_primary DESC, sort_order, id
+    ");
+    $stmt->execute(['product_id' => $id]);
+    $product['images'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
     return $product;
 }
 

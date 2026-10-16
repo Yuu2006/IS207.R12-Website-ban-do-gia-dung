@@ -20,6 +20,7 @@ function listBanners(): void
                 target_url,
                 starts_at,
                 ends_at,
+                sort_order,
                 is_active,
                 created_at,
                 updated_at
@@ -28,7 +29,7 @@ function listBanners(): void
               AND is_active = 1
               AND (starts_at IS NULL OR starts_at <= NOW())
               AND (ends_at IS NULL OR ends_at >= NOW())
-            ORDER BY id DESC
+            ORDER BY sort_order ASC, id DESC
         ";
 
         $stmt = $pdo->query($sql);
@@ -69,6 +70,7 @@ function showBanner(int $id): void
                 target_url,
                 starts_at,
                 ends_at,
+                sort_order,
                 is_active,
                 created_at,
                 updated_at
@@ -209,8 +211,20 @@ function readBannerPayload(): ?array
         return null;
     }
 
+    // Thứ tự hiển thị (nhỏ đứng trước); mặc định 0.
+    $sortOrder = filter_var($data['sort_order'] ?? 0, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => 100000]]);
+    if ($sortOrder === false) {
+        http_response_code(422);
+        echo json_encode([
+            'success' => false,
+            'message' => 'sort_order là số nguyên từ 0 đến 100000.'
+        ], JSON_UNESCAPED_UNICODE);
+        return null;
+    }
+
     return [
         'title' => $title,
+        'sort_order' => $sortOrder,
         'image_url' => $imageUrl,
         'target_url' => $targetUrl !== '' ? $targetUrl : null,
         'starts_at' => $startsAt ?: null,
@@ -233,9 +247,9 @@ function createBanner(): void
         $pdo = db();
         $stmt = $pdo->prepare("
             INSERT INTO banners
-                (title, image_url, target_url, starts_at, ends_at, is_active, is_deleted)
+                (title, image_url, target_url, starts_at, ends_at, sort_order, is_active, is_deleted)
             VALUES
-                (:title, :image_url, :target_url, :starts_at, :ends_at, :is_active, 0)
+                (:title, :image_url, :target_url, :starts_at, :ends_at, :sort_order, :is_active, 0)
         ");
         $stmt->execute($data);
 
@@ -276,6 +290,7 @@ function updateBanner(int $id): void
                 target_url = :target_url,
                 starts_at = :starts_at,
                 ends_at = :ends_at,
+                sort_order = :sort_order,
                 is_active = :is_active
             WHERE id = :id
               AND COALESCE(is_deleted, 0) = 0
