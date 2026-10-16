@@ -1,28 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { Client as BaseClient, password } from './api-test-client.mjs';
 
 // Chạy với API PHP + MySQL đã áp baseline, migration 010 và seed demo. Test tạo tài khoản mới mỗi lần chạy:
 // chỉ dùng database thử nghiệm, không chạy trên dữ liệu thật.
-const baseUrl = process.env.API_TEST_URL || 'http://127.0.0.1:8080';
-const password = 'Demo@1234567890!';
 const unique = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 let phoneSeq = 0;
 const freshPhone = () => `09${unique.slice(-7)}${phoneSeq++}`.slice(0, 10);
 
-// Mỗi Client giữ cookie jar riêng để kiểm tra session/CSRF và cô lập người dùng.
-class Client {
-  cookies = {};
-  token = '';
-  async request(path, method = 'GET', body, extraHeaders = {}) {
-    const cookie = Object.entries(this.cookies).map(([name, value]) => `${name}=${value}`).join('; ');
-    const response = await fetch(baseUrl + path, { method, headers: { ...(cookie ? { Cookie: cookie } : {}), ...(this.token ? { 'X-CSRF-Token': this.token } : {}), 'Content-Type': 'application/json', ...extraHeaders }, ...(body !== undefined ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}) });
-    const setCookies = response.headers.getSetCookie();
-    for (const line of setCookies) { const [pair] = line.split(';'); const [name, ...value] = pair.split('='); this.cookies[name] = value.join('='); }
-    const json = await response.json();
-    if (json.data?.csrfToken) this.token = json.data.csrfToken;
-    return { status: response.status, json, setCookies };
-  }
-  async init() { return this.request('/auth/me'); }
+class Client extends BaseClient {
   async register(email, extra = {}) { await this.init(); return this.request('/auth/register', 'POST', { fullName: 'Khách test', email, phone: freshPhone(), password, ...extra }); }
 }
 

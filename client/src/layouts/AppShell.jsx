@@ -6,7 +6,7 @@ import { roleLabels, useAuth } from '../context/auth-context.js';
 
 export const workspaceMenus = {
   CUSTOMER: [['/customer', 'Tổng quan'], ['/profile', 'Hồ sơ của tôi'], ['/addresses', 'Địa chỉ nhận hàng'], ['/orders', 'Đơn hàng của tôi'], ['/checkout', 'Thanh toán']],
-  ADMIN: [['/admin', 'Tổng quan'], ['/admin/products', 'Sản phẩm'], ['/admin/users', 'Người dùng'], ['/admin/vouchers', 'Voucher'], ['/admin/reports', 'Báo cáo'], ['/profile', 'Hồ sơ của tôi']],
+  ADMIN: [['/admin', 'Tổng quan'], ['/admin/products', 'Catalog sản phẩm'], ['/warehouse/inventory', 'Tồn kho'], ['/warehouse/history', 'Lịch sử kho'], ['/admin/users', 'Người dùng'], ['/admin/vouchers', 'Voucher'], ['/admin/reports', 'Báo cáo'], ['/profile', 'Hồ sơ của tôi']],
   SALES: [['/sales', 'Tổng quan'], ['/sales/orders', 'Xử lý đơn hàng'], ['/sales/returns', 'Trả hàng / hoàn tiền'], ['/profile', 'Hồ sơ của tôi']],
   WAREHOUSE: [['/warehouse', 'Tổng quan'], ['/warehouse/inventory', 'Tồn kho'], ['/warehouse/history', 'Lịch sử tồn kho'], ['/profile', 'Hồ sơ của tôi']],
 };
