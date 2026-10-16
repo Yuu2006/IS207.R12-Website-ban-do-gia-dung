@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { createServer } from 'vite';
 import { getCustomerOrders, initialOrders } from '../src/services/order-ui-data.js';
-import { customerReturnPath, isCustomerUser, parsePreviewSession } from '../src/utils/customer-session.js';
+import { customerReturnPath, isCustomerUser } from '../src/utils/customer-session.js';
 
 const owner = { id: 'preview:nguyen.minh@example.com', role: 'CUSTOMER', fullName: 'Nguyễn Minh' };
 const other = { id: 'preview:khach.khac@example.com', role: 'CUSTOMER', fullName: 'Khách khác' };
@@ -18,8 +18,7 @@ let vite;
 let productionVite;
 let Workspace;
 let AuthContext;
-let authClient;
-let productionAuth;
+let SharedAuthContext;
 let ServiceContext;
 let mockService;
 let orderProvider;
@@ -40,13 +39,12 @@ before(async () => {
   vite = await createServer({ ...config, define: { 'import.meta.env.DEV': 'true', 'import.meta.env.VITE_AUTH_DEMO': '"true"' } });
   Workspace = (await vite.ssrLoadModule('/src/pages/customer/OrderWorkspace.jsx')).default;
   AuthContext = (await vite.ssrLoadModule('/src/context/CustomerAuthContext.jsx')).CustomerAuthContext;
-  authClient = await vite.ssrLoadModule('/src/pages/login-form/auth-client.js');
+  SharedAuthContext = (await vite.ssrLoadModule('/src/context/auth-context.js')).AuthContext;
   ServiceContext = (await vite.ssrLoadModule('/src/context/OrderServiceContext.jsx')).OrderServiceContext;
   ({ OrderServiceProvider: orderProvider, useOrderService: orderHook } = await vite.ssrLoadModule('/src/context/OrderServiceContext.jsx'));
   ApiState = (await vite.ssrLoadModule('/src/components/order/OrderApiState.jsx')).default;
   mockService = (await vite.ssrLoadModule('/src/services/order-mock-service.js')).createMockOrderService({ getCustomer: async () => owner, delayMs: 0 });
   productionVite = await createServer({ ...config, define: { 'import.meta.env.DEV': 'false', 'import.meta.env.VITE_ORDER_API_MODE': '"mock"' } });
-  productionAuth = await productionVite.ssrLoadModule('/src/pages/login-form/auth-client.js');
   ({ OrderServiceProvider: productionOrderProvider, useOrderService: productionOrderHook } = await productionVite.ssrLoadModule('/src/context/OrderServiceContext.jsx'));
 });
 
@@ -91,12 +89,6 @@ test('order selection never falls back to all orders for anonymous or another ac
   assert.equal(getCustomerOrders(fixtures, owner.id).length, 4);
   for (const id of [null, undefined, '', other.id]) assert.deepEqual(getCustomerOrders(fixtures, id), []);
   assert.deepEqual(getCustomerOrders([{ id: 'unowned' }, { id: 'own', customerId: 7 }, { id: 'other', customerId: 8 }], '7').map(order => order.id), ['own']);
-});
-
-test('preview session rejects malformed, expired and non-preview data', () => {
-  const session = { mode: 'preview', user: owner, expiresAt: 1001 };
-  assert.deepEqual(parsePreviewSession(JSON.stringify(session), 1000), session);
-  for (const value of ['invalid', 'null', JSON.stringify({ ...session, expiresAt: 1000 }), JSON.stringify({ ...session, mode: 'production' }), JSON.stringify({ ...session, user: { ...owner, id: 1 } })]) assert.equal(parsePreviewSession(value, 1000), null);
 });
 
 test('anonymous, loading, invalid identity and session errors do not render any order', () => {
@@ -148,45 +140,14 @@ test('checkout and staff processing remain separate routes', () => {
   assert.doesNotMatch(staff, /Đơn hàng của tôi/);
 });
 
-test('development OTP creates account-specific session only after correct verification and supports logout', async () => {
-  assert.equal(authClient.isDemoAuth(), true);
-  await authClient.signOutCustomer();
-  assert.equal(await authClient.getCustomerSession(), null);
-  const challenge = await authClient.requestCustomerOtp({ flow: 'login', contact: 'NGUYEN.MINH@example.com' });
-  await assert.rejects(authClient.verifyCustomerOtp({ challengeId: challenge.challengeId, code: 'wrong' }));
-  assert.equal(await authClient.getCustomerSession(), null);
-  await authClient.verifyCustomerOtp({ challengeId: challenge.challengeId, code: challenge.previewCode });
-  assert.equal((await authClient.getCustomerSession()).user.id, owner.id);
-  assert.equal(getCustomerOrders(fixtures, (await authClient.getCustomerSession()).user.id).length, 4);
-  await assert.rejects(authClient.verifyCustomerOtp({ challengeId: challenge.challengeId, code: challenge.previewCode }));
-  await authClient.signOutCustomer();
-  assert.equal(await authClient.getCustomerSession(), null);
-  assert.equal(storage.size, 0);
-  const next = await authClient.requestCustomerOtp({ flow: 'register', contact: 'khach.khac@example.com', fullName: 'Khách khác' });
-  await authClient.verifyCustomerOtp({ challengeId: next.challengeId, code: next.previewCode });
-  assert.deepEqual(getCustomerOrders(fixtures, (await authClient.getCustomerSession()).user.id), []);
-  await authClient.signOutCustomer();
-});
-
-test('production ignores preview storage and accepts only a server-confirmed CUSTOMER session', async () => {
-  assert.equal(productionAuth.isDemoAuth(), false);
-  storage.set('homecare:preview-customer-session', JSON.stringify({ mode: 'preview', user: owner, expiresAt: Date.now() + 60000 }));
-  globalThis.fetch = async () => new Response('{}', { status: 401 });
-  assert.equal(await productionAuth.getCustomerSession(), null);
-  for (const body of [{ success: true }, { success: true, sessionEstablished: true, user: { id: 1, role: 'SALES' } }]) {
-    globalThis.fetch = async () => Response.json(body);
-    await assert.rejects(productionAuth.getCustomerSession());
-  }
-  globalThis.fetch = async (url, options) => {
-    assert.match(url, /\/auth\/customer\/session$/);
-    assert.equal(options.credentials, 'include');
-    return Response.json({ success: true, sessionEstablished: true, user: { id: 7, role: 'CUSTOMER', fullName: 'Khách thật' } });
-  };
-  assert.equal((await productionAuth.getCustomerSession()).user.id, 7);
-  globalThis.fetch = async () => { throw new Error('offline'); };
-  await assert.rejects(productionAuth.getCustomerSession());
-  globalThis.fetch = originalFetch;
-  storage.clear();
+// Ứng dụng thật chỉ có AuthProvider; CustomerAuthContext là adapter, không phải phiên khách riêng.
+test('order pages read the shared AuthProvider session through the adapter', () => {
+  const render = auth => renderToStaticMarkup(createElement(MemoryRouter, { initialEntries: ['/orders'] },
+    createElement(SharedAuthContext.Provider, { value: auth }, createElement(ServiceContext.Provider, { value: mockService },
+      createElement(Routes, null, createElement(Route, { path: '/orders', element: createElement(Workspace, { orders: fixtures }) }))))));
+  assert.equal((render({ user: owner, loading: false, error: '', refreshSession: async () => null, signOut: async () => {} }).match(/class="oc-card oc-order-card"/g) || []).length, 4);
+  assert.match(render({ user: null, loading: true, error: '' }), /Đang kiểm tra đăng nhập/);
+  assert.doesNotMatch(render({ user: { ...owner, role: 'SALES' }, loading: false, error: '' }), /HC2026100001/);
 });
 
 test('development provider uses mock but production forces HTTP even when env requests mock', () => {

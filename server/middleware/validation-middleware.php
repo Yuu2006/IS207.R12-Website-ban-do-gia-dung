@@ -1,7 +1,8 @@
 <?php
 declare(strict_types=1);
 
-namespace HomeCare\OrderApi;
+// Order API guard (Tấn Vĩ) dùng namespace; auth/hồ sơ/catalog dùng global scope.
+namespace HomeCare\OrderApi {
 
 const ORDER_STATUSES = ['pending', 'confirmed', 'preparing', 'shipping', 'delivered', 'completed', 'cancelled'];
 const MAX_ORDER_BODY_BYTES = 16384;
@@ -169,4 +170,107 @@ function validateOrderMutation(array $input, string $operation): array
         $result['codCollected'] = $input['codCollected'];
     }
     return $result;
+}
+
+}
+
+namespace {
+
+require_once __DIR__ . '/../utils/response.php';
+
+// Whitelist bảo vệ ID, role và chủ sở hữu khỏi mass assignment.
+function onlyFields(array $input, array $fields): void
+{
+    if (array_diff(array_keys($input), $fields)) {
+        throw new ApiException('Request có trường không được phép.', 422);
+    }
+}
+
+function normalizeContact(string $value): string
+{
+    $value = trim($value);
+    if (str_contains($value, '@')) return strtolower($value);
+    return preg_replace('/^\+84/', '0', preg_replace('/[\s.\-]/', '', $value));
+}
+
+// Đếm ký tự UTF-8 theo schema VARCHAR, không cần extension bổ sung.
+function textValue(mixed $value, string $field, int $max, bool $required, array &$errors): string
+{
+    if (!is_string($value)) {
+        $errors[$field] = 'Giá trị phải là chuỗi.';
+        return '';
+    }
+    $value = trim($value);
+    $length = preg_match_all('/./us', $value);
+    if ($length === false || $length > $max || ($required && $value === '')) $errors[$field] = "Trường bắt buộc hoặc vượt quá $max ký tự.";
+    return $value;
+}
+
+// Độ mạnh tối thiểu CUS-01: 8–200 ký tự, có chữ và số.
+function passwordValue(mixed $value, string $field, array &$errors): string
+{
+    if (!is_string($value) || strlen($value) < 8 || strlen($value) > 200 || !preg_match('/\pL/u', $value) || !preg_match('/\d/', $value)) {
+        $errors[$field] = 'Mật khẩu cần 8–200 ký tự, gồm cả chữ và số.';
+        return '';
+    }
+    return $value;
+}
+
+function phoneValue(mixed $value, string $field, bool $required, array &$errors): string
+{
+    $phone = normalizeContact(textValue($value, $field, 20, $required, $errors));
+    if (($phone !== '' || $required) && !preg_match('/^0\d{9}$/', $phone)) $errors[$field] = 'Số điện thoại chưa hợp lệ.';
+    return $phone;
+}
+
+function validateRegistration(array $input): array
+{
+    onlyFields($input, ['fullName', 'email', 'phone', 'password']);
+    $errors = [];
+    $result = [
+        'fullName' => textValue($input['fullName'] ?? '', 'fullName', 150, true, $errors),
+        'email' => normalizeContact(textValue($input['email'] ?? '', 'email', 255, true, $errors)),
+        'phone' => phoneValue($input['phone'] ?? '', 'phone', false, $errors),
+        'password' => passwordValue($input['password'] ?? null, 'password', $errors),
+    ];
+    if (!isset($errors['email']) && !preg_match('/^[^\s@]+@[^\s@]+\.[^\s@]+$/', $result['email'])) $errors['email'] = 'Email chưa hợp lệ.';
+    if ($errors) throw new ApiException('Hãy kiểm tra thông tin đăng ký.', 422, $errors);
+    return $result;
+}
+
+// Email đăng nhập không đổi qua PATCH (cần xác minh riêng theo CUS-04).
+function validateProfile(array $input, array $current): array
+{
+    onlyFields($input, ['fullName', 'phone', 'birthDate']);
+    $values = array_merge($current, $input);
+    $errors = [];
+    $result = [
+        'fullName' => textValue($values['fullName'], 'fullName', 150, true, $errors),
+        'phone' => phoneValue($values['phone'], 'phone', false, $errors),
+        'birthDate' => textValue($values['birthDate'], 'birthDate', 10, false, $errors),
+    ];
+    if ($result['birthDate'] !== '') {
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $result['birthDate']);
+        if (!$date || $date->format('Y-m-d') !== $result['birthDate'] || $date > new DateTimeImmutable('today') || $date->format('Y') < 1900) $errors['birthDate'] = 'Ngày sinh chưa hợp lệ.';
+    }
+    if ($errors) throw new ApiException('Hãy kiểm tra thông tin hồ sơ.', 422, $errors);
+    return $result;
+}
+
+function validateAddress(array $input, array $current = []): array
+{
+    onlyFields($input, ['recipientName', 'phone', 'addressLine', 'province', 'district', 'ward', 'isDefault']);
+    $values = array_merge(['recipientName' => '', 'phone' => '', 'addressLine' => '', 'province' => '', 'district' => '', 'ward' => '', 'isDefault' => false], $current, $input);
+    $errors = [];
+    $result = [];
+    foreach (['recipientName' => 150, 'addressLine' => 255, 'province' => 100, 'district' => 100, 'ward' => 100] as $field => $limit) {
+        $result[$field] = textValue($values[$field], $field, $limit, !in_array($field, ['district', 'ward'], true), $errors);
+    }
+    $result['phone'] = phoneValue($values['phone'], 'phone', true, $errors);
+    if (!is_bool($values['isDefault'])) $errors['isDefault'] = 'Giá trị mặc định phải là boolean.';
+    $result['isDefault'] = $values['isDefault'];
+    if ($errors) throw new ApiException('Hãy kiểm tra thông tin địa chỉ.', 422, $errors);
+    return $result;
+}
+
 }

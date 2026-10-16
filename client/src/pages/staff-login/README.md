@@ -1,20 +1,11 @@
-# Đăng nhập nhân viên
+# Đăng nhập nhân viên và quên mật khẩu (CUS-02, CUS-03)
 
-Trang riêng tại `/internal/login`, tách khỏi đăng nhập khách hàng ở `/` và `/login`. Không có chức năng tự đăng ký tài khoản nội bộ.
+Trang `/internal/login` cho ADMIN, SALES, WAREHOUSE; không tự đăng ký tài khoản nội bộ. Cùng component được dùng tại `/forgot-password` với `audience="customer"` (chỉ có luồng khôi phục).
 
-## Luồng giao diện
+`StaffLogin.jsx` → `services/auth-service.js` → PHP (MySQL):
 
-Đăng nhập bằng tên đăng nhập hoặc email và mật khẩu. Quên mật khẩu gồm: nhập email/số điện thoại → xác nhận OTP 6 chữ số → nhập và xác nhận mật khẩu mới → quay về đăng nhập. Mật khẩu mới tối thiểu 15 ký tự vì luồng đăng nhập nhân viên hiện chưa có MFA.
+- `POST /auth/staff/login` `{ identifier, password }` → phiên. Tài khoản CUSTOMER đăng nhập ở cổng này nhận cùng lỗi 401 như sai mật khẩu.
+- Quên mật khẩu: `POST /auth/password-reset/request` `{ contact }` → `{ challengeId, previewCode, retryAfterSeconds }`; `.../verify` `{ challengeId, code }` → `{ resetToken }`; `.../confirm` `{ resetToken, newPassword }` → `{ passwordChanged: true }`. Mã 6 số, hạn 5 phút, tối đa 5 lần nhập, cooldown 30 giây, gắn với phiên trình duyệt đang thao tác.
+- Mã chỉ là mô phỏng CUS-03: hiển thị trên trang vì chưa có email, endpoint trả 503 khi `APP_ENV=production`. Đặt lại thành công làm mọi phiên cũ của tài khoản hết hiệu lực.
 
-Ở chế độ phát triển, bước khôi phục có mã thử nghiệm hiển thị rõ trên trang; mã hết hạn sau 5 phút, tối đa 5 lần nhập sai và không thể dùng lại. Mật khẩu thật **không đổi** trong chế độ này. Đặt `VITE_AUTH_DEMO=false` trong `client/.env.local` để kiểm tra API thật. Đăng nhập nhân viên không có chế độ cho qua giả.
-
-## API cần triển khai
-
-Các request dùng `VITE_API_URL` (mặc định `http://localhost:8080`) và cookie phiên:
-
-- `POST /auth/staff/login`: `{ "identifier": "...", "password": "..." }` → `{ "success": true, "sessionEstablished": true, "role": "..." }` sau khi tạo phiên đăng nhập.
-- `POST /auth/staff/password-reset/request`: `{ "contact": "..." }` → `{ "challengeId": "...", "retryAfterSeconds": 30 }` sau khi yêu cầu gửi OTP.
-- `POST /auth/staff/password-reset/verify`: `{ "challengeId": "...", "code": "123456" }` → `{ "resetToken": "..." }` có hạn dùng ngắn và chỉ được phép đặt lại mật khẩu.
-- `POST /auth/staff/password-reset/confirm`: `{ "resetToken": "...", "newPassword": "..." }` → `{ "success": true, "passwordChanged": true }` sau khi lưu mật khẩu mới.
-
-Máy chủ phải kiểm tra tài khoản nội bộ và quyền trên từng API, giới hạn tần suất gửi và xác nhận OTP, dùng mã một lần, lưu mật khẩu bằng thuật toán băm phù hợp và không tiết lộ liên hệ nào đang có tài khoản. Sau khi đặt lại mật khẩu, người dùng cần đăng nhập lại.
+Vite dev hiện nút điền `admin@`, `sales@`, `warehouse@example.test`, mật khẩu `Demo@1234567890!` (seed demo). Nút chỉ điền form; mật khẩu sai vẫn bị từ chối.

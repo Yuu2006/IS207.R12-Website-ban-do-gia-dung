@@ -10,6 +10,7 @@ import {
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useCustomerAuth } from "../context/CustomerAuthContext.jsx";
+import { roleHome } from "../context/auth-context.js";
 
 // Header chung của storefront; đơn hàng và tài khoản dùng cùng phiên khách hàng.
 export default function Header() {
@@ -129,8 +130,8 @@ export default function Header() {
           </Link>
 
           <Link
-            to={user ? "/orders" : "/login"}
-            aria-label={user ? `Tài khoản ${user.fullName || "khách hàng"}` : "Đăng nhập"}
+            to={user ? roleHome[user.role] || "/profile" : "/login"}
+            aria-label={user ? `Không gian của ${user.fullName || "tôi"}` : "Đăng nhập"}
             className="flex h-9 items-center justify-center gap-2 rounded-xl border border-[#E2E8F0] px-2 text-[#64748B] transition-colors hover:border-[#176B87] hover:text-[#176B87]"
           >
             <User size={17} />
