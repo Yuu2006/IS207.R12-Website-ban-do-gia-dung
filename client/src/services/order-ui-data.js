@@ -8,28 +8,24 @@ export const statusLabels = {
   cancelled: 'Đã hủy',
 };
 
-export const nextStatus = {
-  pending: 'confirmed',
-  confirmed: 'preparing',
-  preparing: 'shipping',
-  shipping: 'delivered',
-  delivered: 'completed',
-};
+export { nextOrderStatus as nextStatus } from '../utils/order-state.js';
 
 export const money = value => new Intl.NumberFormat('vi-VN', {
   style: 'currency',
   currency: 'VND',
 }).format(value);
 
-export const orderTotal = order => order.items.reduce(
+export const orderTotal = order => order.totals?.total ?? (order.items.reduce(
   (total, item) => total + item.price * item.quantity,
   0,
-) + order.shipping - order.discount;
+) + order.shipping - order.discount);
 
 export const paymentLabel = value => ({
   paid: 'Đã thanh toán',
   unpaid: 'Chưa thanh toán',
   pending: 'Chờ thanh toán',
+  failed: 'Thanh toán thất bại',
+  refunded: 'Đã hoàn tiền',
 }[value] || 'Chưa cập nhật');
 
 const products = [
@@ -40,6 +36,7 @@ const products = [
 ];
 
 const customer = {
+  id: 'preview:nguyen.minh@example.com',
   name: 'Nguyễn Minh',
   phone: '090 123 4567',
   address: '12 Nguyễn Văn Bảo, Phường Hạnh Thông, TP. Hồ Chí Minh',
@@ -51,9 +48,22 @@ export function initialCart() {
 
 export function initialOrders() {
   return [
-    { id: 'HC2026100001', date: '01/10/2026', status: 'completed', payment: 'paid', method: 'VNPay', items: [{ ...products[0] }], customer: { ...customer }, shipping: 0, discount: 0, note: '', history: [{ status: 'pending', date: '01/10/2026 · 08:30', actor: 'Khách hàng' }, { status: 'confirmed', date: '01/10/2026 · 09:00', actor: 'Nhân viên bán hàng' }, { status: 'shipping', date: '02/10/2026 · 08:00', actor: 'Nhân viên bán hàng' }, { status: 'completed', date: '02/10/2026 · 16:00', actor: 'Nhân viên bán hàng' }] },
-    { id: 'HC2026100002', date: '02/10/2026', status: 'shipping', payment: 'unpaid', method: 'COD', items: [{ ...products[1] }, { ...products[2], quantity: 1 }], customer: { ...customer }, shipping: 0, discount: 0, note: 'Vui lòng gọi trước khi giao.', history: [{ status: 'pending', date: '02/10/2026 · 08:30', actor: 'Khách hàng' }, { status: 'shipping', date: '02/10/2026 · 11:00', actor: 'Nhân viên bán hàng' }] },
+    { id: 'HC2026100001', date: '01/10/2026', status: 'completed', payment: 'paid', method: 'VNPay', items: [{ ...products[0] }], customer: { ...customer }, shipping: 0, discount: 0, note: '', history: [{ status: 'pending', date: '01/10/2026 · 08:30', actor: 'Khách hàng' }, { status: 'confirmed', date: '01/10/2026 · 09:00', actor: 'Nhân viên bán hàng' }, { status: 'preparing', date: '01/10/2026 · 10:00', actor: 'Nhân viên bán hàng' }, { status: 'shipping', date: '02/10/2026 · 08:00', actor: 'Nhân viên bán hàng' }, { status: 'delivered', date: '02/10/2026 · 15:00', actor: 'Nhân viên bán hàng' }, { status: 'completed', date: '02/10/2026 · 16:00', actor: 'Nhân viên bán hàng' }] },
+    { id: 'HC2026100002', date: '02/10/2026', status: 'shipping', payment: 'unpaid', method: 'COD', items: [{ ...products[1] }, { ...products[2], quantity: 1 }], customer: { ...customer }, shipping: 0, discount: 0, note: 'Vui lòng gọi trước khi giao.', history: [{ status: 'pending', date: '02/10/2026 · 08:30', actor: 'Khách hàng' }, { status: 'confirmed', date: '02/10/2026 · 09:00', actor: 'Nhân viên bán hàng' }, { status: 'preparing', date: '02/10/2026 · 10:00', actor: 'Nhân viên bán hàng' }, { status: 'shipping', date: '02/10/2026 · 11:00', actor: 'Nhân viên bán hàng' }] },
     { id: 'HC2026100003', date: '02/10/2026', status: 'pending', payment: 'unpaid', method: 'COD', items: [{ ...products[0] }, { ...products[1] }], customer: { ...customer }, shipping: 0, discount: 0, note: '', history: [{ status: 'pending', date: '02/10/2026 · 10:15', actor: 'Khách hàng' }] },
     { id: 'HC2026090098', date: '28/09/2026', status: 'cancelled', payment: 'unpaid', method: 'COD', items: [{ ...products[3] }], customer: { ...customer }, shipping: 0, discount: 0, note: '', history: [{ status: 'pending', date: '28/09/2026 · 09:00', actor: 'Khách hàng' }, { status: 'cancelled', date: '28/09/2026 · 10:00', actor: 'Khách hàng', reason: 'Thay đổi nhu cầu mua hàng.' }] },
-  ];
+  ].map(order => ({
+    ...order, customerId: customer.id, version: order.history.length, refundRequired: false,
+    history: order.history.map((entry, index) => ({
+      ...entry, fromStatus: index ? order.history[index - 1].status : null, toStatus: entry.status,
+      actorId: entry.actor === 'Khách hàng' ? customer.id : 'preview:sales',
+      actorRole: entry.actor === 'Khách hàng' ? 'CUSTOMER' : 'SALES',
+    })),
+  }));
+}
+
+// Đơn thiếu chủ sở hữu không được hiển thị; lớp lọc UI không thay thế bảo vệ API.
+export function getCustomerOrders(orders, customerId) {
+  if (customerId === null || customerId === undefined || String(customerId).trim() === '') return [];
+  return orders.filter(order => order.customerId !== null && order.customerId !== undefined && String(order.customerId) === String(customerId));
 }

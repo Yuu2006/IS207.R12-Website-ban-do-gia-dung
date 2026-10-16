@@ -133,9 +133,9 @@ function createProduct(): void
 
         $stmt = $pdo->prepare("
             INSERT INTO product_variants (
-                product_id, sku, variant_name, price, stock_quantity
+                product_id, sku, variant_name, price
             ) VALUES (
-                :product_id, :sku, :variant_name, :price, :stock_quantity
+                :product_id, :sku, :variant_name, :price
             )
         ");
 
@@ -143,8 +143,8 @@ function createProduct(): void
             'product_id' => $productId,
             'sku' => trim($input['sku']),
             'variant_name' => trim($input['variant_name']),
-            'price' => (float) $input['price'],
-            'stock_quantity' => max(0, (int) ($input['stock_quantity'] ?? 0)),
+            'price' => (string) $input['price'],
+            // Tồn ban đầu luôn 0; nhập kho qua /api/inventory/movements để có log (WH-03).
         ]);
 
         $pdo->commit();

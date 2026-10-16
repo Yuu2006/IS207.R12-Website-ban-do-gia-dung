@@ -1,16 +1,10 @@
-# Đăng nhập khách hàng bằng OTP
+# Đăng nhập / đăng ký khách hàng (CUS-01, CUS-02)
 
-Trang nhận **email hoặc số điện thoại** ở bước đăng nhập. Đăng ký yêu cầu **họ và tên** cùng một trong hai cách liên hệ. Cả hai luồng đều xác nhận bằng mã OTP 6 chữ số; không dùng mật khẩu hoặc khôi phục mật khẩu.
+`LoginForm.jsx` → `services/auth-service.js` → PHP `/auth/login`, `/auth/register` (MySQL). Không còn OTP: đặc tả MVP dùng email + mật khẩu, OTP SMS nằm ngoài MVP.
 
-## Chế độ phát triển
+- Đăng nhập: email hoặc số điện thoại + mật khẩu. Sai 5 lần liên tiếp khóa đăng nhập tài khoản 15 phút (429).
+- Đăng ký: họ tên, email, số điện thoại tùy chọn, mật khẩu 8–200 ký tự có chữ và số. Chỉ tạo CUSTOMER; trùng email/điện thoại trả 409.
+- Quên mật khẩu: `/forgot-password` dùng lại luồng khôi phục của `StaffLogin` (`audience="customer"`). Mã dùng một lần hiển thị trên trang vì chưa có dịch vụ email; bị chặn khi `APP_ENV=production`.
+- Thành công gọi `refreshSession()` của `AuthProvider`, rồi quay lại `state.returnTo` (CustomerRoute) hoặc `state.from` (ProtectedRoute) nếu là đường dẫn nội bộ, ngược lại về workspace theo role.
 
-Khi chạy Vite ở chế độ phát triển, giao diện dùng mã thử nghiệm tạo trong trình duyệt và hiển thị rõ rằng SMS/email chưa được gửi. Mã có hiệu lực 5 phút, tối đa 5 lần nhập sai, bị hủy sau khi dùng hoặc khi gửi lại. Đặt `VITE_AUTH_DEMO=false` trong `client/.env.local` để thử kết nối API thật ngay khi phát triển.
-
-## API cần triển khai để gửi thật
-
-`VITE_API_URL` mặc định là `http://localhost:8080`. Bản build gọi:
-
-- `POST /auth/customer/otp/request` với `{ "flow": "login" | "register", "contact": "...", "fullName": "..." }`. `fullName` chỉ có ở đăng ký. Trả về `{ "challengeId": "...", "retryAfterSeconds": 30, "expiresInSeconds": 300 }` sau khi dịch vụ gửi đã nhận mã.
-- `POST /auth/customer/otp/verify` với `{ "challengeId": "...", "code": "123456" }`. Sau khi xác nhận thành công, tạo phiên đăng nhập bằng cookie `HttpOnly`, `Secure`, `SameSite` phù hợp và trả về `{ "success": true, "sessionEstablished": true }`.
-
-Máy chủ phải kiểm tra tài khoản đã tồn tại khi đăng nhập, tránh đăng ký trùng, giới hạn tần suất gửi và số lần xác nhận, lưu mã an toàn, đặt hạn dùng ngắn và vô hiệu hóa mã sau khi xác nhận. Giao diện không được dùng làm nơi xác thực OTP thật.
+Vite dev hiển thị nút điền tài khoản demo `customer@example.test` / `Demo@1234567890!` (từ `server/db/seeds/001_auth_demo_users.sql`). Contract chi tiết: `docs/api/AUTH-PROFILE.md`.
