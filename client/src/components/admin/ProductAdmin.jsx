@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { formatPrice } from '../../data.js';
-import { createCategoryAttribute, getProductAttributes, listProducts, listVariants, products, saveProductAttributes, saveVariant, setProductImage } from '../../services/catalog-service.js';
+import { addProductImage, createCategoryAttribute, deleteProductImage, getProductAttributes, listProductImages, listProducts, listVariants, products, saveProductAttributes, saveVariant, updateProductImage, uploadImage } from '../../services/catalog-service.js';
 import { AdminField } from './SimpleCrud.jsx';
 
 const toLocal = value => (value || '').slice(0, 16).replace(' ', 'T');
@@ -115,6 +115,37 @@ function SpecPanel({ product }) {
   </section>;
 }
 
+// PRD-04: nhiều ảnh (tối đa 10), chọn ảnh đại diện, sắp thứ tự (số nhỏ đứng trước), xóa mềm.
+function ImagePanel({ product, onChanged }) {
+  const [images, setImages] = useState(null);
+  const [orders, setOrders] = useState({});
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const apply = rows => { setImages(rows); setOrders(Object.fromEntries(rows.map(row => [row.id, String(row.sort_order)]))); };
+  useEffect(() => { setImages(null); listProductImages(product.id).then(apply).catch(err => setError(err.message)); }, [product.id]);
+
+  async function run(action) {
+    if (busy) return;
+    setBusy(true); setError('');
+    try { const rows = await action(); apply(rows); onChanged(rows.find(row => Number(row.is_primary))?.image_url || ''); }
+    catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  }
+
+  return <section className="hc-subform hc-form"><div className="hc-heading-actions"><h3>Ảnh sản phẩm ({images?.length ?? 0}/10)</h3>
+    <label className="hc-button hc-button--outline hc-file-button">{busy ? 'Đang xử lý…' : 'Thêm ảnh'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || images?.length >= 10} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) run(async () => addProductImage(product.id, { image_url: await uploadImage(file, 'products'), sort_order: (images?.length ?? 0) * 10 })); }} /></label></div>
+    <p className="hc-muted">JPEG/PNG/WebP ≤ 5 MB. Ảnh đầu tiên tự thành ảnh đại diện.</p>
+    {error && <p className="hc-error" role="alert">{error}</p>}
+    {!images ? !error && <p role="status" className="hc-muted">Đang tải ảnh…</p> : images.length === 0 ? <p className="hc-muted">Chưa có ảnh.</p>
+      : <div className="hc-image-grid">{images.map(image => <div className="hc-image-card" key={image.id}>
+        <img src={image.image_url} alt={`Ảnh ${image.id} của ${product.name}`} />
+        {Number(image.is_primary) ? <span className="hc-badge">Ảnh đại diện</span> : <button className="hc-text-button" type="button" disabled={busy} onClick={() => run(() => updateProductImage(image.id, { is_primary: true }))}>Đặt làm đại diện</button>}
+        <label className="hc-check">Thứ tự <input type="number" min="0" value={orders[image.id] ?? ''} disabled={busy} aria-label={`Thứ tự ảnh ${image.id}`} onChange={event => setOrders(current => ({ ...current, [image.id]: event.target.value }))} onBlur={() => Number(orders[image.id]) !== Number(image.sort_order) && /^\d+$/.test(orders[image.id]) && run(() => updateProductImage(image.id, { sort_order: Number(orders[image.id]) }))} /></label>
+        <button className="hc-text-button hc-danger" type="button" disabled={busy} onClick={() => window.confirm('Xóa ảnh này khỏi sản phẩm?') && run(() => deleteProductImage(image.id))}>Xóa ảnh</button>
+      </div>)}</div>}
+  </section>;
+}
+
 // PRD-03/04: tạo/sửa/ngừng bán sản phẩm, ảnh đại diện; sản phẩm đã có đơn chỉ vô hiệu hóa (xóa mềm).
 export default function ProductAdmin({ categoryOptions, brandOptions }) {
   const [items, setItems] = useState(null);
@@ -135,7 +166,7 @@ export default function ProductAdmin({ categoryOptions, brandOptions }) {
 
   function open(item) {
     setSelected(item ?? 'new'); setNotice(''); setError(''); form.setErrors({});
-    form.setValues(item ? { category_id: String(item.category_id), brand_id: String(item.brand_id), product_code: item.product_code, name: item.name, slug: item.slug, description: item.description || '', warranty_months: String(item.warranty_months), is_active: Boolean(Number(item.is_active)), image: item.primary_image || '' }
+    form.setValues(item ? { category_id: String(item.category_id), brand_id: String(item.brand_id), product_code: item.product_code, name: item.name, slug: item.slug, description: item.description || '', warranty_months: String(item.warranty_months), is_active: Boolean(Number(item.is_active)) }
       : { category_id: '', brand_id: '', product_code: '', name: '', slug: '', description: '', warranty_months: '12', is_active: true, sku: '', variant_name: 'Tiêu chuẩn', price: '' });
   }
 
@@ -152,10 +183,9 @@ export default function ProductAdmin({ categoryOptions, brandOptions }) {
     try {
       const body = { category_id: Number(v.category_id), brand_id: Number(v.brand_id), product_code: v.product_code.trim(), name: v.name.trim(), slug: v.slug.trim() || slugify(`${v.name}-${v.product_code}`), description: v.description, warranty_months: Number(v.warranty_months), is_active: v.is_active ? 1 : 0 };
       const saved = await products.save(selected === 'new' ? null : selected.id, selected === 'new' ? { ...body, sku: v.sku.trim(), variant_name: v.variant_name.trim(), price: v.price } : body);
-      if (selected !== 'new' && v.image && v.image !== selected.primary_image) await setProductImage(selected.id, v.image);
       setNotice('Đã lưu sản phẩm.');
       reload();
-      setSelected(current => current === 'new' ? { ...saved, category_name: categoryOptions.find(([id]) => id === String(saved.category_id))?.[1] } : { ...current, ...body, primary_image: v.image || current.primary_image });
+      setSelected(current => current === 'new' ? { ...saved, category_name: categoryOptions.find(([id]) => id === String(saved.category_id))?.[1] } : { ...current, ...body });
     } catch (err) { setError(err.message); form.setErrors(err.errors || {}); }
     finally { setBusy(false); }
   }
@@ -174,7 +204,7 @@ export default function ProductAdmin({ categoryOptions, brandOptions }) {
     { name: 'slug', label: 'Slug (để trống sẽ tự tạo)', maxLength: 280 }, { name: 'warranty_months', label: 'Bảo hành (tháng)', inputMode: 'numeric' },
     { name: 'description', label: 'Mô tả', type: 'textarea', maxLength: 5000 }, { name: 'is_active', label: 'Đang bán', type: 'checkbox' },
     ...(selected === 'new' ? [{ name: 'sku', label: 'SKU đầu tiên', required: true, maxLength: 80 }, { name: 'variant_name', label: 'Tên biến thể', required: true }, { name: 'price', label: 'Giá bán (₫)', required: true, inputMode: 'decimal' }]
-      : [{ name: 'image', label: 'Ảnh đại diện (JPEG/PNG/WebP ≤ 5 MB)', type: 'image', uploadType: 'products' }]),
+      : []),
   ];
 
   return <section className="hc-card hc-form">
@@ -183,7 +213,7 @@ export default function ProductAdmin({ categoryOptions, brandOptions }) {
     {selected && <div className="hc-subform hc-form"><form className="hc-form" noValidate onSubmit={save}><h3>{selected === 'new' ? 'Thêm sản phẩm' : `Sửa ${selected.product_code}`}</h3>
       <div className="hc-form-grid">{fields.map(field => <AdminField key={field.name} {...form.bind(field)} disabled={busy} />)}</div>
       <div className="hc-form-footer">{selected !== 'new' ? <button className="hc-button hc-button--danger" type="button" disabled={busy} onClick={() => deactivate(selected)}>Ngừng bán</button> : <span />}<span><button className="hc-button hc-button--outline" type="button" onClick={() => setSelected(null)}>Đóng</button> <button className="hc-button" type="submit" disabled={busy}>{busy ? 'Đang lưu…' : 'Lưu sản phẩm'}</button></span></div></form>
-      {selected !== 'new' && selected.id && <><VariantPanel product={selected} /><SpecPanel product={selected} /></>}
+      {selected !== 'new' && selected.id && <><VariantPanel product={selected} /><ImagePanel product={selected} onChanged={reload} /><SpecPanel product={selected} /></>}
     </div>}
     <div className="hc-inline-form" role="search">
       <AdminField field={{ name: 'keyword', label: 'Tìm theo tên hoặc mã' }} value={filters.keyword} onChange={keyword => setFilters(current => ({ ...current, keyword }))} />
