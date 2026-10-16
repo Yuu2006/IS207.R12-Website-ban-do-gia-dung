@@ -1,4 +1,6 @@
-import { API_URL, requestApi } from './http-client.js';
+import { requestApi } from './http-client.js';
+
+export { uploadImage } from './http-client.js';
 
 // API quản trị catalog (Lan Chi + bổ sung task 12) và kho; quyền kiểm tra ở PHP.
 const collection = name => ({
@@ -19,17 +21,12 @@ export const listCategoryAttributes = categoryId => requestApi(`/api/categories/
 export const createCategoryAttribute = (categoryId, values) => requestApi(`/api/categories/${categoryId}/attributes`, { method: 'POST', body: values });
 export const getProductAttributes = productId => requestApi(`/api/products/${productId}/attributes`);
 export const saveProductAttributes = (productId, attributes) => requestApi(`/api/products/${productId}/attributes`, { method: 'PUT', body: { attributes } });
-export const setProductImage = (productId, imageUrl) => requestApi(`/api/products/${productId}/image`, { method: 'PUT', body: { image_url: imageUrl } });
-
-// Upload trả đường dẫn tương đối; banner/brand/ảnh sản phẩm cần URL http(s) tuyệt đối.
-export async function uploadImage(file, type) {
-  const form = new FormData();
-  form.append('image', file);
-  form.append('type', type);
-  const data = await requestApi('/api/uploads/images', { method: 'POST', body: form });
-  return `${API_URL}${data.image_url}`;
-}
+export const listProductImages = productId => requestApi(`/api/products/${productId}/images`);
+export const addProductImage = (productId, values) => requestApi(`/api/products/${productId}/images`, { method: 'POST', body: values });
+export const updateProductImage = (id, values) => requestApi(`/api/product-images/${id}`, { method: 'PUT', body: values });
+export const deleteProductImage = id => requestApi(`/api/product-images/${id}`, { method: 'DELETE' });
 
 export const listInventory = (lowStock = false) => requestApi(`/api/inventory${lowStock ? '?low_stock=1' : ''}`);
+// Trả { items, pagination } (page, pageSize, totalItems, totalPages).
 export const listMovements = (filters = {}) => requestApi(`/api/inventory/movements?${new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== ''))}`);
 export const adjustStock = values => requestApi('/api/inventory/movements', { method: 'POST', body: values });
