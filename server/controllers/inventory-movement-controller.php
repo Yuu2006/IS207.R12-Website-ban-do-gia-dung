@@ -64,8 +64,24 @@ function listInventoryMovements(): void
             $params['movement_type'] = $type;
         }
 
-        // shortcut: trả 200 dòng mới nhất, chưa phân trang; thêm page/pageSize khi lịch sử lớn.
-        $sql .= " ORDER BY im.created_at DESC, im.id DESC LIMIT 200";
+        // Phân trang phía server: page >= 1, pageSize 1–100 (mặc định 20).
+        $page = filter_var($_GET['page'] ?? 1, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 1000000]]);
+        $pageSize = filter_var($_GET['pageSize'] ?? 20, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 100]]);
+        if ($page === false || $pageSize === false) {
+            http_response_code(400);
+            echo json_encode([
+                'success' => false,
+                'message' => 'page phải từ 1, pageSize từ 1 đến 100.'
+            ], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+
+        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM ({$sql}) counted");
+        $countStmt->execute($params);
+        $totalItems = (int) $countStmt->fetchColumn();
+
+        // LIMIT/OFFSET là số nguyên đã kiểm tra ở trên.
+        $sql .= " ORDER BY im.created_at DESC, im.id DESC LIMIT {$pageSize} OFFSET " . (($page - 1) * $pageSize);
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
@@ -74,8 +90,10 @@ function listInventoryMovements(): void
         http_response_code(200);
         echo json_encode([
             'success' => true,
-            'data' => $items,
-            'total' => count($items)
+            'data' => [
+                'items' => $items,
+                'pagination' => ['page' => $page, 'pageSize' => $pageSize, 'totalItems' => $totalItems, 'totalPages' => (int) ceil($totalItems / $pageSize)]
+            ]
         ], JSON_UNESCAPED_UNICODE);
 
     } catch (Throwable $e) {

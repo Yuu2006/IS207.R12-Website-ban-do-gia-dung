@@ -16,6 +16,7 @@ function listBrands(): void
                 id,
                 name,
                 logo_url,
+                description,
                 is_active,
                 created_at,
                 updated_at
@@ -59,6 +60,7 @@ function showBrand(int $id): void
                 id,
                 name,
                 logo_url,
+                description,
                 is_active,
                 created_at,
                 updated_at
@@ -117,6 +119,7 @@ function readBrandPayload(): ?array
 
     $name = trim((string) ($data['name'] ?? ''));
     $logoUrl = trim((string) ($data['logo_url'] ?? ''));
+    $description = trim((string) ($data['description'] ?? ''));
     $isActive = $data['is_active'] ?? 1;
 
     if ($name === '' || mb_strlen($name) > 150) {
@@ -156,9 +159,19 @@ function readBrandPayload(): ?array
         }
     }
 
+    if (mb_strlen($description) > 1000) {
+        http_response_code(422);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Mô tả thương hiệu tối đa 1000 ký tự.'
+        ], JSON_UNESCAPED_UNICODE);
+        return null;
+    }
+
     return [
         'name' => $name,
         'logo_url' => $logoUrl !== '' ? $logoUrl : null,
+        'description' => $description !== '' ? $description : null,
         'is_active' => (int) $isActive
     ];
 }
@@ -176,8 +189,8 @@ function createBrand(): void
     try {
         $pdo = db();
         $stmt = $pdo->prepare("
-            INSERT INTO brands (name, logo_url, is_active, is_deleted)
-            VALUES (:name, :logo_url, :is_active, 0)
+            INSERT INTO brands (name, logo_url, description, is_active, is_deleted)
+            VALUES (:name, :logo_url, :description, :is_active, 0)
         ");
         $stmt->execute($data);
 
@@ -231,6 +244,7 @@ function updateBrand(int $id): void
             UPDATE brands
             SET name = :name,
                 logo_url = :logo_url,
+                description = :description,
                 is_active = :is_active
             WHERE id = :id AND COALESCE(is_deleted, 0) = 0
         ");
