@@ -15,6 +15,7 @@ export const banners = { ...collection('banners'), list: () => requestApi('/api/
 export const products = collection('products');
 
 export const listProducts = (filters = {}) => requestApi(`/api/products?${new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== ''))}`);
+export const getProduct = productId => requestApi(`/api/products/${encodeURIComponent(productId)}`);
 export const listVariants = productId => requestApi(`/api/products/${productId}/variants`);
 export const saveVariant = (productId, id, values) => requestApi(id ? `/api/variants/${id}` : `/api/products/${productId}/variants`, { method: id ? 'PUT' : 'POST', body: values });
 export const listCategoryAttributes = categoryId => requestApi(`/api/categories/${categoryId}/attributes`);
