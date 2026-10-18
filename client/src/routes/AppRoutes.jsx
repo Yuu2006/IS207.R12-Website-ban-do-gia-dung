@@ -4,6 +4,7 @@ import Footer from '../components/Footer.jsx';
 import HomePage from '../pages/public/HomePage.jsx';
 import ProductListPage from '../pages/public/ProductListPage.jsx';
 import ProductDetailPage from '../pages/public/ProductDetailPage.jsx';
+import ComparePage from '../pages/public/ComparePage.jsx';
 import LoginForm from '../pages/login-form/LoginForm.jsx';
 import StaffLogin from '../pages/staff-login/StaffLogin.jsx';
 import OrderWorkspace from '../pages/customer/OrderWorkspace.jsx';
@@ -23,7 +24,7 @@ export default function AppRoutes() {
   // Trang đơn hàng tự dựng header storefront/nhân viên và CustomerRoute; tải dữ liệu qua OrderServiceProvider.
   const orderWorkspace = <OrderWorkspace />;
   return <Routes>
-    <Route element={<PublicLayout />}><Route path="/" element={<HomePage />} /><Route path="/products" element={<ProductListPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /></Route>
+    <Route element={<PublicLayout />}><Route path="/" element={<HomePage />} /><Route path="/products" element={<ProductListPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/compare" element={<ComparePage />} /></Route>
     <Route path="/login" element={<LoginForm key="login" />} /><Route path="/register" element={<LoginForm key="register" initialScreen="register" />} /><Route path="/internal/login" element={<StaffLogin />} /><Route path="/forgot-password" element={<StaffLogin audience="customer" />} /><Route path="/internal" element={<Navigate to="/internal/login" replace />} />
     {['/checkout', '/orders', '/orders/:orderId'].map(path => <Route key={path} path={path} element={orderWorkspace} />)}
     <Route element={<ProtectedRoute roles={['SALES', 'ADMIN']} />}><Route path="/sales/orders" element={orderWorkspace} /></Route>

@@ -9,6 +9,7 @@ import {
   Plus,
   ShoppingCart,
   Zap,
+  ArrowLeftRight,
 } from "lucide-react";
 
 import { products, formatPrice } from "../../data";
@@ -71,6 +72,7 @@ export default function ProductDetailPage() {
     product.images?.length > 0
       ? product.images
       : [product.image];
+  const comparisonUrl = `/compare?${new URLSearchParams({ product: String(product.id), name: product.name, category: product.category })}`;
 
   const addToCart = () => {
     console.log("Thêm vào giỏ:", product, "Số lượng:", qty);
@@ -313,6 +315,12 @@ export default function ProductDetailPage() {
                 Mua ngay
               </button>
             </div>
+            <Link
+              to={comparisonUrl}
+              className="mt-3 flex items-center justify-center gap-2 rounded-xl border border-[#176B87] px-4 py-3 text-sm font-semibold text-[#176B87] transition-colors hover:bg-[#E8F4F7]"
+            >
+              <ArrowLeftRight size={17} /> So sánh với sản phẩm cùng loại
+            </Link>
           </div>
         </div>
 
