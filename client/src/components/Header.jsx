@@ -5,6 +5,7 @@ import {
   Menu,
   X,
   LogOut,
+  ArrowLeftRight,
 } from "lucide-react";
 
 import { useEffect, useState } from "react";
@@ -83,6 +84,18 @@ export default function Header() {
             Sản phẩm
           </Link>
 
+          <Link
+            to="/compare"
+            aria-current={location.pathname === "/compare" ? "page" : undefined}
+            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
+              location.pathname === "/compare"
+                ? "bg-[#E8F4F7] text-[#176B87]"
+                : "text-[#1F2937] hover:text-[#176B87]"
+            }`}
+          >
+            <span className="flex items-center gap-1.5"><ArrowLeftRight size={15} /> So sánh</span>
+          </Link>
+
           {/* BẢO HÀNH */}
           <Link
             to="/warranty"
@@ -154,7 +167,7 @@ export default function Header() {
         </div>
       </div>
       {menuOpen && <nav id="storefront-mobile-nav" aria-label="Điều hướng trên điện thoại" className="grid gap-1 border-t border-[#E2E8F0] bg-white px-4 py-3 lg:hidden">
-        {[["/", "Trang chủ"], ["/products", "Sản phẩm"], ["/warranty", "Bảo hành & Sửa chữa"], ["/orders", "Đơn hàng"]].map(([path, label]) => {
+        {[["/", "Trang chủ"], ["/products", "Sản phẩm"], ["/compare", "So sánh"], ["/warranty", "Bảo hành & Sửa chữa"], ["/orders", "Đơn hàng"]].map(([path, label]) => {
           const active = path === "/" ? location.pathname === "/" : location.pathname.startsWith(path);
           return <Link key={path} to={path} aria-current={active ? "page" : undefined} onClick={() => setMenuOpen(false)} className={`rounded-xl px-4 py-3 text-sm ${active ? "bg-[#E8F4F7] font-semibold text-[#176B87]" : "text-[#1F2937]"}`}>{label}</Link>;
         })}
