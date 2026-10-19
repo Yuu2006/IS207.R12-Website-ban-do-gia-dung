@@ -9,8 +9,11 @@ import StaffLogin from '../pages/staff-login/StaffLogin.jsx';
 import OrderWorkspace from '../pages/customer/OrderWorkspace.jsx';
 import ProfilePage from '../pages/customer/ProfilePage.jsx';
 import AddressesPage from '../pages/customer/AddressesPage.jsx';
+import DecisionToolsPage from '../pages/customer/DecisionToolsPage.jsx';
 import WorkspacePage from '../pages/auth/WorkspacePage.jsx';
 import CatalogAdminPage from '../pages/admin/CatalogAdminPage.jsx';
+import DashboardPreviewPage from '../pages/admin/DashboardPreviewPage.jsx';
+import FitRulesPreviewPage from '../pages/admin/FitRulesPreviewPage.jsx';
 import InventoryPage from '../pages/warehouse/InventoryPage.jsx';
 import InventoryHistoryPage from '../pages/warehouse/InventoryHistoryPage.jsx';
 import AppShell from '../layouts/AppShell.jsx';
@@ -29,8 +32,8 @@ export default function AppRoutes() {
     <Route element={<ProtectedRoute roles={['SALES', 'ADMIN']} />}><Route path="/sales/orders" element={orderWorkspace} /></Route>
     <Route element={<ProtectedRoute />}><Route element={<AppShell />}>
       <Route path="/profile" element={<ProfilePage />} />
-      <Route element={<ProtectedRoute roles={['CUSTOMER']} />}><Route path="/customer" element={<WorkspacePage />} /><Route path="/addresses" element={<AddressesPage />} /></Route>
-      <Route element={<ProtectedRoute roles={['ADMIN']} />}><Route path="/admin" element={<WorkspacePage />} /><Route path="/admin/products" element={<CatalogAdminPage />} />{['users', 'vouchers', 'reports'].map(name => <Route key={name} path={'/admin/' + name} element={<WorkspacePage />} />)}</Route>
+      <Route element={<ProtectedRoute roles={['CUSTOMER']} />}><Route path="/customer" element={<WorkspacePage />} /><Route path="/addresses" element={<AddressesPage />} /><Route path="/customer/decision-tools" element={<DecisionToolsPage />} /></Route>
+      <Route element={<ProtectedRoute roles={['ADMIN']} />}><Route path="/admin" element={<DashboardPreviewPage />} /><Route path="/admin/fit-rules" element={<FitRulesPreviewPage />} /><Route path="/admin/products" element={<CatalogAdminPage />} />{['users', 'vouchers', 'reports'].map(name => <Route key={name} path={'/admin/' + name} element={<WorkspacePage />} />)}</Route>
       <Route element={<ProtectedRoute roles={['SALES']} />}><Route path="/sales" element={<WorkspacePage />} /><Route path="/sales/returns" element={<WorkspacePage />} /></Route>
       <Route element={<ProtectedRoute roles={['WAREHOUSE']} />}><Route path="/warehouse" element={<WorkspacePage />} /></Route>
       <Route element={<ProtectedRoute roles={['WAREHOUSE', 'ADMIN']} />}><Route path="/warehouse/inventory" element={<InventoryPage />} /><Route path="/warehouse/history" element={<InventoryHistoryPage />} /></Route>
