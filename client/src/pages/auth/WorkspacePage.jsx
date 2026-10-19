@@ -1,10 +1,10 @@
-import { ArrowUpRight, Boxes, ChartColumn, ClipboardList, CreditCard, History, MapPin, Package, ReceiptText, Ticket, Undo2, UserRound, Users } from 'lucide-react';
+import { ArrowUpRight, Boxes, ChartColumn, ClipboardList, CreditCard, History, House, MapPin, Package, ReceiptText, Ruler, Ticket, Undo2, UserRound, Users } from 'lucide-react';
 import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { roleHome, roleLabels, useAuth } from '../../context/auth-context.js';
 import { workspaceMenus } from '../../layouts/AppShell.jsx';
 
-const pathIcons = { '/admin/products': Package, '/warehouse/inventory': Boxes, '/warehouse/history': History, '/admin/users': Users, '/admin/vouchers': Ticket, '/admin/reports': ChartColumn, '/profile': UserRound, '/addresses': MapPin, '/orders': ReceiptText, '/checkout': CreditCard, '/sales/orders': ClipboardList, '/sales/returns': Undo2 };
+const pathIcons = { '/customer/decision-tools': House, '/admin/fit-rules': Ruler, '/admin/products': Package, '/warehouse/inventory': Boxes, '/warehouse/history': History, '/admin/users': Users, '/admin/vouchers': Ticket, '/admin/reports': ChartColumn, '/profile': UserRound, '/addresses': MapPin, '/orders': ReceiptText, '/checkout': CreditCard, '/sales/orders': ClipboardList, '/sales/returns': Undo2 };
 
 // Trang tổng quan và placeholder ghi đúng mức hoàn thành của từng menu.
 export default function WorkspacePage() {
