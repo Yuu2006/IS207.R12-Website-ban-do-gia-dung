@@ -1,6 +1,7 @@
 import { Routes, Route, Outlet, Navigate, Link } from 'react-router-dom';
 import Header from '../components/Header.jsx';
 import Footer from '../components/Footer.jsx';
+import ChatbotWidget from '../components/chatbot/ChatbotWidget.jsx';
 import HomePage from '../pages/public/HomePage.jsx';
 import ProductListPage from '../pages/public/ProductListPage.jsx';
 import ProductDetailPage from '../pages/public/ProductDetailPage.jsx';
@@ -16,7 +17,7 @@ import InventoryHistoryPage from '../pages/warehouse/InventoryHistoryPage.jsx';
 import AppShell from '../layouts/AppShell.jsx';
 import ProtectedRoute from './ProtectedRoute.jsx';
 
-function PublicLayout() { return <><Header /><Outlet /><Footer /></>; }
+function PublicLayout() { return <><Header /><Outlet /><Footer /><ChatbotWidget /></>; }
 
 // Giữ route đã tích hợp và đặt guard theo role trước mọi workspace.
 export default function AppRoutes() {
