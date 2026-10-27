@@ -179,7 +179,7 @@
 .hc-stock-alert .hc-table-wrap { background: #fff; border: 1px solid rgba(16, 24, 40, .1); border-radius: 8px; }
 .hc-stock-alert .hc-table th, .hc-stock-alert .hc-table td { padding: 10px 14px; }
 .hc-stock-alert .hc-table tr:last-child td { border-bottom: 0; }
-.hc-modal { width: min(560px, calc(100vw - 32px)); max-height: min(88vh, 900px); padding: 0; border: 0; border-radius: 12px; background: #fff; color: #101828; box-shadow: 0 24px 60px rgba(16, 24, 40, .28); }
+.hc-modal { position: fixed; inset: 0; margin: auto; width: min(560px, calc(100vw - 32px)); max-height: min(88vh, 900px); padding: 0; border: 0; border-radius: 12px; background: #fff; color: #101828; box-shadow: 0 24px 60px rgba(16, 24, 40, .28); }
 .hc-modal--wide { width: min(860px, calc(100vw - 32px)); }
 .hc-modal[open] { display: flex; flex-direction: column; }
 .hc-modal::backdrop { background: rgba(16, 24, 40, .5); }
