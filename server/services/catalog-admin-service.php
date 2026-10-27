@@ -11,7 +11,7 @@ class CatalogAdminService
     public function __construct(private CatalogAdminModel $model) {}
 
     // Tiền giữ dạng chuỗi thập phân tới PDO/DECIMAL(14,2), không đi qua float.
-    private static function money(mixed $value, string $field, array &$errors): ?string
+    public static function money(mixed $value, string $field, array &$errors): ?string
     {
         $text = is_int($value) ? (string) $value : (is_string($value) ? trim($value) : '');
         if (!preg_match('/^\d{1,12}(\.\d{1,2})?$/', $text)) { $errors[$field] = 'Giá phải là số không âm, tối đa 2 chữ số thập phân.'; return null; }
@@ -81,6 +81,13 @@ class CatalogAdminService
             if ($error->getCode() === '23000') throw new ApiException('Mã SKU đã tồn tại.', 409, ['sku' => 'Mã SKU đã tồn tại.']);
             throw $error;
         }
+    }
+
+    // Xóa mềm SKU: chỉ khi tồn bằng 0 để không mất dấu hàng còn trong kho; lịch sử movement giữ nguyên.
+    public function deleteVariant(int $id): array
+    {
+        if (!$this->model->softDeleteVariant($id)) throw new ApiException('Không tìm thấy SKU.', 404);
+        return ['id' => $id];
     }
 
     public function updateVariant(int $id, array $input): array
