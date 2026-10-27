@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { uploadImage } from '../../services/catalog-service.js';
+import Modal from './Modal.jsx';
 
 // Ô nhập theo cấu hình; ảnh tải lên qua API rồi điền URL tuyệt đối vào trường.
 export function AdminField({ field, value, onChange, error, disabled }) {
@@ -75,12 +76,12 @@ export default function SimpleCrud({ title, service, fields, columns, toPayload 
   return <section className="hc-card hc-form">
     <div className="hc-heading-actions"><h2>{title}</h2><button className="hc-button" type="button" disabled={busy} onClick={() => edit(null)}>Thêm mới</button></div>
     {notice && <p className="hc-success" role="status">{notice}</p>}
-    {error && <p className="hc-error" role="alert">{error} {!items && <button className="hc-text-button" type="button" onClick={() => setAttempt(current => current + 1)}>Thử lại</button>}</p>}
-    {editing !== null && <form className="hc-form hc-subform" noValidate onSubmit={save}>
-      <h3>{editing === 'new' ? `Thêm ${title.toLowerCase()}` : `Sửa ${title.toLowerCase()} #${editing}`}</h3>
+    {error && editing === null && <p className="hc-error" role="alert">{error} {!items && <button className="hc-text-button" type="button" onClick={() => setAttempt(current => current + 1)}>Thử lại</button>}</p>}
+    {editing !== null && <Modal title={editing === 'new' ? `Thêm ${title.toLowerCase()}` : `Sửa ${title.toLowerCase()} #${editing}`} onClose={() => setEditing(null)}><form className="hc-form" noValidate onSubmit={save}>
+      {error && <p className="hc-error" role="alert">{error}</p>}
       <div className="hc-form-grid">{fields.map(field => <AdminField key={field.name} field={field} value={values[field.name]} error={errors[field.name]} disabled={busy} onChange={value => { setValues(current => ({ ...current, [field.name]: value })); setErrors(current => ({ ...current, [field.name]: '' })); }} />)}</div>
       <div className="hc-form-footer"><button className="hc-button hc-button--outline" type="button" disabled={busy} onClick={() => setEditing(null)}>Hủy</button><button className="hc-button" type="submit" disabled={busy}>{busy ? 'Đang lưu…' : 'Lưu'}</button></div>
-    </form>}
+    </form></Modal>}
     {!items && !error && <p className="hc-status" role="status">Đang tải…</p>}
     {items?.length === 0 && <p className="hc-muted">{empty}</p>}
     {items?.length > 0 && <div className="hc-table-wrap"><table className="hc-table"><thead><tr>{columns.map(([key, label]) => <th key={key} scope="col">{label}</th>)}<th scope="col">Thao tác</th></tr></thead>

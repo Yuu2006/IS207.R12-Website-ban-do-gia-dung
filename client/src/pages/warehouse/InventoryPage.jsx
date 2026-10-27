@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import Modal from '../../components/admin/Modal.jsx';
 import { AdminField } from '../../components/admin/SimpleCrud.jsx';
 import { adjustStock, listInventory } from '../../services/catalog-service.js';
 
@@ -27,7 +28,7 @@ export default function InventoryPage() {
     return () => { active = false; };
   }, [lowOnly, version]);
 
-  function open(item) { setTarget({ ...item, reference: referenceCode() }); setValues({ movement_type: 'import', quantity: '', note: '' }); setErrors({}); setResult(null); }
+  function open(item) { setError(''); setTarget({ ...item, reference: referenceCode() }); setValues({ movement_type: 'import', quantity: '', note: '' }); setErrors({}); setResult(null); }
 
   async function save(event) {
     event.preventDefault();
@@ -50,15 +51,15 @@ export default function InventoryPage() {
   const lowCount = items?.filter(item => item.stock_status !== 'in_stock').length ?? 0;
   return <section><div className="hc-page-heading"><span className="hc-eyebrow">Kho hàng</span><h1>Tồn kho theo SKU</h1><p>Mỗi lần điều chỉnh ghi tồn trước/sau, người thực hiện và lý do. Không cho phép tồn âm. <Link to="/warehouse/history">Xem nhật ký kho →</Link></p></div>
     {result && <p className="hc-success" role="status">Đã ghi nhận {result.sku}: {result.quantity_before} → {result.quantity_after} ({result.reference_code}).</p>}
-    {error && <p className="hc-error" role="alert">{error} {!items && <button className="hc-text-button" type="button" onClick={() => setVersion(current => current + 1)}>Thử lại</button>}</p>}
-    {target && <form className="hc-card hc-form" noValidate onSubmit={save} aria-label={`Điều chỉnh ${target.sku}`}><h2>Điều chỉnh {target.sku} · {target.product_name}</h2><p className="hc-muted">Tồn hiện tại: <strong>{target.stock_quantity}</strong> · Mã chứng từ: {target.reference}</p>
+    {error && !target && <p className="hc-error" role="alert">{error} {!items && <button className="hc-text-button" type="button" onClick={() => setVersion(current => current + 1)}>Thử lại</button>}</p>}
+    {target && <Modal title={`Điều chỉnh ${target.sku} · ${target.product_name}`} onClose={() => setTarget(null)}><form className="hc-form" noValidate onSubmit={save}>{error && <p className="hc-error" role="alert">{error}</p>}<p className="hc-muted">Tồn hiện tại: <strong>{target.stock_quantity}</strong> · Mã chứng từ: {target.reference}</p>
       <div className="hc-form-grid">
         <AdminField field={{ name: 'movement_type', label: 'Loại', type: 'select', options: [['import', 'Nhập kho'], ['export', 'Xuất kho']], placeholder: 'Chọn loại' }} value={values.movement_type} disabled={busy} onChange={movement_type => setValues(current => ({ ...current, movement_type }))} />
         <AdminField field={{ name: 'quantity', label: 'Số lượng', inputMode: 'numeric', required: true }} value={values.quantity} error={errors.quantity} disabled={busy} onChange={quantity => { setValues(current => ({ ...current, quantity })); setErrors(current => ({ ...current, quantity: '' })); }} />
         <AdminField field={{ name: 'note', label: 'Lý do', required: true, maxLength: 500 }} value={values.note} error={errors.note} disabled={busy} onChange={note => { setValues(current => ({ ...current, note })); setErrors(current => ({ ...current, note: '' })); }} />
       </div>
       <div className="hc-form-footer"><button className="hc-button hc-button--outline" type="button" disabled={busy} onClick={() => setTarget(null)}>Hủy</button><button className="hc-button" type="submit" disabled={busy}>{busy ? 'Đang lưu…' : 'Ghi nhận điều chỉnh'}</button></div>
-    </form>}
+    </form></Modal>}
     <div className="hc-card hc-form">
       <div className="hc-heading-actions"><h2>Danh sách SKU {items && lowCount > 0 && <span className="hc-badge hc-badge--warn">{lowCount} sắp hết/hết hàng</span>}</h2><label className="hc-check"><input type="checkbox" checked={lowOnly} onChange={event => setLowOnly(event.target.checked)} />Chỉ hàng sắp hết (WH-02)</label></div>
       {!items ? !error && <p role="status" className="hc-muted">Đang tải tồn kho…</p> : items.length === 0 ? <p className="hc-muted">{lowOnly ? 'Không có SKU nào dưới ngưỡng cảnh báo.' : 'Chưa có SKU.'}</p>

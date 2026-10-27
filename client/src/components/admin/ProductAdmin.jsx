@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { formatPrice } from '../../data.js';
 import { addProductImage, createCategoryAttribute, deleteProductImage, deleteVariant, getProductAttributes, listProductImages, listProducts, listVariants, products, saveProductAttributes, saveVariant, updateProductImage, uploadImage } from '../../services/catalog-service.js';
+import Modal from './Modal.jsx';
 import { AdminField } from './SimpleCrud.jsx';
 
 const toLocal = value => (value || '').slice(0, 16).replace(' ', 'T');
@@ -217,12 +218,12 @@ export default function ProductAdmin({ categoryOptions, brandOptions }) {
 
   return <section className="hc-card hc-form">
     <div className="hc-heading-actions"><h2>Sản phẩm</h2><button className="hc-button" type="button" disabled={busy} onClick={() => open(null)}>Thêm sản phẩm</button></div>
-    {notice && <p className="hc-success" role="status">{notice}</p>}{error && <p className="hc-error" role="alert">{error}</p>}
-    {selected && <div className="hc-subform hc-form"><form className="hc-form" noValidate onSubmit={save}><h3>{selected === 'new' ? 'Thêm sản phẩm' : `Sửa ${selected.product_code}`}</h3>
+    {!selected && <>{notice && <p className="hc-success" role="status">{notice}</p>}{error && <p className="hc-error" role="alert">{error}</p>}</>}
+    {selected && <Modal wide title={selected === 'new' ? 'Thêm sản phẩm' : `Sửa ${selected.product_code} · ${selected.name}`} onClose={() => setSelected(null)}>{notice && <p className="hc-success" role="status">{notice}</p>}{error && <p className="hc-error" role="alert">{error}</p>}<form className="hc-form" noValidate onSubmit={save}>
       <div className="hc-form-grid">{fields.map(field => <AdminField key={field.name} {...form.bind(field)} disabled={busy} />)}</div>
       <div className="hc-form-footer">{selected !== 'new' ? <button className="hc-button hc-button--danger" type="button" disabled={busy} onClick={() => deactivate(selected)}>Ngừng bán</button> : <span />}<span><button className="hc-button hc-button--outline" type="button" onClick={() => setSelected(null)}>Đóng</button> <button className="hc-button" type="submit" disabled={busy}>{busy ? 'Đang lưu…' : 'Lưu sản phẩm'}</button></span></div></form>
       {selected !== 'new' && selected.id && <><VariantPanel product={selected} /><ImagePanel product={selected} onChanged={reload} /><SpecPanel product={selected} /></>}
-    </div>}
+    </Modal>}
     <div className="hc-inline-form" role="search">
       <AdminField field={{ name: 'keyword', label: 'Tìm theo tên hoặc mã' }} value={filters.keyword} onChange={keyword => setFilters(current => ({ ...current, keyword }))} />
       <AdminField field={{ name: 'filter-category', label: 'Danh mục', type: 'select', options: categoryOptions, placeholder: 'Tất cả' }} value={filters.category_id} onChange={category_id => setFilters(current => ({ ...current, category_id }))} />
