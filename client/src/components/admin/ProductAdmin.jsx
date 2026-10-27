@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { formatPrice } from '../../data.js';
-import { addProductImage, createCategoryAttribute, deleteProductImage, getProductAttributes, listProductImages, listProducts, listVariants, products, saveProductAttributes, saveVariant, updateProductImage, uploadImage } from '../../services/catalog-service.js';
+import { addProductImage, createCategoryAttribute, deleteProductImage, deleteVariant, getProductAttributes, listProductImages, listProducts, listVariants, products, saveProductAttributes, saveVariant, updateProductImage, uploadImage } from '../../services/catalog-service.js';
 import { AdminField } from './SimpleCrud.jsx';
 
 const toLocal = value => (value || '').slice(0, 16).replace(' ', 'T');
@@ -46,6 +46,14 @@ function VariantPanel({ product }) {
     finally { setBusy(false); }
   }
 
+  async function remove(item) {
+    if (busy || !window.confirm(`Xóa SKU ${item.sku}? Lịch sử kho giữ nguyên, mã SKU không dùng lại được.`)) return;
+    setBusy(true); setError('');
+    try { await deleteVariant(item.id); await reload(); }
+    catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  }
+
   const fields = [
     { name: 'sku', label: 'Mã SKU', required: true, maxLength: 80 }, { name: 'variant_name', label: 'Tên biến thể', required: true, maxLength: 150 },
     { name: 'price', label: 'Giá bán (₫)', required: true, inputMode: 'decimal' }, { name: 'sale_price', label: 'Giá khuyến mãi (₫)', inputMode: 'decimal' },
@@ -58,7 +66,7 @@ function VariantPanel({ product }) {
       <p className="hc-muted">Tồn kho của SKU mới bằng 0; nhập hàng tại màn hình Tồn kho để có lịch sử.</p>
       <div className="hc-form-footer"><button className="hc-button hc-button--outline" type="button" onClick={() => setEditing(null)}>Hủy</button><button className="hc-button" type="submit" disabled={busy}>{busy ? 'Đang lưu…' : 'Lưu SKU'}</button></div></form>}
     {!items ? !error && <p role="status" className="hc-muted">Đang tải SKU…</p> : <div className="hc-table-wrap"><table className="hc-table"><thead><tr><th scope="col">SKU</th><th scope="col">Biến thể</th><th scope="col">Giá</th><th scope="col">Khuyến mãi</th><th scope="col">Tồn</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr></thead>
-      <tbody>{items.map(item => <tr key={item.id}><td>{item.sku}</td><td>{item.variant_name}</td><td>{formatPrice(Number(item.price))}</td><td>{item.sale_price ? `${formatPrice(Number(item.sale_price))}${item.sale_ends_at ? ` đến ${item.sale_ends_at.slice(0, 16)}` : ''}` : '—'}</td><td>{item.stock_quantity}</td><td>{Number(item.is_active) ? 'Đang bán' : 'Ngừng bán'}</td><td><button className="hc-text-button" type="button" onClick={() => edit(item)}>Sửa</button></td></tr>)}</tbody></table></div>}
+      <tbody>{items.map(item => <tr key={item.id}><td>{item.sku}</td><td>{item.variant_name}</td><td>{formatPrice(Number(item.price))}</td><td>{item.sale_price ? `${formatPrice(Number(item.sale_price))}${item.sale_ends_at ? ` đến ${item.sale_ends_at.slice(0, 16)}` : ''}` : '—'}</td><td>{item.stock_quantity}</td><td>{Number(item.is_active) ? 'Đang bán' : 'Ngừng bán'}</td><td className="hc-row-actions"><button className="hc-text-button" type="button" disabled={busy} onClick={() => edit(item)}>Sửa</button><button className="hc-text-button hc-danger" type="button" disabled={busy || items.length < 2 || Number(item.stock_quantity) > 0} title={items.length < 2 ? 'Cần giữ ít nhất một SKU' : Number(item.stock_quantity) > 0 ? 'Điều chỉnh tồn về 0 trước khi xóa' : undefined} onClick={() => remove(item)}>Xóa</button></td></tr>)}</tbody></table></div>}
   </section>;
 }
 
@@ -150,7 +158,7 @@ function ImagePanel({ product, onChanged }) {
 export default function ProductAdmin({ categoryOptions, brandOptions }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState('');
-  const [filters, setFilters] = useState({ keyword: '', category_id: '' });
+  const [filters, setFilters] = useState({ keyword: '', category_id: '', is_active: '' });
   const [selected, setSelected] = useState(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -218,6 +226,7 @@ export default function ProductAdmin({ categoryOptions, brandOptions }) {
     <div className="hc-inline-form" role="search">
       <AdminField field={{ name: 'keyword', label: 'Tìm theo tên hoặc mã' }} value={filters.keyword} onChange={keyword => setFilters(current => ({ ...current, keyword }))} />
       <AdminField field={{ name: 'filter-category', label: 'Danh mục', type: 'select', options: categoryOptions, placeholder: 'Tất cả' }} value={filters.category_id} onChange={category_id => setFilters(current => ({ ...current, category_id }))} />
+      <AdminField field={{ name: 'filter-active', label: 'Trạng thái', type: 'select', options: [['1', 'Đang bán'], ['0', 'Ẩn']], placeholder: 'Tất cả' }} value={filters.is_active} onChange={is_active => setFilters(current => ({ ...current, is_active }))} />
     </div>
     {!items ? !error && <p role="status" className="hc-muted">Đang tải sản phẩm…</p> : items.length === 0 ? <p className="hc-muted">Không có sản phẩm phù hợp.</p>
       : <div className="hc-table-wrap"><table className="hc-table"><thead><tr><th scope="col">Ảnh</th><th scope="col">Mã</th><th scope="col">Tên</th><th scope="col">Danh mục</th><th scope="col">Giá từ</th><th scope="col">Tồn</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr></thead>
