@@ -302,3 +302,48 @@
 }
 @media (max-width: 620px) { .hc-app--staff .hc-modal-head { padding: 18px 18px 0; } .hc-app--staff .hc-modal-body { padding: 18px; } }
 @media (prefers-reduced-motion: reduce) { .hc-app--staff .hc-modal[open] { animation: none; } }
+
+/* Form kho/sản phẩm theo template: ô tiền, phiếu nhiều dòng, dropzone, hộp xác nhận. Lớp mới nên không cần scope. */
+.hc-field--wide { grid-column: 1 / -1; }
+.hc-sufw { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border: 1px solid var(--border-input); border-radius: 8px; background: #fff; color: var(--text-muted); }
+.hc-sufw:focus-within { border-color: var(--accent); outline: 3px solid var(--accent); outline-offset: 2px; }
+.hc-sufw:has(input:disabled) { background: var(--bg-page); }
+.hc-sufw:has([aria-invalid="true"]) { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+.hc-app--staff .hc-field .hc-sufw input { flex: 1; min-width: 0; height: auto; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; outline: 0; box-shadow: none; }
+.hc-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-left: auto; }
+.hc-footer-left { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.hc-form-footer { flex-wrap: wrap; }
+.hc-toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+.hc-app--staff .hc-file-button { display: inline-flex; margin: 0; }
+.hc-dz { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 22px 16px; border: 1.5px dashed var(--border-input); border-radius: 10px; background: var(--bg-page); color: var(--text-2); text-align: center; }
+.hc-dz.is-over { border-color: var(--accent); background: var(--accent-tint); }
+.hc-dz small { color: var(--text-muted); font-size: 12.5px; }
+.hc-dz svg { color: var(--text-muted); }
+.hc-sumbox { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-table-head); }
+.hc-sumbox b { display: block; overflow-wrap: anywhere; }
+.hc-sumbox small { display: block; color: var(--text-muted); font-size: 12.5px; }
+.hc-app--staff .hc-badge--mute { background: var(--bg-mute); color: var(--text-2); }
+.hc-lines { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.hc-lines legend { padding: 0 0 6px; color: var(--text-2); font-size: 13px; font-weight: 600; }
+.hc-ln { display: grid; grid-template-columns: minmax(0, 1fr) 84px 110px 120px 44px; gap: 8px; align-items: center; }
+.hc-ln--head span { color: var(--text-muted); font-size: 12px; font-weight: 600; }
+.hc-ln select, .hc-ln-qty { width: 100%; min-width: 0; min-height: 44px; padding: 0 12px; border: 1px solid var(--border-input); border-radius: 8px; background: #fff; color: var(--text); font-size: 14px; }
+.hc-ln select:disabled, .hc-ln-qty:disabled { background: var(--bg-page); color: var(--text-muted); }
+.hc-ln--bad select, .hc-ln--bad .hc-ln-qty { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+.hc-ln-cell { font-weight: 600; }
+.hc-ln-cell::before { content: attr(data-label); display: none; }
+.hc-ln-note { grid-column: 1 / -1; margin: 0; }
+.hc-ln-note--warn { padding: 8px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn-text); font-size: 12.5px; }
+.hc-icon-button { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--border-input); border-radius: 8px; background: #fff; color: var(--danger); cursor: pointer; }
+.hc-icon-button:hover:not(:disabled) { border-color: var(--danger); }
+.hc-icon-button:disabled { opacity: .45; cursor: not-allowed; }
+.hc-tot { display: flex; flex-direction: column; }
+.hc-tot small { color: var(--text-muted); font-size: 12.5px; }
+.hc-tot b { font-size: 16px; font-weight: 700; }
+@media (max-width: 620px) {
+  .hc-ln { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hc-ln--head { display: none; }
+  .hc-ln select { grid-column: 1 / -1; }
+  .hc-ln-cell::before { display: block; color: var(--text-muted); font-size: 12px; }
+  .hc-actions { width: 100%; }
+}

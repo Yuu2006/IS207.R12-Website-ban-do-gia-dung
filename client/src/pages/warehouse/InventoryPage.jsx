@@ -1,26 +1,25 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import Modal from '../../components/admin/Modal.jsx';
-import { AdminField } from '../../components/admin/SimpleCrud.jsx';
-import { adjustStock, listInventory } from '../../services/catalog-service.js';
+import { Link, useSearchParams } from 'react-router-dom';
+import StockSheetDialog from '../../components/admin/StockSheetDialog.jsx';
+import { listInventory } from '../../services/catalog-service.js';
 
 const statusLabels = { in_stock: 'Còn hàng', low_stock: 'Sắp hết', out_of_stock: 'Hết hàng' };
-// Mã chứng từ duy nhất cho mỗi lần bấm lưu; server từ chối mã trùng (409) nên gửi lặp không cộng tồn hai lần.
-const referenceCode = () => `ADJ-${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}-${crypto.getRandomValues(new Uint16Array(1))[0].toString(16).padStart(4, '0')}`;
+const sheetKinds = [['in', 'Nhập kho'], ['out', 'Xuất kho'], ['adjust', 'Kiểm kê']];
+// Lối tắt từ trang tổng quan: /warehouse/inventory?form=stock-in|stock-out|stock-adjust.
+const formKinds = { 'stock-in': 'in', 'stock-out': 'out', 'stock-adjust': 'adjust' };
 
-// WH-01..03: xem tồn/ngưỡng theo SKU, lọc hàng sắp hết, điều chỉnh tăng/giảm kèm lý do (ADMIN, WAREHOUSE).
+// WH-01..04: xem tồn/ngưỡng theo SKU, lọc hàng sắp hết, lập phiếu nhập/xuất/kiểm kê kèm lý do (ADMIN, WAREHOUSE).
 export default function InventoryPage() {
+  const [params, setParams] = useSearchParams();
   const [items, setItems] = useState(null);
   const [error, setError] = useState('');
   const [lowOnly, setLowOnly] = useState(false);
   const [version, setVersion] = useState(0);
-  const [target, setTarget] = useState(null);
-  const [values, setValues] = useState({ movement_type: 'import', quantity: '', note: '' });
-  const [errors, setErrors] = useState({});
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState(null);
+  const [sheet, setSheet] = useState(() => formKinds[params.get('form')] ? { kind: formKinds[params.get('form')] } : null);
+  const [notice, setNotice] = useState('');
 
   useEffect(() => { document.title = 'Tồn kho · HomeCare'; }, []);
+  useEffect(() => { if (params.has('form')) setParams({}, { replace: true }); }, []);
   useEffect(() => {
     let active = true;
     setItems(null); setError('');
@@ -28,43 +27,22 @@ export default function InventoryPage() {
     return () => { active = false; };
   }, [lowOnly, version]);
 
-  function open(item) { setError(''); setTarget({ ...item, reference: referenceCode() }); setValues({ movement_type: 'import', quantity: '', note: '' }); setErrors({}); setResult(null); }
-
-  async function save(event) {
-    event.preventDefault();
-    if (busy) return;
-    const quantity = Number(values.quantity);
-    const nextErrors = {
-      quantity: Number.isInteger(quantity) && quantity > 0 ? (values.movement_type === 'export' && quantity > target.stock_quantity ? 'Không được giảm quá tồn hiện tại.' : '') : 'Số lượng là số nguyên dương.',
-      note: values.note.trim() ? '' : 'Hãy nhập lý do điều chỉnh.',
-    };
-    setErrors(nextErrors);
-    if (Object.values(nextErrors).some(Boolean)) return;
-    setBusy(true); setError('');
-    try {
-      setResult(await adjustStock({ sku: target.sku, movement_type: values.movement_type, quantity, reference_code: target.reference, note: values.note.trim() }));
-      setTarget(null); setVersion(current => current + 1);
-    } catch (err) { setError(err.message); }
-    finally { setBusy(false); }
+  function closeSheet(written) {
+    setSheet(null);
+    if (written) { setNotice(`Đã ghi ${written} dòng vào kho. Xem Nhật ký kho để đối chiếu.`); setVersion(current => current + 1); }
   }
 
   const lowCount = items?.filter(item => item.stock_status !== 'in_stock').length ?? 0;
-  return <section><div className="hc-page-heading"><span className="hc-eyebrow">Kho hàng</span><h1>Tồn kho theo SKU</h1><p>Mỗi lần điều chỉnh ghi tồn trước/sau, người thực hiện và lý do. Không cho phép tồn âm. <Link to="/warehouse/history">Xem nhật ký kho →</Link></p></div>
-    {result && <p className="hc-success" role="status">Đã ghi nhận {result.sku}: {result.quantity_before} → {result.quantity_after} ({result.reference_code}).</p>}
-    {error && !target && <p className="hc-error" role="alert">{error} {!items && <button className="hc-text-button" type="button" onClick={() => setVersion(current => current + 1)}>Thử lại</button>}</p>}
-    {target && <Modal title={`Điều chỉnh ${target.sku} · ${target.product_name}`} onClose={() => setTarget(null)}><form className="hc-form" noValidate onSubmit={save}>{error && <p className="hc-error" role="alert">{error}</p>}<p className="hc-muted">Tồn hiện tại: <strong>{target.stock_quantity}</strong> · Mã chứng từ: {target.reference}</p>
-      <div className="hc-form-grid">
-        <AdminField field={{ name: 'movement_type', label: 'Loại', type: 'select', options: [['import', 'Nhập kho'], ['export', 'Xuất kho']], placeholder: 'Chọn loại' }} value={values.movement_type} disabled={busy} onChange={movement_type => setValues(current => ({ ...current, movement_type }))} />
-        <AdminField field={{ name: 'quantity', label: 'Số lượng', inputMode: 'numeric', required: true }} value={values.quantity} error={errors.quantity} disabled={busy} onChange={quantity => { setValues(current => ({ ...current, quantity })); setErrors(current => ({ ...current, quantity: '' })); }} />
-        <AdminField field={{ name: 'note', label: 'Lý do', required: true, maxLength: 500 }} value={values.note} error={errors.note} disabled={busy} onChange={note => { setValues(current => ({ ...current, note })); setErrors(current => ({ ...current, note: '' })); }} />
-      </div>
-      <div className="hc-form-footer"><button className="hc-button hc-button--outline" type="button" disabled={busy} onClick={() => setTarget(null)}>Hủy</button><button className="hc-button" type="submit" disabled={busy}>{busy ? 'Đang lưu…' : 'Ghi nhận điều chỉnh'}</button></div>
-    </form></Modal>}
+  return <section><div className="hc-page-heading"><span className="hc-eyebrow">Kho hàng</span><h1>Tồn kho theo SKU</h1><p>Mỗi dòng phiếu ghi tồn trước/sau, người thực hiện và lý do. Không cho phép tồn âm. <Link to="/warehouse/history">Xem nhật ký kho →</Link></p></div>
+    <div className="hc-toolbar">{sheetKinds.map(([kind, label]) => <button key={kind} className={`hc-button${kind === 'in' ? '' : ' hc-button--outline'}`} type="button" onClick={() => { setNotice(''); setSheet({ kind }); }}>{label}</button>)}</div>
+    {notice && <p className="hc-success" role="status">{notice}</p>}
+    {error && <p className="hc-error" role="alert">{error} {!items && <button className="hc-text-button" type="button" onClick={() => setVersion(current => current + 1)}>Thử lại</button>}</p>}
+    {sheet && <StockSheetDialog key={sheet.kind + (sheet.sku ?? '')} kind={sheet.kind} initialSku={sheet.sku} onClose={closeSheet} />}
     <div className="hc-card hc-form">
       <div className="hc-heading-actions"><h2>Danh sách SKU {items && lowCount > 0 && <span className="hc-badge hc-badge--warn">{lowCount} sắp hết/hết hàng</span>}</h2><label className="hc-check"><input type="checkbox" checked={lowOnly} onChange={event => setLowOnly(event.target.checked)} />Chỉ hàng sắp hết (WH-02)</label></div>
       {!items ? !error && <p role="status" className="hc-muted">Đang tải tồn kho…</p> : items.length === 0 ? <p className="hc-muted">{lowOnly ? 'Không có SKU nào dưới ngưỡng cảnh báo.' : 'Chưa có SKU.'}</p>
         : <div className="hc-table-wrap"><table className="hc-table"><thead><tr><th scope="col">SKU</th><th scope="col">Sản phẩm</th><th scope="col">Danh mục</th><th scope="col">Tồn</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr></thead>
-          <tbody>{items.map(item => <tr key={item.variant_id}><td>{item.sku}</td><td>{item.product_name} · {item.variant_name}</td><td>{item.category_name}</td><td><strong>{item.stock_quantity}</strong></td><td><span className={`hc-badge${item.stock_status !== 'in_stock' ? ' hc-badge--warn' : ''}`}>{statusLabels[item.stock_status]}</span></td><td className="hc-row-actions"><button className="hc-text-button" type="button" disabled={busy} onClick={() => open(item)}>Điều chỉnh</button></td></tr>)}</tbody></table></div>}
+          <tbody>{items.map(item => <tr key={item.variant_id}><td>{item.sku}</td><td>{item.product_name} · {item.variant_name}</td><td>{item.category_name}</td><td><strong>{item.stock_quantity}</strong></td><td><span className={`hc-badge${item.stock_status !== 'in_stock' ? ' hc-badge--warn' : ''}`}>{statusLabels[item.stock_status]}</span></td><td className="hc-row-actions">{sheetKinds.map(([kind, label]) => <button key={kind} className="hc-text-button" type="button" aria-label={`${label} ${item.sku}`} onClick={() => { setNotice(''); setSheet({ kind, sku: item.sku }); }}>{label}</button>)}</td></tr>)}</tbody></table></div>}
     </div>
   </section>;
 }

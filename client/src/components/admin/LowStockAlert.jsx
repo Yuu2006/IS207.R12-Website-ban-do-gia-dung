@@ -26,7 +26,7 @@ export default function LowStockAlert() {
       <span className="hc-stock-alert-title"><AlertTriangle size={20} aria-hidden="true" /><h2 id="low-stock-title">Cảnh báo tồn kho</h2></span>
       <span className="hc-stock-alert-figure hc-stock-alert-figure--out"><strong>{summary.outOfStock}</strong><span>SKU hết hàng</span></span>
       <span className="hc-stock-alert-figure"><strong>{low}</strong><span>SKU sắp hết</span></span>
-      <Link className="hc-button" to="/warehouse/inventory">Nhập hàng</Link>
+      <Link className="hc-button" to="/warehouse/inventory?form=stock-in">Nhập hàng</Link>
     </div>
     <div className="hc-table-wrap"><table className="hc-table"><thead><tr><th scope="col">SKU</th><th scope="col">Sản phẩm</th><th scope="col">Tồn</th><th scope="col">Tình trạng</th></tr></thead>
       <tbody>{summary.top.map(item => <tr key={item.variant_id}><td>{item.sku}</td><td>{item.product_name} · {item.variant_name}</td><td><strong>{item.stock_quantity}</strong></td><td>{item.stock_quantity === 0 ? <span className="hc-badge hc-badge--out">Hết hàng</span> : <span className="hc-badge hc-badge--warn">Sắp hết</span>}</td></tr>)}</tbody></table></div>
