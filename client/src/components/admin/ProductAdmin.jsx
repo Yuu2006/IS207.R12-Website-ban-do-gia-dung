@@ -1,6 +1,10 @@
+import { Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { formatPrice } from '../../data.js';
 import { addProductImage, createCategoryAttribute, deleteProductImage, deleteVariant, getProductAttributes, listProductImages, listProducts, listVariants, products, saveProductAttributes, saveVariant, updateProductImage, uploadImage } from '../../services/catalog-service.js';
+import { toMoneyValue } from '../../utils/money-input.js';
+import ConfirmDialog from './ConfirmDialog.jsx';
 import Modal from './Modal.jsx';
 import { AdminField } from './SimpleCrud.jsx';
 
@@ -20,6 +24,7 @@ function VariantPanel({ product }) {
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [removing, setRemoving] = useState(null);
   const form = useForm({});
   const reload = () => listVariants(product.id).then(setItems).catch(err => setError(err.message));
   useEffect(() => { setItems(null); reload(); }, [product.id]);
@@ -27,7 +32,7 @@ function VariantPanel({ product }) {
   function edit(item) {
     setEditing(item?.id ?? 'new'); setError('');
     form.setErrors({});
-    form.setValues(item ? { sku: item.sku, variant_name: item.variant_name, price: String(Number(item.price)), sale_price: item.sale_price ? String(Number(item.sale_price)) : '', sale_starts_at: toLocal(item.sale_starts_at), sale_ends_at: toLocal(item.sale_ends_at), low_stock_threshold: String(item.low_stock_threshold), is_active: Boolean(Number(item.is_active)) }
+    form.setValues(item ? { sku: item.sku, variant_name: item.variant_name, price: toMoneyValue(item.price), sale_price: toMoneyValue(item.sale_price), sale_starts_at: toLocal(item.sale_starts_at), sale_ends_at: toLocal(item.sale_ends_at), low_stock_threshold: String(item.low_stock_threshold), is_active: Boolean(Number(item.is_active)) }
       : { sku: '', variant_name: '', price: '', sale_price: '', sale_starts_at: '', sale_ends_at: '', low_stock_threshold: '5', is_active: true });
   }
 
@@ -35,7 +40,7 @@ function VariantPanel({ product }) {
     event.preventDefault();
     if (busy) return;
     const v = form.values;
-    const errors = { sku: v.sku.trim() ? '' : 'SKU bắt buộc.', variant_name: v.variant_name.trim() ? '' : 'Tên biến thể bắt buộc.', price: /^\d+(\.\d{1,2})?$/.test(v.price) ? '' : 'Giá không hợp lệ.', sale_price: !v.sale_price || Number(v.sale_price) < Number(v.price) ? '' : 'Giá khuyến mãi phải thấp hơn giá bán.', low_stock_threshold: /^\d+$/.test(v.low_stock_threshold) ? '' : 'Ngưỡng là số nguyên ≥ 0.' };
+    const errors = { sku: v.sku.trim() ? '' : 'SKU bắt buộc.', variant_name: v.variant_name.trim() ? '' : 'Tên biến thể bắt buộc.', price: /^\d+(\.\d{1,2})?$/.test(v.price) ? '' : 'Giá không hợp lệ.', sale_price: !v.sale_price || (/^\d+(\.\d{1,2})?$/.test(v.sale_price) && Number(v.sale_price) < Number(v.price)) ? '' : 'Giá khuyến mãi phải hợp lệ và thấp hơn giá bán.', low_stock_threshold: /^\d+$/.test(v.low_stock_threshold) ? '' : 'Ngưỡng là số nguyên ≥ 0.' };
     form.setErrors(errors);
     if (Object.values(errors).some(Boolean)) return;
     setBusy(true); setError('');
@@ -47,27 +52,28 @@ function VariantPanel({ product }) {
     finally { setBusy(false); }
   }
 
-  async function remove(item) {
-    if (busy || !window.confirm(`Xóa SKU ${item.sku}? Lịch sử kho giữ nguyên, mã SKU không dùng lại được.`)) return;
+  async function remove() {
+    if (busy) return;
     setBusy(true); setError('');
-    try { await deleteVariant(item.id); await reload(); }
+    try { await deleteVariant(removing.id); setRemoving(null); await reload(); }
     catch (err) { setError(err.message); }
     finally { setBusy(false); }
   }
 
   const fields = [
     { name: 'sku', label: 'Mã SKU', required: true, maxLength: 80 }, { name: 'variant_name', label: 'Tên biến thể', required: true, maxLength: 150 },
-    { name: 'price', label: 'Giá bán (₫)', required: true, inputMode: 'decimal' }, { name: 'sale_price', label: 'Giá khuyến mãi (₫)', inputMode: 'decimal' },
+    { name: 'price', label: 'Giá bán', type: 'money', required: true }, { name: 'sale_price', label: 'Giá khuyến mãi', type: 'money' },
     { name: 'sale_starts_at', label: 'Khuyến mãi từ', type: 'datetime-local' }, { name: 'sale_ends_at', label: 'Khuyến mãi đến', type: 'datetime-local' },
     { name: 'low_stock_threshold', label: 'Ngưỡng cảnh báo sắp hết', inputMode: 'numeric' }, { name: 'is_active', label: 'Đang bán', type: 'checkbox' },
   ].map(field => ({ ...field, id: `variant-${field.name}` })); // Không trùng id với form sản phẩm đang mở cùng lúc.
   return <section className="hc-subform hc-form"><div className="hc-heading-actions"><h3>SKU và giá</h3><button className="hc-button hc-button--outline" type="button" disabled={busy} onClick={() => edit(null)}>Thêm SKU</button></div>
-    {error && <p className="hc-error" role="alert">{error}</p>}
+    {error && !removing && <p className="hc-error" role="alert">{error}</p>}
+    {removing && <ConfirmDialog title="Xóa SKU này?" description="Lịch sử kho giữ nguyên, mã SKU không dùng lại được." summary={removing.sku} detail={removing.variant_name} confirmLabel="Xóa SKU" busy={busy} error={error} onConfirm={remove} onCancel={() => { setRemoving(null); setError(''); }} />}
     {editing !== null && <form className="hc-form" noValidate onSubmit={save}><div className="hc-form-grid">{fields.map(field => <AdminField key={field.name} {...form.bind(field)} disabled={busy || (field.name === 'sku' && editing !== 'new')} />)}</div>
       <p className="hc-muted">Tồn kho của SKU mới bằng 0; nhập hàng tại màn hình Tồn kho để có lịch sử.</p>
       <div className="hc-form-footer"><button className="hc-button hc-button--outline" type="button" onClick={() => setEditing(null)}>Hủy</button><button className="hc-button" type="submit" disabled={busy}>{busy ? 'Đang lưu…' : 'Lưu SKU'}</button></div></form>}
     {!items ? !error && <p role="status" className="hc-muted">Đang tải SKU…</p> : <div className="hc-table-wrap"><table className="hc-table"><thead><tr><th scope="col">SKU</th><th scope="col">Biến thể</th><th scope="col">Giá</th><th scope="col">Khuyến mãi</th><th scope="col">Tồn</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr></thead>
-      <tbody>{items.map(item => <tr key={item.id}><td>{item.sku}</td><td>{item.variant_name}</td><td>{formatPrice(Number(item.price))}</td><td>{item.sale_price ? `${formatPrice(Number(item.sale_price))}${item.sale_ends_at ? ` đến ${item.sale_ends_at.slice(0, 16)}` : ''}` : '—'}</td><td>{item.stock_quantity}</td><td>{Number(item.is_active) ? 'Đang bán' : 'Ngừng bán'}</td><td className="hc-row-actions"><button className="hc-text-button" type="button" disabled={busy} onClick={() => edit(item)}>Sửa</button><button className="hc-text-button hc-danger" type="button" disabled={busy || items.length < 2 || Number(item.stock_quantity) > 0} title={items.length < 2 ? 'Cần giữ ít nhất một SKU' : Number(item.stock_quantity) > 0 ? 'Điều chỉnh tồn về 0 trước khi xóa' : undefined} onClick={() => remove(item)}>Xóa</button></td></tr>)}</tbody></table></div>}
+      <tbody>{items.map(item => <tr key={item.id}><td>{item.sku}</td><td>{item.variant_name}</td><td>{formatPrice(Number(item.price))}</td><td>{item.sale_price ? `${formatPrice(Number(item.sale_price))}${item.sale_ends_at ? ` đến ${item.sale_ends_at.slice(0, 16)}` : ''}` : '—'}</td><td>{item.stock_quantity}</td><td>{Number(item.is_active) ? 'Đang bán' : 'Ngừng bán'}</td><td className="hc-row-actions"><button className="hc-text-button" type="button" disabled={busy} onClick={() => edit(item)}>Sửa</button><button className="hc-text-button hc-danger" type="button" disabled={busy || items.length < 2 || Number(item.stock_quantity) > 0} title={items.length < 2 ? 'Cần giữ ít nhất một SKU' : Number(item.stock_quantity) > 0 ? 'Điều chỉnh tồn về 0 trước khi xóa' : undefined} onClick={() => { setError(''); setRemoving(item); }}>Xóa</button></td></tr>)}</tbody></table></div>}
   </section>;
 }
 
@@ -130,6 +136,8 @@ function ImagePanel({ product, onChanged }) {
   const [orders, setOrders] = useState({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [over, setOver] = useState(false);
+  const [removing, setRemoving] = useState(null);
   const apply = rows => { setImages(rows); setOrders(Object.fromEntries(rows.map(row => [row.id, String(row.sort_order)]))); };
   useEffect(() => { setImages(null); listProductImages(product.id).then(apply).catch(err => setError(err.message)); }, [product.id]);
 
@@ -141,16 +149,30 @@ function ImagePanel({ product, onChanged }) {
     finally { setBusy(false); }
   }
 
-  return <section className="hc-subform hc-form"><div className="hc-heading-actions"><h3>Ảnh sản phẩm ({images?.length ?? 0}/10)</h3>
-    <label className="hc-button hc-button--outline hc-file-button">{busy ? 'Đang xử lý…' : 'Thêm ảnh'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || images?.length >= 10} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) run(async () => addProductImage(product.id, { image_url: await uploadImage(file, 'products'), sort_order: (images?.length ?? 0) * 10 })); }} /></label></div>
-    <p className="hc-muted">JPEG/PNG/WebP ≤ 5 MB. Ảnh đầu tiên tự thành ảnh đại diện.</p>
-    {error && <p className="hc-error" role="alert">{error}</p>}
+  // Chọn nhiều ảnh hoặc kéo thả: tải lên tuần tự qua uploadImage rồi gắn vào sản phẩm; server vẫn kiểm tra loại và dung lượng.
+  function addFiles(list) {
+    const files = [...list];
+    const count = images?.length ?? 0;
+    if (!files.length || busy) return;
+    if (files.length > 10 - count) { setError(`Chỉ thêm được tối đa ${10 - count} ảnh nữa (giới hạn 10 ảnh).`); return; }
+    const bad = files.find(file => !/^image\/(jpeg|png|webp)$/.test(file.type) || file.size > 5 * 1024 * 1024);
+    if (bad) { setError(`"${bad.name}" không phải ảnh JPEG/PNG/WebP hoặc lớn hơn 5 MB.`); return; }
+    run(async () => { let rows; for (const [index, file] of files.entries()) rows = await addProductImage(product.id, { image_url: await uploadImage(file, 'products'), sort_order: (count + index) * 10 }); return rows; });
+  }
+
+  return <section className="hc-subform hc-form"><h3>Ảnh sản phẩm ({images?.length ?? 0}/10)</h3>
+    <div className={`hc-dz${over ? ' is-over' : ''}`} onDragOver={event => { event.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={event => { event.preventDefault(); setOver(false); addFiles(event.dataTransfer.files); }}>
+      <Upload size={28} aria-hidden="true" /><span>Kéo thả ảnh vào đây hoặc chọn từ máy</span><small>JPEG, PNG hoặc WebP, tối đa 5 MB mỗi ảnh, tối đa 10 ảnh. Ảnh đầu tiên tự thành ảnh đại diện.</small>
+      <label className="hc-button hc-button--outline hc-file-button">{busy ? 'Đang xử lý…' : 'Chọn ảnh'}<input type="file" multiple accept="image/jpeg,image/png,image/webp" disabled={busy || images?.length >= 10} onChange={event => { addFiles(event.target.files); event.target.value = ''; }} /></label>
+    </div>
+    {error && !removing && <p className="hc-error" role="alert">{error}</p>}
+    {removing && <ConfirmDialog title="Xóa ảnh này?" description="Ảnh được gỡ khỏi sản phẩm." summary={`Ảnh ${removing.id}`} detail={product.name} confirmLabel="Xóa ảnh" busy={busy} error={error} onConfirm={async () => { await run(() => deleteProductImage(removing.id)); setRemoving(null); }} onCancel={() => { setRemoving(null); setError(''); }} />}
     {!images ? !error && <p role="status" className="hc-muted">Đang tải ảnh…</p> : images.length === 0 ? <p className="hc-muted">Chưa có ảnh.</p>
       : <div className="hc-image-grid">{images.map(image => <div className="hc-image-card" key={image.id}>
         <img src={image.image_url} alt={`Ảnh ${image.id} của ${product.name}`} />
         {Number(image.is_primary) ? <span className="hc-badge">Ảnh đại diện</span> : <button className="hc-text-button" type="button" disabled={busy} onClick={() => run(() => updateProductImage(image.id, { is_primary: true }))}>Đặt làm đại diện</button>}
         <label className="hc-check">Thứ tự <input type="number" min="0" value={orders[image.id] ?? ''} disabled={busy} aria-label={`Thứ tự ảnh ${image.id}`} onChange={event => setOrders(current => ({ ...current, [image.id]: event.target.value }))} onBlur={() => Number(orders[image.id]) !== Number(image.sort_order) && /^\d+$/.test(orders[image.id]) && run(() => updateProductImage(image.id, { sort_order: Number(orders[image.id]) }))} /></label>
-        <button className="hc-text-button hc-danger" type="button" disabled={busy} onClick={() => window.confirm('Xóa ảnh này khỏi sản phẩm?') && run(() => deleteProductImage(image.id))}>Xóa ảnh</button>
+        <button className="hc-text-button hc-danger" type="button" disabled={busy} onClick={() => { setError(''); setRemoving(image); }}>Xóa ảnh</button>
       </div>)}</div>}
   </section>;
 }
@@ -163,6 +185,7 @@ export default function ProductAdmin({ categoryOptions, brandOptions }) {
   const [selected, setSelected] = useState(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const [confirming, setConfirming] = useState(false);
   const form = useForm({});
   const [version, setVersion] = useState(0);
   const reload = () => setVersion(current => current + 1);
@@ -186,6 +209,7 @@ export default function ProductAdmin({ categoryOptions, brandOptions }) {
     const required = ['category_id', 'brand_id', 'product_code', 'name', ...(selected === 'new' ? ['sku', 'variant_name', 'price'] : [])];
     const errors = Object.fromEntries(required.filter(name => !String(v[name] ?? '').trim()).map(name => [name, 'Bắt buộc.']));
     if (!/^\d{1,3}$/.test(v.warranty_months)) errors.warranty_months = 'Số tháng bảo hành không hợp lệ.';
+    if (selected === 'new' && v.price && !/^\d+(\.\d{1,2})?$/.test(v.price)) errors.price = 'Giá không hợp lệ.';
     form.setErrors(errors);
     if (Object.keys(errors).length) return;
     setBusy(true); setError('');
@@ -199,29 +223,31 @@ export default function ProductAdmin({ categoryOptions, brandOptions }) {
     finally { setBusy(false); }
   }
 
-  async function deactivate(item) {
-    if (busy || !window.confirm(`Ngừng bán và ẩn "${item.name}"? Dữ liệu đơn hàng cũ được giữ nguyên.`)) return;
-    setBusy(true);
-    try { await products.remove(item.id); setSelected(null); setNotice('Đã ngừng bán sản phẩm.'); reload(); }
+  async function removeProduct() {
+    if (busy) return;
+    setBusy(true); setError('');
+    try { await products.remove(selected.id); setConfirming(false); setSelected(null); setNotice('Đã xóa sản phẩm.'); reload(); }
     catch (err) { setError(err.message); }
     finally { setBusy(false); }
   }
 
   const fields = [
-    { name: 'category_id', label: 'Danh mục', type: 'select', options: categoryOptions, required: true }, { name: 'brand_id', label: 'Thương hiệu', type: 'select', options: brandOptions, required: true },
-    { name: 'product_code', label: 'Mã sản phẩm', required: true, maxLength: 60 }, { name: 'name', label: 'Tên sản phẩm', required: true, maxLength: 255 },
-    { name: 'slug', label: 'Slug (để trống sẽ tự tạo)', maxLength: 280 }, { name: 'warranty_months', label: 'Bảo hành (tháng)', inputMode: 'numeric' },
-    { name: 'description', label: 'Mô tả', type: 'textarea', maxLength: 5000 }, { name: 'is_active', label: 'Đang bán', type: 'checkbox' },
-    ...(selected === 'new' ? [{ name: 'sku', label: 'SKU đầu tiên', required: true, maxLength: 80 }, { name: 'variant_name', label: 'Tên biến thể', required: true }, { name: 'price', label: 'Giá bán (₫)', required: true, inputMode: 'decimal' }]
-      : []),
+    { name: 'name', label: 'Tên sản phẩm', required: true, maxLength: 255, wide: true },
+    { name: 'product_code', label: 'Mã sản phẩm', required: true, maxLength: 60 }, { name: 'category_id', label: 'Danh mục', type: 'select', options: categoryOptions, required: true },
+    { name: 'brand_id', label: 'Thương hiệu', type: 'select', options: brandOptions, required: true }, { name: 'warranty_months', label: 'Bảo hành (tháng)', inputMode: 'numeric' },
+    { name: 'slug', label: 'Slug (để trống sẽ tự tạo)', maxLength: 280 },
+    ...(selected === 'new' ? [{ name: 'sku', label: 'SKU đầu tiên', required: true, maxLength: 80 }, { name: 'variant_name', label: 'Tên biến thể', required: true }, { name: 'price', label: 'Giá bán', type: 'money', required: true }] : []),
+    { name: 'description', label: 'Mô tả', type: 'textarea', maxLength: 5000, wide: true },
   ];
 
   return <section className="hc-card hc-form">
     <div className="hc-heading-actions"><h2>Sản phẩm</h2><button className="hc-button" type="button" disabled={busy} onClick={() => open(null)}>Thêm sản phẩm</button></div>
     {!selected && <>{notice && <p className="hc-success" role="status">{notice}</p>}{error && <p className="hc-error" role="alert">{error}</p>}</>}
-    {selected && <Modal wide title={selected === 'new' ? 'Thêm sản phẩm' : `Sửa ${selected.product_code} · ${selected.name}`} onClose={() => setSelected(null)}>{notice && <p className="hc-success" role="status">{notice}</p>}{error && <p className="hc-error" role="alert">{error}</p>}<form className="hc-form" noValidate onSubmit={save}>
+    {selected && <Modal wide title={selected === 'new' ? 'Thêm sản phẩm' : `Sửa ${selected.product_code} · ${selected.name}`} onClose={() => setSelected(null)}>{notice && <p className="hc-success" role="status">{notice}</p>}{error && !confirming && <p className="hc-error" role="alert">{error}</p>}<form className="hc-form" noValidate onSubmit={save}>
       <div className="hc-form-grid">{fields.map(field => <AdminField key={field.name} {...form.bind(field)} disabled={busy} />)}</div>
-      <div className="hc-form-footer">{selected !== 'new' ? <button className="hc-button hc-button--danger" type="button" disabled={busy} onClick={() => deactivate(selected)}>Ngừng bán</button> : <span />}<span><button className="hc-button hc-button--outline" type="button" onClick={() => setSelected(null)}>Đóng</button> <button className="hc-button" type="submit" disabled={busy}>{busy ? 'Đang lưu…' : 'Lưu sản phẩm'}</button></span></div></form>
+      {selected === 'new' && <p className="hc-muted">Tồn kho ban đầu của SKU luôn là 0. Nhập hàng bằng phiếu nhập tại <Link to="/warehouse/inventory?form=stock-in">Tồn kho</Link> để có lịch sử.</p>}
+      <div className="hc-form-footer"><span className="hc-footer-left">{selected !== 'new' && <button className="hc-button hc-button--outline hc-danger" type="button" disabled={busy} onClick={() => { setError(''); setConfirming(true); }}><Trash2 size={18} aria-hidden="true" />Xóa sản phẩm</button>}<AdminField {...form.bind({ name: 'is_active', label: 'Đang bán', type: 'checkbox' })} disabled={busy} /></span><span className="hc-actions"><button className="hc-button hc-button--outline" type="button" onClick={() => setSelected(null)}>Đóng</button><button className="hc-button" type="submit" disabled={busy}>{busy ? 'Đang lưu…' : 'Lưu sản phẩm'}</button></span></div></form>
+      {confirming && <ConfirmDialog title="Xóa sản phẩm này?" description="Sản phẩm bị gỡ khỏi catalog và cửa hàng; dữ liệu đơn hàng cũ được giữ nguyên. Chỉ muốn tạm ngừng bán thì bỏ chọn Đang bán." summary={selected.name} detail={selected.product_code} badge={selected.total_stock === undefined ? undefined : `Còn ${selected.total_stock} trong kho`} confirmLabel="Xóa sản phẩm" busy={busy} error={error} onConfirm={removeProduct} onCancel={() => { setConfirming(false); setError(''); }} />}
       {selected !== 'new' && selected.id && <><VariantPanel product={selected} /><ImagePanel product={selected} onChanged={reload} /><SpecPanel product={selected} /></>}
     </Modal>}
     <div className="hc-inline-form" role="search">
