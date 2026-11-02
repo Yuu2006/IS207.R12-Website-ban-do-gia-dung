@@ -21,13 +21,13 @@ function PublicLayout() { return <><Header /><Outlet /><Footer /></>; }
 
 // Giữ route đã tích hợp và đặt guard theo role trước mọi workspace.
 export default function AppRoutes() {
-  // Trang đơn hàng tự dựng header storefront/nhân viên và CustomerRoute; tải dữ liệu qua OrderServiceProvider.
+  // Trang đơn hàng khách tự dựng header storefront và CustomerRoute; nhân viên dùng AppShell; tải dữ liệu qua OrderServiceProvider.
   const orderWorkspace = <OrderWorkspace />;
   return <Routes>
     <Route element={<PublicLayout />}><Route path="/" element={<HomePage />} /><Route path="/products" element={<ProductListPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /></Route>
     <Route path="/login" element={<LoginForm key="login" />} /><Route path="/register" element={<LoginForm key="register" initialScreen="register" />} /><Route path="/internal/login" element={<StaffLogin />} /><Route path="/forgot-password" element={<StaffLogin audience="customer" />} /><Route path="/internal" element={<Navigate to="/internal/login" replace />} />
     {['/checkout', '/orders', '/orders/:orderId'].map(path => <Route key={path} path={path} element={orderWorkspace} />)}
-    <Route element={<ProtectedRoute roles={['SALES', 'ADMIN']} />}><Route path="/sales/orders" element={orderWorkspace} /></Route>
+    <Route element={<ProtectedRoute roles={['SALES', 'ADMIN']} />}><Route element={<AppShell />}><Route path="/sales/orders" element={orderWorkspace} /></Route></Route>
     <Route element={<ProtectedRoute />}><Route element={<AppShell />}>
       <Route path="/profile" element={<ProfilePage />} />
       <Route element={<ProtectedRoute roles={['CUSTOMER']} />}><Route path="/customer" element={<WorkspacePage />} /><Route path="/addresses" element={<AddressesPage />} /></Route>

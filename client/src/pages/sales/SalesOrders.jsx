@@ -43,7 +43,7 @@ export default function SalesOrders({ initialOrders }) {
 
   const next = selected && nextStatus[selected.status];
   const nextAllowed = next && (selected.method.toUpperCase() === 'VNPAY' ? selected.payment === 'paid' : next === 'delivered' ? collected && selected.payment === 'unpaid' : selected.status === 'delivered' ? selected.payment === 'paid' : selected.payment === 'unpaid');
-  return <main className="oc-main oc-main--staff"><div className="oc-title-row"><div><span className="oc-eyebrow">KHÔNG GIAN NHÂN VIÊN</span><h1>Xử lý đơn hàng</h1><p>Tra cứu, xác nhận và theo dõi hành trình giao hàng.</p></div><span className="oc-staff-label"><Icon name="user" size={17} />Nhân viên bán hàng</span></div>
+  return <div className="oc-main oc-main--staff"><div className="oc-title-row"><div><span className="oc-eyebrow">Không gian nhân viên</span><h1>Xử lý đơn hàng</h1><p>Tra cứu, xác nhận và theo dõi hành trình giao hàng.</p></div><span className="oc-staff-label"><Icon name="user" size={17} />Nhân viên bán hàng</span></div>
     <p className="oc-muted">Kết quả tra cứu được lọc và phân trang theo trạng thái đơn.</p>
     <div className="oc-staff-grid"><section className="oc-card oc-staff-list">
       <div className="oc-toolbar"><label className="oc-search"><Icon name="search" size={18} /><input aria-label="Tìm mã đơn, tên hoặc số điện thoại" placeholder="Tìm mã đơn, tên, số điện thoại…" value={query} maxLength={100} disabled={busy || action.uncertain} onChange={event => setQuery(event.target.value)} /></label><select aria-label="Lọc trạng thái đơn" value={filter} disabled={busy || action.uncertain} onChange={event => { setFilter(event.target.value); setPage(1); }}><option value="all">Tất cả trạng thái</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
@@ -62,5 +62,5 @@ export default function SalesOrders({ initialOrders }) {
       </div>}
       {canCancelOrder(selected.status) && <form className="oc-cancel-form" onSubmit={event => { event.preventDefault(); update('cancelled'); }}><label className="oc-field">Lý do hủy<textarea required value={reason} disabled={busy || action.uncertain} onChange={event => setReason(event.target.value)} maxLength={500} /></label><button className="oc-button oc-button--danger" disabled={!reason.trim() || busy}>Hủy đơn</button></form>}
     </div><div className="oc-stack"><OrderDetailContent order={selected} /></div></> : <div className="oc-card oc-empty"><Icon name="box" size={42} /><h2>Chọn một đơn hàng</h2><p>Thông tin nhận hàng, thanh toán và lịch sử xử lý sẽ xuất hiện tại đây.</p></div>}</aside></div>
-  </main>;
+  </div>;
 }
