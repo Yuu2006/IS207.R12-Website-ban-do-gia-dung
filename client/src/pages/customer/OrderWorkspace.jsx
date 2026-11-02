@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import Header from '../../components/Header.jsx';
 import Footer from '../../components/Footer.jsx';
 import { useCustomerAuth } from '../../context/CustomerAuthContext.jsx';
@@ -10,7 +10,7 @@ import Checkout from './Checkout.jsx';
 import SalesOrders from '../sales/SalesOrders.jsx';
 import './order-workspace.css';
 
-// Dùng layout storefront cho khách; checkout và nhân viên là các trang độc lập.
+// Dùng layout storefront cho khách; trang nhân viên nằm trong AppShell (route riêng).
 export default function OrderWorkspace({ orders, cart } = {}) {
   const location = useLocation();
   const { orderId } = useParams();
@@ -25,14 +25,7 @@ export default function OrderWorkspace({ orders, cart } = {}) {
     window.scrollTo(0, 0);
   }, [location.pathname, isSales, isCheckout]);
 
-  if (isSales) return <div className="order-app">
-    <header className="oc-header"><div className="oc-header-inner">
-      <Link className="oc-brand" to="/internal/login"><strong>HomeCare</strong></Link>
-      <span className="oc-staff-label">Không gian nhân viên · Xử lý đơn hàng</span>
-      <Link className="oc-account" to="/internal/login">Tài khoản nhân viên</Link>
-    </div></header>
-    <SalesOrders initialOrders={orders} />
-  </div>;
+  if (isSales) return <div className="order-app"><SalesOrders initialOrders={orders} /></div>;
 
   return <><Header /><div className="order-app order-app--storefront">
     <div key={location.pathname} className="oc-route-panel oc-route-panel--forward">
