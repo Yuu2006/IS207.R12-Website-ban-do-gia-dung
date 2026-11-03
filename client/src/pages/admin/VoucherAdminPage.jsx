@@ -1,9 +1,13 @@
+import { Plus } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
 import Modal from '../../components/admin/Modal.jsx';
 import { AdminField } from '../../components/admin/SimpleCrud.jsx';
+import { Chips, DataTable, PageHead } from '../../components/admin/ui.jsx';
 
 const blank = () => ({ code: '', type: 'percent', value: '', max: '', minOrder: '', limit: '', perUser: '', start: new Date().toISOString().slice(0, 10), end: '', active: true });
-const digits = value => value.replace(/\D/g, '');
+// Khung bảng lượt dùng theo template; chưa có API nên không có dòng nào.
+const usageColumns = [['time', 'Thời gian', '110px'], ['code', 'Mã voucher'], ['order', 'Đơn hàng'], ['customer', 'Khách hàng', 'minmax(0, 1.5fr)'], ['amount', 'Số tiền giảm']].map(([key, label, width]) => ({ key, label, width, render: () => null }));
+const digits =value => value.replace(/\D/g, '');
 
 // Kiểm tra trực tiếp khi nhập; chỉ báo lỗi cho ô đã có giá trị.
 function voucherErrors(v) {
@@ -27,10 +31,15 @@ export default function VoucherAdminPage() {
   const field = (name, extra = {}) => ({ field: { id: `${uid}-${name}`, name, ...extra }, value: values[name], error: errors[name], onChange: value => setValues(current => ({ ...current, [name]: value })) });
   const percent = values.type === 'percent';
 
-  return <section><div className="hc-page-heading"><span className="hc-eyebrow">Quản trị viên</span><h1>Voucher</h1><p>Thiết lập mã giảm giá, điều kiện áp dụng và thời hạn. Mỗi đơn chỉ áp dụng một voucher.</p></div>
-    <p className="hc-note" role="note"><span className="hc-soon">Chưa triển khai</span> API voucher chưa có nên chưa tạo, sửa hay xem được số lượt đã dùng. Biểu mẫu bên dưới chỉ kiểm tra dữ liệu nhập, không lưu gì.</p>
-    <section className="hc-grp"><h2>Voucher</h2><div className="hc-grp-row"><button className="hc-button" type="button" onClick={() => { setValues(blank()); setOpen(true); }}>Tạo voucher</button></div></section>
-    <div className="hc-card"><h2>Danh sách voucher</h2><p className="hc-muted">Chưa có dữ liệu: danh sách voucher cần API chưa được triển khai.</p></div>
+  return <section>
+    <PageHead title="Voucher" subtitle="Thiết lập mã giảm giá, điều kiện áp dụng và thời hạn. Mỗi đơn chỉ áp dụng một voucher."><button className="hc-button" type="button" onClick={() => { setValues(blank()); setOpen(true); }}><Plus size={18} aria-hidden="true" />Tạo voucher</button></PageHead>
+    <p className="hc-note" role="note"><span className="hc-soon">Chưa triển khai</span> API voucher chưa có nên chưa tạo, sửa hay xem được số lượt đã dùng. Biểu mẫu chỉ kiểm tra dữ liệu nhập, không lưu gì.</p>
+    <Chips label="Lọc theo trạng thái voucher" options={[['', 'Tất cả'], ['running', 'Đang chạy'], ['upcoming', 'Sắp diễn ra'], ['ended', 'Đã kết thúc']]} value="" onChange={() => {}} disabled />
+    <section className="ad-vouchers" aria-label="Danh sách voucher"><div className="hc-card ad-empty"><p>Chưa có dữ liệu: danh sách voucher cần API chưa được triển khai.</p></div></section>
+    <section className="hc-card ad-card" aria-labelledby="voucher-usage-title">
+      <h2 className="ad-card-title" id="voucher-usage-title">Lượt sử dụng gần đây</h2>
+      <DataTable bare label="Lượt sử dụng voucher gần đây" cols={usageColumns} rows={[]} rowKey={row => row.id} empty="Chưa có lượt sử dụng: cần API voucher và đơn hàng." />
+    </section>
     {open && <Modal wide title="Tạo voucher" description="Thiết lập mã giảm giá, điều kiện áp dụng và thời hạn." onClose={() => setOpen(false)}>
       <form className="hc-form" noValidate onSubmit={event => event.preventDefault()}>
         <p className="hc-note" role="note">API voucher chưa triển khai: biểu mẫu chưa lưu được.</p>
