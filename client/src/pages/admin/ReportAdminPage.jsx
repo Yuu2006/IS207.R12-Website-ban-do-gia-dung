@@ -1,41 +1,44 @@
+import { Download, FileText } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import LowStockAlert from '../../components/admin/LowStockAlert.jsx';
+import ReportExportDialog from '../../components/admin/ReportExportDialog.jsx';
 import { AdminField } from '../../components/admin/SimpleCrud.jsx';
+import { Card, ChartPending, Chips, DataTable, KpiCard, PageHead } from '../../components/admin/ui.jsx';
 
 const periods = [['7', '7 ngày'], ['28', '28 ngày'], ['quarter', 'Quý này'], ['custom', 'Tùy chọn']];
-const reports = [['RPT-01', 'Báo cáo doanh thu'], ['RPT-02', 'Báo cáo đơn và sản phẩm'], ['RPT-03', 'Báo cáo hiệu quả chức năng khác biệt']];
-const tiles = ['Doanh thu', 'Số đơn', 'Khách hàng', 'Sản phẩm đã bán'];
+// Khung bảng theo template; chưa có API báo cáo nên không có dòng nào.
+const topColumns = [['product', 'Sản phẩm', 'minmax(0, 2fr)'], ['sold', 'Đã bán', '110px'], ['revenue', 'Doanh thu']].map(([key, label, width]) => ({ key, label, width, render: () => null }));
 
-// DASH-01 + RPT-01..03: API báo cáo chưa có nên các ô số liệu hiện "—", không vẽ biểu đồ và nút CSV bị khóa. Chỉ khối cảnh báo tồn kho là dữ liệu thật.
+// DASH-01 + RPT-01..03: API báo cáo chưa có nên số liệu hiện "—", biểu đồ chỉ là khung và xuất báo cáo bị khóa.
 export default function ReportAdminPage() {
   const [period, setPeriod] = useState('28');
   const [range, setRange] = useState({ from: '', to: '' });
-  const [report, setReport] = useState('RPT-01');
+  const [exporting, setExporting] = useState(false);
   useEffect(() => { document.title = 'Báo cáo · HomeCare'; }, []);
   const rangeError = period === 'custom' && range.from && range.to && range.to < range.from ? 'Ngày kết thúc phải sau ngày bắt đầu.' : '';
+  const periodLabel = periods.find(([key]) => key === period)[1].toLowerCase();
 
-  return <section><div className="hc-page-heading"><span className="hc-eyebrow">Quản trị viên</span><h1>Báo cáo</h1><p>Dashboard theo khoảng thời gian và xuất báo cáo CSV.</p></div>
-    <p className="hc-note" role="note"><span className="hc-soon">Chưa triển khai</span> API dashboard và báo cáo chưa có nên các số liệu dưới đây chưa có dữ liệu và chưa xuất được CSV. Chỉ khối cảnh báo tồn kho là dữ liệu thật.</p>
-    <LowStockAlert />
-    <div className="hc-card hc-form">
-      <h2>Kỳ báo cáo</h2>
-      <fieldset className="hc-fieldset"><legend>Khoảng thời gian <span aria-hidden="true">*</span></legend>
-        <div className="hc-seg-row">{periods.map(([value, label]) => <label className="hc-seg" key={value}><input type="radio" name="report-period" value={value} checked={period === value} onChange={() => setPeriod(value)} />{label}</label>)}</div></fieldset>
-      {period === 'custom' && <div className="hc-form-grid">
-        <AdminField field={{ id: 'report-from', name: 'from', label: 'Từ ngày', type: 'date' }} value={range.from} onChange={from => setRange(current => ({ ...current, from }))} />
-        <AdminField field={{ id: 'report-to', name: 'to', label: 'Đến ngày', type: 'date' }} value={range.to} error={rangeError} onChange={to => setRange(current => ({ ...current, to }))} />
-      </div>}
+  return <section>
+    <PageHead title="Báo cáo" subtitle="Doanh thu, sản phẩm bán chạy và cơ cấu danh mục. Đặc tả MVP chỉ xuất CSV.">
+      <button className="hc-button hc-button--outline" type="button" onClick={() => setExporting(true)}><FileText size={18} aria-hidden="true" />Xuất PDF<span className="hc-soon">Chưa triển khai</span></button>
+      <button className="hc-button" type="button" disabled title="Chưa triển khai"><Download size={18} aria-hidden="true" />Xuất CSV</button>
+    </PageHead>
+    <p className="hc-note" role="note"><span className="hc-soon">Chưa triển khai</span> API dashboard và báo cáo chưa có nên các số liệu dưới đây chưa có dữ liệu và chưa xuất được tệp.</p>
+    <Chips label="Khoảng thời gian" options={periods} value={period} onChange={setPeriod} />
+    {period === 'custom' && <div className="hc-card"><div className="hc-form-grid">
+      <AdminField field={{ id: 'report-from', name: 'from', label: 'Từ ngày', type: 'date' }} value={range.from} onChange={from => setRange(current => ({ ...current, from }))} />
+      <AdminField field={{ id: 'report-to', name: 'to', label: 'Đến ngày', type: 'date' }} value={range.to} error={rangeError} onChange={to => setRange(current => ({ ...current, to }))} />
+    </div></div>}
+    <div className="ad-kpis" aria-label="Chỉ số tổng hợp">
+      <KpiCard label={`Doanh thu ${periodLabel}`} pending /><KpiCard label="Số đơn hàng" pending /><KpiCard label="Giá trị đơn trung bình" pending />
     </div>
-    <div className="hc-tiles">{tiles.map(label => <div className="hc-card hc-tile" key={label}><small>{label}</small><b aria-label={`${label}: chưa có dữ liệu`}>—</b><span className="hc-soon">Chưa có API</span></div>)}</div>
-    <div className="hc-form-grid">
-      <div className="hc-card"><h2>Đơn theo trạng thái</h2><p className="hc-muted">Chưa có dữ liệu: cần API báo cáo đơn hàng.</p></div>
-      <div className="hc-card"><h2>Top sản phẩm bán chạy</h2><p className="hc-muted">Chưa có dữ liệu: cần API báo cáo sản phẩm.</p></div>
+    <div className="ad-cols">
+      <div className="ad-grow2"><Card title="Doanh thu theo tuần" subtitle="Đơn vị: triệu đồng"><ChartPending height={220} /></Card></div>
+      <Card title="Cơ cấu doanh thu theo danh mục" subtitle="Tủ lạnh, máy giặt, máy lạnh"><ChartPending height={220} /></Card>
     </div>
-    <form className="hc-card hc-form" noValidate onSubmit={event => event.preventDefault()}>
-      <h2>Xuất báo cáo CSV</h2>
-      <AdminField field={{ id: 'report-kind', name: 'report', label: 'Loại báo cáo', type: 'select', options: reports.map(([code, name]) => [code, `${code} · ${name}`]), required: true }} value={report} onChange={value => setReport(value || 'RPT-01')} />
-      <p className="hc-muted">Báo cáo dùng kỳ đã chọn ở trên. Chỉ hỗ trợ CSV.</p>
-      <div className="hc-form-footer"><span /><button className="hc-button" type="submit" disabled aria-disabled="true">Chưa triển khai</button></div>
-    </form>
+    <section className="hc-card ad-card" aria-labelledby="top-products-title">
+      <div className="ad-card-head ad-pad"><div><h2 id="top-products-title">Sản phẩm bán chạy nhất</h2><span className="ad-sub">Xếp theo doanh thu</span></div></div>
+      <DataTable bare label="Sản phẩm bán chạy nhất" cols={topColumns} rows={[]} rowKey={row => row.id} empty="Chưa có dữ liệu: cần API báo cáo sản phẩm." />
+    </section>
+    {exporting && <ReportExportDialog initialPeriod={period} onClose={() => setExporting(false)} />}
   </section>;
 }
