@@ -1,4 +1,4 @@
-import { Trash2, Upload } from 'lucide-react';
+import { Package, Pencil, Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatPrice } from '../../data.js';
@@ -7,6 +7,7 @@ import { toMoneyValue } from '../../utils/money-input.js';
 import ConfirmDialog from './ConfirmDialog.jsx';
 import Modal from './Modal.jsx';
 import { AdminField } from './SimpleCrud.jsx';
+import { Chips, DataTable, EmptyCard, SearchBox } from './ui.jsx';
 
 const toLocal = value => (value || '').slice(0, 16).replace(' ', 'T');
 const slugify = text => text.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -178,14 +179,14 @@ function ImagePanel({ product, onChanged }) {
 }
 
 // PRD-03/04: tạo/sửa/ngừng bán sản phẩm, ảnh đại diện; sản phẩm đã có đơn chỉ vô hiệu hóa (xóa mềm).
-export default function ProductAdmin({ categoryOptions, brandOptions }) {
+export default function ProductAdmin({ categoryOptions, brandOptions, adding }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState('');
   const [filters, setFilters] = useState({ keyword: '', category_id: '', is_active: '' });
   const [selected, setSelected] = useState(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
-  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(null);
   const form = useForm({});
   const [version, setVersion] = useState(0);
   const reload = () => setVersion(current => current + 1);
@@ -195,6 +196,8 @@ export default function ProductAdmin({ categoryOptions, brandOptions }) {
     const timer = setTimeout(() => listProducts(filters).then(data => { if (active) { setItems(data); setError(''); } }).catch(err => { if (active) setError(err.message); }), 300);
     return () => { active = false; clearTimeout(timer); };
   }, [filters, version]);
+
+  useEffect(() => { if (adding) open(null); }, [adding]); // nút "Thêm sản phẩm" ở tiêu đề trang
 
   function open(item) {
     setSelected(item ?? 'new'); setNotice(''); setError(''); form.setErrors({});
@@ -226,7 +229,7 @@ export default function ProductAdmin({ categoryOptions, brandOptions }) {
   async function removeProduct() {
     if (busy) return;
     setBusy(true); setError('');
-    try { await products.remove(selected.id); setConfirming(false); setSelected(null); setNotice('Đã xóa sản phẩm.'); reload(); }
+    try { await products.remove(deleting.id); setDeleting(null); setSelected(null); setNotice('Đã xóa sản phẩm.'); reload(); }
     catch (err) { setError(err.message); }
     finally { setBusy(false); }
   }
@@ -240,23 +243,31 @@ export default function ProductAdmin({ categoryOptions, brandOptions }) {
     { name: 'description', label: 'Mô tả', type: 'textarea', maxLength: 5000, wide: true },
   ];
 
-  return <section className="hc-card hc-form">
-    <div className="hc-heading-actions"><h2>Sản phẩm</h2><button className="hc-button" type="button" disabled={busy} onClick={() => open(null)}>Thêm sản phẩm</button></div>
-    {!selected && <>{notice && <p className="hc-success" role="status">{notice}</p>}{error && <p className="hc-error" role="alert">{error}</p>}</>}
-    {selected && <Modal wide title={selected === 'new' ? 'Thêm sản phẩm' : `Sửa ${selected.product_code} · ${selected.name}`} onClose={() => setSelected(null)}>{notice && <p className="hc-success" role="status">{notice}</p>}{error && !confirming && <p className="hc-error" role="alert">{error}</p>}<form className="hc-form" noValidate onSubmit={save}>
+  const statusOptions = [['', 'Tất cả'], ['1', 'Đang bán'], ['0', 'Ẩn']];
+  const columns = [
+    { key: 'name', label: 'Sản phẩm', width: 'minmax(0, 2.4fr)', render: item => <div className="ad-name"><span className="ad-thumb" aria-hidden="true">{item.primary_image ? <img src={item.primary_image} alt="" /> : <Package size={22} />}</span><div><b>{item.name}</b><span className="ad-sub">{item.product_code}</span></div></div> },
+    { key: 'category', label: 'Danh mục', width: '150px', render: item => item.category_name },
+    { key: 'price', label: 'Giá bán', width: '130px', render: item => <span className="ad-strong">{formatPrice(Number(item.min_price))}</span> },
+    { key: 'stock', label: 'Tồn kho', width: '80px', render: item => <span className={Number(item.total_stock) === 0 ? 'ad-low' : undefined}>{item.total_stock}</span> },
+    { key: 'status', label: 'Trạng thái', width: '120px', render: item => Number(item.is_active) ? <span className="hc-badge hc-badge--in">Đang bán</span> : <span className="hc-badge hc-badge--mute">Ẩn</span> },
+    { key: 'actions', label: 'Thao tác', width: '110px', render: item => <div className="ad-acts"><button className="hc-button hc-button--outline ad-icon" type="button" aria-label={`Quản lý ${item.name}`} onClick={() => open(item)}><Pencil size={18} aria-hidden="true" /></button><button className="hc-button hc-button--outline ad-icon ad-icon--danger" type="button" aria-label={`Xóa ${item.name}`} onClick={() => { setError(''); setDeleting(item); }}><Trash2 size={18} aria-hidden="true" /></button></div> },
+  ];
+
+  return <>
+    {!selected && !deleting && <>{notice && <p className="hc-success" role="status">{notice}</p>}{error && <p className="hc-error" role="alert">{error}</p>}</>}
+    {selected && <Modal wide title={selected === 'new' ? 'Thêm sản phẩm' : `Sửa ${selected.product_code} · ${selected.name}`} onClose={() => setSelected(null)}>{notice && <p className="hc-success" role="status">{notice}</p>}{error && !deleting && <p className="hc-error" role="alert">{error}</p>}<form className="hc-form" noValidate onSubmit={save}>
       <div className="hc-form-grid">{fields.map(field => <AdminField key={field.name} {...form.bind(field)} disabled={busy} />)}</div>
       {selected === 'new' && <p className="hc-muted">Tồn kho ban đầu của SKU luôn là 0. Nhập hàng bằng phiếu nhập tại <Link to="/warehouse/inventory?form=stock-in">Tồn kho</Link> để có lịch sử.</p>}
-      <div className="hc-form-footer"><span className="hc-footer-left">{selected !== 'new' && <button className="hc-button hc-button--outline hc-danger" type="button" disabled={busy} onClick={() => { setError(''); setConfirming(true); }}><Trash2 size={18} aria-hidden="true" />Xóa sản phẩm</button>}<AdminField {...form.bind({ name: 'is_active', label: 'Đang bán', type: 'checkbox' })} disabled={busy} /></span><span className="hc-actions"><button className="hc-button hc-button--outline" type="button" onClick={() => setSelected(null)}>Đóng</button><button className="hc-button" type="submit" disabled={busy}>{busy ? 'Đang lưu…' : 'Lưu sản phẩm'}</button></span></div></form>
-      {confirming && <ConfirmDialog title="Xóa sản phẩm này?" description="Sản phẩm bị gỡ khỏi catalog và cửa hàng; dữ liệu đơn hàng cũ được giữ nguyên. Chỉ muốn tạm ngừng bán thì bỏ chọn Đang bán." summary={selected.name} detail={selected.product_code} badge={selected.total_stock === undefined ? undefined : `Còn ${selected.total_stock} trong kho`} confirmLabel="Xóa sản phẩm" busy={busy} error={error} onConfirm={removeProduct} onCancel={() => { setConfirming(false); setError(''); }} />}
+      <div className="hc-form-footer"><span className="hc-footer-left">{selected !== 'new' && <button className="hc-button hc-button--outline hc-danger" type="button" disabled={busy} onClick={() => { setError(''); setDeleting(selected); }}><Trash2 size={18} aria-hidden="true" />Xóa sản phẩm</button>}<AdminField {...form.bind({ name: 'is_active', label: 'Đang bán', type: 'checkbox' })} disabled={busy} /></span><span className="hc-actions"><button className="hc-button hc-button--outline" type="button" onClick={() => setSelected(null)}>Đóng</button><button className="hc-button" type="submit" disabled={busy}>{busy ? 'Đang lưu…' : 'Lưu sản phẩm'}</button></span></div></form>
       {selected !== 'new' && selected.id && <><VariantPanel product={selected} /><ImagePanel product={selected} onChanged={reload} /><SpecPanel product={selected} /></>}
     </Modal>}
-    <div className="hc-inline-form" role="search">
-      <AdminField field={{ name: 'keyword', label: 'Tìm theo tên hoặc mã' }} value={filters.keyword} onChange={keyword => setFilters(current => ({ ...current, keyword }))} />
-      <AdminField field={{ name: 'filter-category', label: 'Danh mục', type: 'select', options: categoryOptions, placeholder: 'Tất cả' }} value={filters.category_id} onChange={category_id => setFilters(current => ({ ...current, category_id }))} />
-      <AdminField field={{ name: 'filter-active', label: 'Trạng thái', type: 'select', options: [['1', 'Đang bán'], ['0', 'Ẩn']], placeholder: 'Tất cả' }} value={filters.is_active} onChange={is_active => setFilters(current => ({ ...current, is_active }))} />
+    {deleting && <ConfirmDialog title="Xóa sản phẩm này?" description="Sản phẩm bị gỡ khỏi catalog và cửa hàng; dữ liệu đơn hàng cũ được giữ nguyên. Chỉ muốn tạm ngừng bán thì bỏ chọn Đang bán." summary={deleting.name} detail={deleting.product_code} badge={deleting.total_stock === undefined ? undefined : `Còn ${deleting.total_stock} trong kho`} confirmLabel="Xóa sản phẩm" busy={busy} error={error} onConfirm={removeProduct} onCancel={() => { setDeleting(null); setError(''); }} />}
+    <div className="ad-filters" role="search">
+      <SearchBox label="Tìm sản phẩm" placeholder="Tìm theo tên hoặc mã sản phẩm" value={filters.keyword} onChange={keyword => setFilters(current => ({ ...current, keyword }))} />
+      <select className="ad-select" aria-label="Danh mục" value={filters.category_id} onChange={event => setFilters(current => ({ ...current, category_id: event.target.value }))}><option value="">Tất cả danh mục</option>{categoryOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>
     </div>
-    {!items ? !error && <p role="status" className="hc-muted">Đang tải sản phẩm…</p> : items.length === 0 ? <p className="hc-muted">Không có sản phẩm phù hợp.</p>
-      : <div className="hc-table-wrap"><table className="hc-table"><thead><tr><th scope="col">Mã</th><th scope="col">Tên</th><th scope="col">Danh mục</th><th scope="col">Giá</th><th scope="col">Tồn</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr></thead>
-        <tbody>{items.map(item => <tr key={item.id}><td>{item.product_code}</td><td>{item.name}</td><td>{item.category_name}</td><td>{formatPrice(Number(item.min_price))}</td><td>{item.total_stock}</td><td>{Number(item.is_active) ? 'Đang bán' : 'Ẩn'}</td><td className="hc-row-actions"><button className="hc-text-button" type="button" onClick={() => open(item)}>Quản lý</button></td></tr>)}</tbody></table></div>}
-  </section>;
+    <Chips label="Trạng thái bán" options={statusOptions} value={filters.is_active} onChange={is_active => setFilters(current => ({ ...current, is_active }))} />
+    {!items ? !error && <p role="status" className="hc-muted">Đang tải sản phẩm…</p> : items.length === 0 ? <EmptyCard>Không có sản phẩm phù hợp.</EmptyCard>
+      : <div><DataTable label="Danh sách sản phẩm" cols={columns} rows={items} rowKey={item => item.id} /><p className="ad-foot">Hiển thị {items.length} sản phẩm</p></div>}
+  </>;
 }

@@ -1,8 +1,10 @@
+import { Pencil, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { uploadImage } from '../../services/catalog-service.js';
 import { formatMoneyInput, parseMoneyInput } from '../../utils/money-input.js';
 import ConfirmDialog from './ConfirmDialog.jsx';
 import Modal from './Modal.jsx';
+import { DataTable, EmptyCard } from './ui.jsx';
 
 // Ô nhập theo cấu hình; ảnh tải lên qua API rồi điền URL tuyệt đối vào trường; type 'money' giữ giá trị chuỗi DECIMAL và hiển thị 1.500,5 ₫.
 export function AdminField({ field, value, onChange, error, disabled }) {
@@ -29,7 +31,7 @@ export function AdminField({ field, value, onChange, error, disabled }) {
 }
 
 // Danh sách + form tạo/sửa + xóa mềm cho một collection catalog; không giữ dữ liệu giả khi API lỗi.
-export default function SimpleCrud({ title, service, fields, columns, toPayload = values => values, empty }) {
+export default function SimpleCrud({ title, service, fields, columns, toPayload = values => values, empty, adding }) {
   const blank = Object.fromEntries(fields.map(field => [field.name, field.type === 'checkbox' ? true : '']));
   const [items, setItems] = useState(null);
   const [error, setError] = useState('');
@@ -47,6 +49,8 @@ export default function SimpleCrud({ title, service, fields, columns, toPayload 
     service.list().then(data => { if (active) setItems(data); }).catch(err => { if (active) setError(err.message); });
     return () => { active = false; };
   }, [service, attempt]);
+
+  useEffect(() => { if (adding) edit(null); }, [adding]); // nút "Thêm" ở tiêu đề trang
 
   function edit(item) {
     setEditing(item?.id ?? 'new');
@@ -77,8 +81,10 @@ export default function SimpleCrud({ title, service, fields, columns, toPayload 
     finally { setBusy(false); }
   }
 
-  return <section className="hc-card hc-form">
-    <div className="hc-heading-actions"><h2>{title}</h2><button className="hc-button" type="button" disabled={busy} onClick={() => edit(null)}>Thêm mới</button></div>
+  const cols = [...columns.map(([key, label, render], index) => ({ key, label, width: index === 0 ? 'minmax(0, 1.6fr)' : undefined, render: item => render ? render(item) : item[key] })),
+    { key: 'actions', label: 'Thao tác', width: '110px', render: item => <div className="ad-acts"><button className="hc-button hc-button--outline ad-icon" type="button" aria-label={`Sửa ${item[columns[0][0]]}`} disabled={busy} onClick={() => edit(item)}><Pencil size={18} aria-hidden="true" /></button><button className="hc-button hc-button--outline ad-icon ad-icon--danger" type="button" aria-label={`Ngừng dùng ${item[columns[0][0]]}`} disabled={busy} onClick={() => { setError(''); setRemoving(item); }}><Trash2 size={18} aria-hidden="true" /></button></div> }];
+
+  return <>
     {notice && <p className="hc-success" role="status">{notice}</p>}
     {error && editing === null && !removing && <p className="hc-error" role="alert">{error} {!items && <button className="hc-text-button" type="button" onClick={() => setAttempt(current => current + 1)}>Thử lại</button>}</p>}
     {editing !== null && <Modal title={editing === 'new' ? `Thêm ${title.toLowerCase()}` : `Sửa ${title.toLowerCase()} #${editing}`} onClose={() => setEditing(null)}><form className="hc-form" noValidate onSubmit={save}>
@@ -87,9 +93,8 @@ export default function SimpleCrud({ title, service, fields, columns, toPayload 
       <div className="hc-form-footer"><button className="hc-button hc-button--outline" type="button" disabled={busy} onClick={() => setEditing(null)}>Hủy</button><button className="hc-button" type="submit" disabled={busy}>{busy ? 'Đang lưu…' : 'Lưu'}</button></div>
     </form></Modal>}
     {removing && <ConfirmDialog title={`Ngừng sử dụng ${title.toLowerCase()} này?`} description="Dữ liệu được xóa mềm, lịch sử giữ nguyên." summary={String(removing[columns[0][0]])} confirmLabel="Ngừng sử dụng" busy={busy} error={error} onConfirm={remove} onCancel={() => { setRemoving(null); setError(''); }} />}
-    {!items && !error && <p className="hc-status" role="status">Đang tải…</p>}
-    {items?.length === 0 && <p className="hc-muted">{empty}</p>}
-    {items?.length > 0 && <div className="hc-table-wrap"><table className="hc-table"><thead><tr>{columns.map(([key, label]) => <th key={key} scope="col">{label}</th>)}<th scope="col">Thao tác</th></tr></thead>
-      <tbody>{items.map(item => <tr key={item.id}>{columns.map(([key, , render]) => <td key={key}>{render ? render(item) : item[key]}</td>)}<td className="hc-row-actions"><button className="hc-text-button" type="button" disabled={busy} onClick={() => edit(item)}>Sửa</button><button className="hc-text-button hc-danger" type="button" disabled={busy} onClick={() => { setError(''); setRemoving(item); }}>Ngừng dùng</button></td></tr>)}</tbody></table></div>}
-  </section>;
+    {!items && !error && <p className="hc-muted" role="status">Đang tải…</p>}
+    {items?.length === 0 && <EmptyCard>{empty}</EmptyCard>}
+    {items?.length > 0 && <DataTable label={`Danh sách ${title.toLowerCase()}`} cols={cols} rows={items} rowKey={item => item.id} />}
+  </>;
 }

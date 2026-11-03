@@ -260,3 +260,12 @@
 .ad-grow2 > .hc-card { height: 100%; }
 .ad-chart-pending { display: grid; place-items: center; border-bottom: 1px solid var(--border-input); background: repeating-linear-gradient(to bottom, transparent 0, transparent calc(25% - 1px), var(--border) calc(25% - 1px), var(--border) 25%); }
 .ad-card-head .ad-sub { margin-top: 2px; }
+
+/* Hộp xác nhận kiểu template: biểu tượng tròn, tiêu đề, tóm tắt, nút căn phải; không viền đầu/chân. */
+.hc-app--staff .hc-modal--alert { width: min(560px, calc(100vw - 24px)); }
+.hc-alertbox { display: flex; flex-direction: column; gap: 16px; padding: 28px; }
+.hc-alertbox h2 { margin: 0; font-size: 20px; font-weight: 700; }
+.hc-alertbox p { margin: 6px 0 0; color: var(--text-2); font-size: 14px; line-height: 1.5; }
+.hc-alertbox .hc-error { margin: 0; }
+.hc-alert-icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: var(--bad-bg); color: var(--bad-text); }
+.hc-alert-acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; padding-top: 4px; }
