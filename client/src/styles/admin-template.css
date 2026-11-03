@@ -251,3 +251,12 @@
   .ad-menu-toggle { display: grid; }
   .hc-app--staff .hc-sidebar:not(.is-open) .ad-side-body { display: none; }
 }
+
+/* Tổng quan: khối biểu đồ chưa có dữ liệu, tiêu đề thẻ bảng, cột rộng gấp đôi */
+.ad-pad { padding: 18px 24px 0; }
+.ad-card .ad-card-head.ad-pad { padding-bottom: 12px; }
+.ad-card > .ad-pad:last-child { padding-bottom: 18px; }
+.ad-cols > .ad-grow2 { flex: 2 1 520px; }
+.ad-grow2 > .hc-card { height: 100%; }
+.ad-chart-pending { display: grid; place-items: center; border-bottom: 1px solid var(--border-input); background: repeating-linear-gradient(to bottom, transparent 0, transparent calc(25% - 1px), var(--border) calc(25% - 1px), var(--border) 25%); }
+.ad-card-head .ad-sub { margin-top: 2px; }
