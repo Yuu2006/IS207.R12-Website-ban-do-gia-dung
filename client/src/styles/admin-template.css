@@ -297,3 +297,6 @@
 .hc-app--staff .hc-icon-btn { width: 44px; padding: 0; }
 .ad-pv-bar .hc-button--outline { border-color: #3F4A59; background: transparent; color: #fff; }
 .ad-pv-bar .hc-button--outline:hover:not(:disabled) { border-color: var(--accent); background: transparent; }
+
+.ad-stack { display: flex; flex-direction: column; gap: 16px; }
+.ad-stack .hc-soon { margin-right: 8px; }
