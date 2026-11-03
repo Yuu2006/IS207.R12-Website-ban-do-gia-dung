@@ -20,8 +20,8 @@ export function Chips({ label, options, value, onChange }) {
 export function DataTable({ label, cols, rows, rowKey, bare = false }) {
   const widths = cols.map(col => col.width || 'minmax(0, 1fr)');
   const style = { gridTemplateColumns: widths.join(' ') };
-  // Cột px giữ nguyên, cột co giãn tối thiểu 200px; thấp hơn thì bảng cuộn ngang thay vì bóp chữ.
-  const minWidth = widths.reduce((sum, width) => sum + (/^\d+px$/.test(width) ? parseInt(width, 10) : 200) + 16, 40);
+  // Cột px giữ nguyên, cột co giãn tối thiểu 140px; thấp hơn thì bảng cuộn ngang thay vì bóp chữ.
+  const minWidth = widths.reduce((sum, width) => sum + (/^\d+px$/.test(width) ? parseInt(width, 10) : 140) + 16, 40);
   const table = <div className="ad-scroll"><div role="table" aria-label={label} style={{ minWidth }}>
     <div role="row" className="ad-row ad-hd" style={style}>{cols.map(col => <span role="columnheader" key={col.key}>{col.label}</span>)}</div>
     {rows.map(row => <div role="row" className="ad-row" style={style} key={rowKey(row)}>{cols.map(col => <div role="cell" key={col.key}>{col.render(row)}</div>)}</div>)}

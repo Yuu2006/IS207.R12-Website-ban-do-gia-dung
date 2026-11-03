@@ -1,11 +1,23 @@
 import { useEffect, useState } from 'react';
-import { AdminField } from '../../components/admin/SimpleCrud.jsx';
+import { Chips, DataTable, EmptyCard, PageHead, SearchBox } from '../../components/admin/ui.jsx';
 import { listMovements } from '../../services/catalog-service.js';
 
 // WH-04: nhật ký kho kiểu audit log — ai, lúc nào, nhập/xuất gì, tồn trước/sau, chứng từ và lý do.
-const actions = { import: ['Nhập kho', 'in'], export: ['Xuất kho', 'out'] };
+const actions = { import: ['Nhập kho', 'in'], export: ['Xuất kho', 'mute'] };
+const typeOptions = [['', 'Tất cả'], ['import', 'Nhập kho'], ['export', 'Xuất kho']];
 // created_at lưu UTC (không kèm múi giờ); hiển thị theo giờ máy.
-const formatTime = value => new Date(`${value.replace(' ', 'T')}Z`).toLocaleString('vi-VN', { hour12: false });
+const formatTime = value => new Date(`${value.replace(' ', 'T')}Z`).toLocaleString('vi-VN', { hour12: false, day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+const columns = [
+  { key: 'time', label: 'Thời gian', width: '130px', render: item => <span className="ad-muted">{formatTime(item.created_at)}</span> },
+  { key: 'ref', label: 'Mã phiếu', width: '150px', render: item => <span className="ad-strong">{item.reference_code}</span> },
+  { key: 'sku', label: 'Sản phẩm', width: 'minmax(0, 1.4fr)', render: item => <div><b className="ad-strong">{item.sku}</b><span className="ad-sub">{item.variant_name}</span></div> },
+  { key: 'type', label: 'Loại', width: '90px', render: item => { const [label, tone] = actions[item.movement_type] || [item.movement_type, 'mute']; return <span className={`hc-badge hc-badge--${tone}`}>{label}</span>; } },
+  { key: 'change', label: 'Số lượng', width: '70px', render: item => { const change = Number(item.quantity_change); return <span className={change > 0 ? 'ad-plus' : 'ad-minus'}>{change > 0 ? `+${change}` : change}</span>; } },
+  { key: 'stock', label: 'Tồn kho', width: '80px', render: item => <>{item.quantity_before} → <b>{item.quantity_after}</b></> },
+  { key: 'actor', label: 'Người thực hiện', width: '140px', render: item => item.performed_by_name || 'Hệ thống' },
+  { key: 'note', label: 'Ghi chú', width: 'minmax(0, 1.4fr)', render: item => item.note || '—' },
+];
 
 export default function InventoryHistoryPage() {
   const [filters, setFilters] = useState({ sku: '', movement_type: '' });
@@ -27,18 +39,13 @@ export default function InventoryHistoryPage() {
   }, [filters, version, page]);
   function filter(key, value) { setPage(1); setFilters(current => ({ ...current, [key]: value })); }
 
-  return <section><div className="hc-page-heading"><span className="hc-eyebrow">Kho hàng</span><h1>Nhật ký tồn kho</h1><p>Mọi lần nhập/xuất đều được ghi lại, không sửa được: mới nhất trước, 20 dòng mỗi trang. Lọc theo mã SKU chính xác hoặc hành động.</p></div>
-    <div className="hc-card hc-form">
-      <div className="hc-inline-form" role="search">
-        <AdminField field={{ name: 'history-sku', label: 'Mã SKU' }} value={filters.sku} onChange={sku => filter('sku', sku)} />
-        <AdminField field={{ name: 'history-type', label: 'Hành động', type: 'select', options: [['import', 'Nhập kho'], ['export', 'Xuất kho']], placeholder: 'Tất cả' }} value={filters.movement_type} onChange={movement_type => filter('movement_type', movement_type)} />
-      </div>
-      {error && <p className="hc-error" role="alert">{error} <button className="hc-text-button" type="button" onClick={() => setVersion(current => current + 1)}>Thử lại</button></p>}
-      {!items ? !error && <p role="status" className="hc-muted">Đang tải nhật ký…</p> : items.length === 0 ? <p className="hc-muted">Chưa có bản ghi phù hợp.</p>
-        : <div className="hc-table-wrap"><table className="hc-table hc-audit"><thead><tr><th scope="col">Thời gian</th><th scope="col">Người thực hiện</th><th scope="col">Hành động</th><th scope="col">SKU</th><th scope="col">Số lượng</th><th scope="col">Tồn kho</th><th scope="col">Lý do / chứng từ</th></tr></thead>
-          <tbody>{items.map(item => { const [label, tone] = actions[item.movement_type] || [item.movement_type, 'in']; const actor = item.performed_by_name || 'Hệ thống'; const change = Number(item.quantity_change);
-            return <tr key={item.id}><td className="hc-audit-time">{formatTime(item.created_at)}</td><td><span className="hc-audit-actor"><span className="hc-audit-avatar" aria-hidden="true">{actor.trim().charAt(0).toUpperCase()}</span>{actor}</span></td><td><span className={`hc-badge hc-badge--${tone}`}>{label}</span></td><td>{item.sku}</td><td className={`hc-audit-${change > 0 ? 'in' : 'out'}`}>{change > 0 ? `+${change}` : change}</td><td>{item.quantity_before} → <strong>{item.quantity_after}</strong></td><td>{item.note || '—'}<code className="hc-audit-ref">{item.reference_code}</code></td></tr>; })}</tbody></table></div>}
-      {pagination?.totalPages > 1 && <nav className="hc-pagination" aria-label="Phân trang nhật ký kho"><button className="hc-button hc-button--outline" type="button" disabled={page <= 1 || !items} onClick={() => setPage(current => current - 1)}>Trước</button><span>Trang {pagination.page}/{pagination.totalPages} · {pagination.totalItems} bản ghi</span><button className="hc-button hc-button--outline" type="button" disabled={page >= pagination.totalPages || !items} onClick={() => setPage(current => current + 1)}>Sau</button></nav>}
-    </div>
+  return <section>
+    <PageHead title="Nhật ký kho" subtitle="Mọi lần nhập/xuất đều được ghi lại, không sửa được: mới nhất trước, 20 dòng mỗi trang." />
+    <div className="ad-filters" role="search"><SearchBox label="Lọc theo mã SKU" placeholder="Nhập mã SKU chính xác" value={filters.sku} onChange={sku => filter('sku', sku)} /></div>
+    <Chips label="Lọc theo hành động" options={typeOptions} value={filters.movement_type} onChange={movement_type => filter('movement_type', movement_type)} />
+    {error && <p className="hc-error" role="alert">{error} <button className="hc-text-button" type="button" onClick={() => setVersion(current => current + 1)}>Thử lại</button></p>}
+    {!items ? !error && <p role="status" className="hc-muted">Đang tải nhật ký…</p> : items.length === 0 ? <EmptyCard>Chưa có bản ghi phù hợp.</EmptyCard>
+      : <DataTable label="Nhật ký nhập xuất kho" cols={columns} rows={items} rowKey={item => item.id} />}
+    {pagination?.totalPages > 1 && <nav className="hc-pagination" aria-label="Phân trang nhật ký kho"><button className="hc-button hc-button--outline" type="button" disabled={page <= 1 || !items} onClick={() => setPage(current => current - 1)}>Trước</button><span>Trang {pagination.page}/{pagination.totalPages} · {pagination.totalItems} bản ghi</span><button className="hc-button hc-button--outline" type="button" disabled={page >= pagination.totalPages || !items} onClick={() => setPage(current => current + 1)}>Sau</button></nav>}
   </section>;
 }
