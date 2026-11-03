@@ -30,12 +30,12 @@ export default function AppRoutes() {
     <Route element={<PublicLayout />}><Route path="/" element={<HomePage />} /><Route path="/products" element={<ProductListPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /></Route>
     <Route path="/login" element={<LoginForm key="login" />} /><Route path="/register" element={<LoginForm key="register" initialScreen="register" />} /><Route path="/internal/login" element={<StaffLogin />} /><Route path="/forgot-password" element={<StaffLogin audience="customer" />} /><Route path="/internal" element={<Navigate to="/internal/login" replace />} />
     {['/checkout', '/orders', '/orders/:orderId'].map(path => <Route key={path} path={path} element={orderWorkspace} />)}
-    <Route element={<ProtectedRoute roles={['SALES', 'ADMIN']} />}><Route element={<AppShell />}><Route path="/sales/orders" element={orderWorkspace} /></Route></Route>
+    <Route element={<ProtectedRoute roles={['SALES', 'ADMIN']} />}><Route element={<AppShell />}><Route path="/sales/orders" element={orderWorkspace} /><Route path="/sales/returns" element={<WorkspacePage />} /></Route></Route>
     <Route element={<ProtectedRoute />}><Route element={<AppShell />}>
       <Route path="/profile" element={<ProfilePage />} />
       <Route element={<ProtectedRoute roles={['CUSTOMER']} />}><Route path="/customer" element={<WorkspacePage />} /><Route path="/addresses" element={<AddressesPage />} /></Route>
       <Route element={<ProtectedRoute roles={['ADMIN']} />}><Route path="/admin" element={<StaffOverviewPage />} /><Route path="/admin/products" element={<CatalogAdminPage />} /><Route path="/admin/users" element={<UserAdminPage />} /><Route path="/admin/vouchers" element={<VoucherAdminPage />} /><Route path="/admin/reports" element={<ReportAdminPage />} /></Route>
-      <Route element={<ProtectedRoute roles={['SALES']} />}><Route path="/sales" element={<StaffOverviewPage />} /><Route path="/sales/returns" element={<WorkspacePage />} /></Route>
+      <Route element={<ProtectedRoute roles={['SALES']} />}><Route path="/sales" element={<StaffOverviewPage />} /></Route>
       <Route element={<ProtectedRoute roles={['WAREHOUSE']} />}><Route path="/warehouse" element={<StaffOverviewPage />} /></Route>
       <Route element={<ProtectedRoute roles={['WAREHOUSE', 'ADMIN']} />}><Route path="/warehouse/inventory" element={<InventoryPage />} /><Route path="/warehouse/history" element={<InventoryHistoryPage />} /></Route>
     </Route></Route>
