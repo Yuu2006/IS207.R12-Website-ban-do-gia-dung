@@ -19,6 +19,7 @@ function catalogAdminController(string $action, int $id): void
         'variants' => $service->variants($id),
         'createVariant' => $service->createVariant($id, catalogAdminInput()),
         'updateVariant' => $service->updateVariant($id, catalogAdminInput()),
+        'deleteVariant' => $service->deleteVariant($id),
         'images' => $service->images($id),
         'addImage' => $service->addImage($id, catalogAdminInput()),
         'updateImage' => $service->updateImage($id, catalogAdminInput()),

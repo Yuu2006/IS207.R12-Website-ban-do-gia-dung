@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { PageHead } from '../../components/admin/ui.jsx';
 import FormField from '../../components/common/FormField.jsx';
 import { roleLabels, useAuth } from '../../context/auth-context.js';
 import { changePassword } from '../../services/auth-service.js';
@@ -101,8 +102,8 @@ export default function ProfilePage() {
   if (loading) return <p role="status" className="hc-status">Đang tải hồ sơ…</p>;
   if (!profile) return <div className="hc-card" role="alert"><p>{error}</p><button className="hc-button" onClick={() => setAttempt(current => current + 1)}>Thử lại</button></div>;
   const readOnly = !editing;
-  return <section><div className="hc-page-heading"><span className="hc-eyebrow">Tài khoản · {roleLabels[user.role]}</span><h1>Hồ sơ của tôi</h1></div>
-    {notice && <p className="hc-success" role="status">{notice}</p>}
+  const staff = user.role !== 'CUSTOMER';
+  const card = (
     <form className="hc-card hc-form" noValidate onSubmit={save}>
       <div className="hc-heading-actions"><h2>Thông tin cá nhân</h2>
         <span className="hc-dialog-actions">
@@ -111,7 +112,7 @@ export default function ProfilePage() {
         </span>
       </div>
       <div className="hc-profile-head">
-        {values.avatarUrl ? <img className="hc-avatar hc-avatar--image" src={values.avatarUrl} alt={`Ảnh đại diện của ${profile.fullName}`} /> : <div className="hc-avatar" aria-hidden="true">{profile.fullName.charAt(0)}</div>}
+        {!staff && (values.avatarUrl ? <img className="hc-avatar hc-avatar--image" src={values.avatarUrl} alt={`Ảnh đại diện của ${profile.fullName}`} /> : <div className="hc-avatar" aria-hidden="true">{profile.fullName.charAt(0)}</div>)}
         {editing && <span><label className="hc-text-button hc-file-button">{busy ? 'Đang tải ảnh…' : 'Đổi ảnh đại diện'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={event => { pickAvatar(event.target.files?.[0]); event.target.value = ''; }} /></label>{values.avatarUrl && <button className="hc-text-button hc-danger" type="button" disabled={busy} onClick={() => change('avatarUrl', '')}>Xóa ảnh</button>}</span>}
       </div>
       <div className="hc-form-grid">
@@ -123,6 +124,10 @@ export default function ProfilePage() {
       {error && <p className="hc-error" role="alert">{error}</p>}
       {editing && <div className="hc-form-footer"><span className="hc-muted">Email đăng nhập và vai trò do hệ thống quản lý.</span><span className="hc-dialog-actions"><button className="hc-button hc-button--outline" type="button" disabled={busy} onClick={cancelEdit}>Hủy</button><button className="hc-button" type="submit" disabled={busy}>{busy ? 'Đang lưu…' : 'Lưu thay đổi'}</button></span></div>}
     </form>
+  );
+  return <section>{staff ? <PageHead title="Hồ sơ" subtitle="Thông tin tài khoản và bảo mật của bạn" /> : <div className="hc-page-heading"><span className="hc-eyebrow">Tài khoản · {roleLabels[user.role]}</span><h1>Hồ sơ của tôi</h1></div>}
+    {notice && <p className="hc-success" role="status">{notice}</p>}
+    {staff ? <div className="ad-pcols">{card}<div className="ad-stack"><section className="hc-card ad-identity">{values.avatarUrl ? <img className="hc-avatar hc-avatar--image" src={values.avatarUrl} alt={`Ảnh đại diện của ${profile.fullName}`} /> : <div className="hc-avatar" aria-hidden="true">{profile.fullName.charAt(0)}</div>}<div><strong>{profile.fullName}</strong><small>{profile.email}</small></div><span className="hc-badge hc-badge--dark">{roleLabels[user.role]}</span></section><section className="hc-card" aria-labelledby="sessions-title"><h2 id="sessions-title">Phiên đăng nhập gần đây</h2><p className="hc-muted"><span className="hc-soon">Chưa triển khai</span> API danh sách phiên đăng nhập chưa có.</p></section></div></div> : card}
     {passwordOpen && <PasswordDialog onClose={() => setPasswordOpen(false)} onDone={() => { setPasswordOpen(false); setNotice('Đã đổi mật khẩu. Các phiên đăng nhập khác đã bị đăng xuất.'); }} />}
   </section>;
 }
