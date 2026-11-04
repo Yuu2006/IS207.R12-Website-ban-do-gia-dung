@@ -3,6 +3,7 @@ import { AuthProvider } from './context/AuthContext.jsx';
 import { OrderServiceProvider } from './context/OrderServiceContext.jsx';
 import AppRoutes from './routes/AppRoutes.jsx';
 import './styles/app-shell.css';
+import './styles/admin-template.css';
 
 // Lắp ghép router và phiên; trang cùng nghiệp vụ nằm ở module tương ứng.
 export default function App() {

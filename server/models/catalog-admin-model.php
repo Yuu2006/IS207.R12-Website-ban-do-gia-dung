@@ -51,6 +51,30 @@ class CatalogAdminModel
         $stmt->execute([$values['variant_name'], $values['price'], $values['sale_price'], $values['sale_starts_at'], $values['sale_ends_at'], $values['low_stock_threshold'], (int) $values['is_active'], $id]);
     }
 
+    // Trả false nếu SKU không tồn tại; 409 nếu còn tồn. Khóa dòng để không đua với điều chỉnh kho.
+    public function softDeleteVariant(int $id): bool
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $stmt = $this->pdo->prepare('SELECT stock_quantity, product_id FROM product_variants WHERE id = ? AND is_deleted = 0 FOR UPDATE');
+            $stmt->execute([$id]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$row) { $this->pdo->rollBack(); return false; }
+            $stock = $row['stock_quantity'];
+            // Giữ ít nhất một SKU để sản phẩm công khai luôn có giá; muốn bỏ hẳn thì ngừng bán sản phẩm.
+            $others = $this->pdo->prepare('SELECT COUNT(*) FROM product_variants WHERE product_id = ? AND id <> ? AND is_deleted = 0');
+            $others->execute([$row['product_id'], $id]);
+            if ((int) $others->fetchColumn() === 0) throw new ApiException('Không thể xóa SKU cuối cùng; hãy ngừng bán sản phẩm.', 409);
+            if ((int) $stock > 0) throw new ApiException('SKU còn tồn kho; hãy điều chỉnh tồn về 0 trước khi xóa.', 409);
+            $this->pdo->prepare('UPDATE product_variants SET is_deleted = 1, is_active = 0 WHERE id = ?')->execute([$id]);
+            $this->pdo->commit();
+            return true;
+        } catch (Throwable $error) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw $error;
+        }
+    }
+
     // Khóa dòng sản phẩm để thao tác ảnh đồng thời không tạo hai ảnh đại diện.
     public function transactionOnProduct(int $productId, callable $work): mixed
     {
