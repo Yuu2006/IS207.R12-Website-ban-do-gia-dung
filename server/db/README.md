@@ -12,6 +12,8 @@ Compose chỉ mount `server/db` và MySQL không tự chạy file trong thư m�
 4. `migrations/010_auth_profile.sql` (auth/hồ sơ — Tuấn Vũ: unique phone, ngày sinh, khóa đăng nhập tạm), rồi `migrations/011_auth_catalog_completion.sql` (thứ tự danh mục/banner, mô tả thương hiệu, bảng `auth_login_attempts`)
 5. `seeds/001_auth_demo_users.sql`, `seeds/002_demo_data.sql`, `seeds/003_catalog_appliances.sql` (30 sản phẩm mô phỏng: 10 tủ lạnh, 10 máy giặt, 10 máy lạnh; tồn ban đầu ghi qua `inventory_movements`; chạy lại không cộng tồn)
 
+Sau khi nhóm review schema HOME/FIT/TCO/LIFE/CARE, áp **một lần** `migrations/012_decision_tools.sql` lên database đã có các bảng `users`, `categories`, `products`, `product_variants`, `orders`, `order_items`. Migration thêm `room_profiles`, `fit_rules`, `care_rules`, `owned_devices`, `care_tasks`, `decision_events`; không sửa baseline hoặc dữ liệu cũ. Đây là schema đề xuất, chưa có API production và chưa được áp vào database chung. Xem [contract công cụ lựa chọn](../../docs/api/DECISION-TOOLS.md) và [định nghĩa dashboard cần TV2/TV3 duyệt](../../docs/api/DASHBOARD-METRICS.md). MySQL DDL có implicit commit; backup/review trước khi áp, không chạy lại nếu đã tạo bảng.
+
 Ví dụ với Compose: `docker compose exec -T db sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < database/schema_database.sql`, lặp lại theo thứ tự trên. Hai file đánh số 008 độc lập nhau; migration mới đánh số từ 012.
 
 `seeds/001_auth_demo_users.sql` tạo 4 tài khoản demo (`customer@`, `admin@`, `sales@`, `warehouse@example.test`, mật khẩu `Demo@1234567890!`). Chỉ dùng cho môi trường demo.
