@@ -7,7 +7,7 @@
 | HOME-01 / FIT-01 / ADM-FIT-01 | `customer/DecisionToolsPage.jsx`, `admin/FitRulesPreviewPage.jsx` (màn hình mẫu) | Đề xuất `room_profiles`, `fit_rules`, FitCheck evaluator; API chưa triển khai |
 | TCO-01 | `customer/DecisionToolsPage.jsx` (màn hình mẫu) | Contract tính stateless và `decision_events`; API chưa triển khai |
 | LIFE-01 / CARE-01 / ADM-CARE-01 | `customer/DecisionToolsPage.jsx` (màn hình mẫu) | Đề xuất `owned_devices`, `care_rules`, `care_tasks`; completion bridge/API chưa triển khai |
-| BOT-01..06 | chatbot | Chatbot, Product |
+| BOT-01..06 | `components/chatbot/` (hộp thoại, câu hỏi gợi ý và bảng so sánh 2–4 sản phẩm mẫu) | Đề xuất intent/rule/FAQ/catalog contract tại `docs/api/CHATBOT-DESIGN-CONTRACT.md`; chưa có API chatbot/model |
 | CART / PROMO / CHK / PAY | cart/checkout/payment | Cart, Voucher, Checkout, Payment |
 | ORD / RET | orders/returns | Order, ReturnRefund |
 | NOTI | notifications | Notification |
