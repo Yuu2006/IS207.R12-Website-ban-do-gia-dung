@@ -12,6 +12,7 @@ const php = process.env.PHP_BIN || 'php';
 const mysqld = process.env.MYSQLD_BIN || 'mysqld';
 const phpArgs = process.env.PHP_EXTENSION_DIR ? ['-n', '-d', `extension_dir=${process.env.PHP_EXTENSION_DIR}`, '-d', 'extension=php_pdo_mysql.dll'] : [];
 const suite = fileURLToPath(new URL('./order-mysql.test.php', import.meta.url));
+const tcoSuite = fileURLToPath(new URL('./tco-mysql.test.php', import.meta.url));
 const tempParent = await realpath(tmpdir());
 const root = await mkdtemp(join(tempParent, 'homecare-order-mysql-'));
 const portProbe = createServer();
@@ -30,6 +31,7 @@ const run = (binary, args, allowedFailure = false) => new Promise((resolve, reje
   child.on('exit', code => code === 0 || allowedFailure ? resolve({ code, output }) : reject(new Error(output || `Process exited ${code}`)));
 });
 const call = (...args) => run(php, [...phpArgs, suite, ...args]);
+const callTco = (...args) => run(php, [...phpArgs, tcoSuite, ...args]);
 let server;
 let log = '';
 try {
@@ -48,7 +50,9 @@ try {
   }
   if (!ready) throw new Error(`MySQL did not become ready: ${log}`);
   console.log((await call('init')).output.trim());
+  console.log((await callTco('init')).output.trim());
   console.log((await call('test')).output.trim());
+  console.log((await callTco('test')).output.trim());
   // Two independent PHP/PDO processes contend for the same last SKU.
   const prepared = JSON.parse((await call('prepare-race')).output);
   const checkoutRace = await Promise.all(prepared.map(input => call('runtime-checkout-worker', JSON.stringify(input))));

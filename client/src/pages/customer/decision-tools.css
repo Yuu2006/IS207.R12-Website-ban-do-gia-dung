@@ -22,5 +22,27 @@
 .dt-metric span, .dt-metric small { display: block; color: #667085; font-size: 12px; line-height: 1.6; }
 .dt-metric strong { display: block; margin: 9px 0; color: #0f5f73; font-size: 28px; }
 .dt-dashboard-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.dt-tco-form { display: grid; gap: 16px; }
+.dt-tco-product-list { display: grid; gap: 14px; }
+.dt-tco-product { min-width: 0; padding: 16px; border: 1px solid #e5e7eb; border-radius: 8px; }
+.dt-tco-product legend { padding: 0 8px; color: #1f2937; font-size: 14px; font-weight: 700; }
+.dt-tco-product .hc-form-grid { margin-top: 6px; }
+.dt-tco-product small { color: #667085; font-size: 11px; line-height: 1.5; }
+.dt-tco-remove { margin-left: 12px; border: 0; background: transparent; color: #b42318; cursor: pointer; font: inherit; font-size: 12px; }
+.dt-tco-add { justify-self: start; }
+.dt-tco-scenario { margin-top: 4px; }
+.dt-tco-error { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 14px; border: 1px solid #fecdca; border-radius: 8px; background: #fff6f5; color: #b42318; font-size: 13px; }
+.dt-tco-inline-error { display: block; color: #b42318 !important; }
+.dt-tco-inline-error button { border: 0; background: transparent; color: #0f5f73; cursor: pointer; font: inherit; text-decoration: underline; }
+.dt-tco-results { display: grid; gap: 14px; }
+.dt-tco-sku { display: block; margin-top: 5px; color: #667085; font-size: 11px; font-weight: 400; }
+.dt-tco-total-row { font-weight: 700; }
+.dt-tco-result-notes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.dt-tco-result-note { min-width: 0; padding: 14px; border: 1px solid #e5e7eb; border-radius: 8px; }
+.dt-tco-result-note h3 { margin: 0 0 10px; color: #1f2937; font-size: 14px; }
+.dt-tco-result-note details summary { color: #0f5f73; cursor: pointer; font-size: 12px; font-weight: 600; }
+.dt-tco-result-note ul { margin: 10px 0 0; padding-left: 18px; color: #475467; font-size: 12px; line-height: 1.7; }
+.dt-tco-missing { margin-top: 12px; color: #a45d0a; font-size: 12px; }
+.dt-tco-missing ul { margin-top: 5px; }
 @media (max-width: 1000px) { .dt-grid--room, .dt-dashboard-row { grid-template-columns: 1fr; } .dt-dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 760px) { .dt-grid--three, .dt-dashboard-grid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .dt-grid--three, .dt-dashboard-grid, .dt-tco-result-notes { grid-template-columns: 1fr; } .dt-tco-product { padding: 12px; } .dt-tco-results .hc-table { min-width: 640px; } }
