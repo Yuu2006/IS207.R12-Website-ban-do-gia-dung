@@ -15,6 +15,7 @@ Ngày 16/10/2026, Tuấn Vũ. Bổ sung lên API catalog của Lan Chi (PR #9). 
 | Ghi categories/brands/products/banners/upload (API Lan Chi) | Có | 403 | 401/403 |
 | Endpoint bổ sung bên dưới (SKU, ảnh, thuộc tính, banner admin) | Có | 403 | 401/403 |
 | GET `/api/inventory`, GET/POST `/api/inventory/movements` | Có | Có | 401/403 (trước đây công khai GET và chỉ ADMIN được POST) |
+| GET `/api/products`, `/api/products/{id}` | Thấy cả sản phẩm ẩn (lọc `is_active=0|1`) | Chỉ sản phẩm đang bán | Công khai; sản phẩm ngừng bán trả 404 và không có trong danh sách |
 
 ## Endpoint bổ sung
 
@@ -23,6 +24,7 @@ Ngày 16/10/2026, Tuấn Vũ. Bổ sung lên API catalog của Lan Chi (PR #9). 
 | GET `/api/products/{id}/variants` | — | Mọi SKU chưa xóa của sản phẩm, kể cả ngừng bán |
 | POST `/api/products/{id}/variants` | `{ sku, variant_name, price, sale_price?, sale_starts_at?, sale_ends_at?, low_stock_threshold?, is_active? }` | 201, SKU mới với `stock_quantity = 0` |
 | PUT `/api/variants/{id}` | Một phần các trường trên (trừ `sku`) | SKU sau cập nhật |
+| DELETE `/api/variants/{id}` | — | `{ id }`; xóa mềm. 404 nếu không có/đã xóa; **409 nếu còn tồn > 0** (điều chỉnh về 0 trước) hoặc đây là SKU cuối cùng của sản phẩm (hãy ngừng bán sản phẩm). Mã `sku` đã xóa vẫn chiếm chỗ (tạo lại → 409); lịch sử kho của SKU đã xóa không hiện trong danh sách movement nhưng vẫn còn trong DB |
 | GET `/api/products/{id}/images` | — | Ảnh chưa xóa, ảnh đại diện trước rồi theo `sort_order` |
 | POST `/api/products/{id}/images` | `{ image_url, sort_order?, is_primary? }` | 201, danh sách ảnh; ảnh đầu tiên tự thành ảnh đại diện; tối đa 10 ảnh |
 | PUT `/api/product-images/{id}` | `{ sort_order?, is_primary: true? }` | Danh sách ảnh; `is_primary: false` → 422 (chọn ảnh khác thay vì bỏ cờ) |
@@ -32,6 +34,7 @@ Ngày 16/10/2026, Tuấn Vũ. Bổ sung lên API catalog của Lan Chi (PR #9). 
 
 Quy tắc:
 
+- `POST /api/products` dùng cùng quy tắc tiền: `price` số thực JSON/âm/quá 12 chữ số → 422.
 - Tiền nhận chuỗi/số nguyên dạng `^\d{1,12}(\.\d{1,2})?$` và lưu DECIMAL, không qua float; số thực JSON (`1500.5`) bị từ chối — gửi chuỗi `"1500.50"`. Giá khuyến mãi phải nhỏ hơn giá bán; `sale_ends_at` sau `sale_starts_at`; thời gian nhận `YYYY-MM-DD HH:MM[:SS]` hoặc `YYYY-MM-DDTHH:MM`. Đơn hàng vẫn lưu giá thực tế lúc mua (snapshot của module đơn).
 - `sku` duy nhất (409), không đổi sau khi tạo (422). Gửi `stock_quantity` → 422: tồn chỉ đổi qua điều chỉnh kho. `POST /api/products` của Lan Chi cũng bỏ qua `stock_quantity`.
 - Thao tác ảnh khóa dòng sản phẩm (`FOR UPDATE`) nên luôn đúng một ảnh đại diện. `GET /api/products/{id}` (công khai) trả thêm `images`, `GET /api/products` trả `primary_image`.
@@ -49,9 +52,11 @@ Quy tắc:
 POST `/api/inventory/movements` `{ sku, movement_type: import|export, quantity > 0, reference_code, note }`:
 
 - `note` (lý do) bắt buộc, ≤ 500 ký tự; `performed_by` = người đăng nhập (không nhận từ client).
-- Transaction + `SELECT … FOR UPDATE` trên SKU; xuất vượt tồn → 400; `reference_code` trùng → 409, nên gửi lặp cùng mã không cộng tồn hai lần. Màn hình kho tự sinh mã `ADJ-<thời gian>-<ngẫu nhiên>` cho mỗi lần mở form.
+- Transaction + `SELECT … FOR UPDATE` trên SKU; xuất vượt tồn → 400; `reference_code` trùng → 409, nên gửi lặp cùng mã không cộng tồn hai lần. Màn hình kho lập phiếu nhập/xuất/kiểm kê nhiều dòng, tự sinh mã phiếu `PN-` / `PX-` / `DC-<thời gian>-<ngẫu nhiên>` (chỉ đọc, mở form mới thì sinh mã mới); mỗi dòng là một POST với `reference_code` = `<mã phiếu>-<số dòng>` (≤ 100 ký tự), giữ cố định qua các lần gửi lại. Lý do gửi vào `note` dạng `<lý do>: <ghi chú>` (≤ 500 ký tự). Kiểm kê không có loại `adjust` ở API: chênh lệch dương gửi `import`, âm gửi `export`, dòng không lệch không gửi.
+- **Phiếu nhiều dòng không atomic**: mỗi SKU ghi trong transaction riêng nên nếu dòng sau lỗi thì dòng trước đã ghi. Client gửi tuần tự và dừng ở dòng lỗi đầu tiên; dòng đã ghi bị khóa (hiện tồn trước → sau do server trả về), gửi lại chỉ gửi các dòng còn lại cùng mã. Nhận 409 khi gửi lại nghĩa là lần trước có thể đã ghi: client báo kiểm tra Nhật ký kho, không coi là thành công. SKU ngừng bán vẫn có trong `GET /api/inventory` nhưng POST trả 404, lỗi hiện trên đúng dòng. Muốn phiếu atomic cần thêm endpoint batch ở PHP (chưa làm).
 - GET `/api/inventory/movements?sku=&movement_type=&page=1&pageSize=20` trả `data: { items, pagination: { page, pageSize, totalItems, totalPages } }`, mới nhất trước, kèm `performed_by_name`. `pageSize` 1–100; sai → 400.
-- GET `/api/inventory?low_stock=1` trả SKU có `stock_quantity <= low_stock_threshold` (WH-02).
+- GET `/api/inventory?low_stock=1` trả SKU **đang bán** (`is_active = 1`) có `stock_quantity <= low_stock_threshold` (WH-02). Không có `low_stock`, danh sách vẫn gồm SKU ngừng bán.
+- Màn hình: trang tổng quan `/warehouse` (WAREHOUSE) và `/admin` (ADMIN) có khối cảnh báo sắp hết (tối đa 5 SKU ít tồn nhất) liên kết sang `/warehouse/inventory`; trang quản trị sản phẩm có lọc trạng thái và nút Xóa SKU (khóa khi còn tồn).
 
 ## Dữ liệu demo
 
@@ -59,4 +64,4 @@ POST `/api/inventory/movements` `{ sku, movement_type: import|export, quantity >
 
 ## Kiểm thử
 
-`node --test scripts/catalog-inventory-api.test.mjs` (PHP + MySQL thử nghiệm đã seed 001 + 003): quyền kho 401/403, lọc sắp hết, lý do bắt buộc, CSRF, chứng từ trùng 409, chặn tồn âm, `performed_by_name`; SKU tồn 0, chặn `stock_quantity`, giá khuyến mãi ≥ giá, số thực, SKU trùng/đổi mã, khung thời gian sai, SKU ngừng bán ẩn khỏi storefront; thuộc tính sai khóa/trùng; ảnh URL ngoài bị chặn, upload PNG thật pass, file PHP giả PNG bị chặn, WAREHOUSE không upload ảnh catalog; thư viện ảnh (đại diện tự động, đổi đại diện, thứ tự, xóa mềm và thay thế); phân trang lịch sử; danh mục 2 cấp/thứ tự, mô tả thương hiệu, thứ tự banner. Test để lại ảnh 1×1 trong `server/uploads/products/` (đã gitignore).
+`node --test scripts/catalog-inventory-api.test.mjs` (PHP + MySQL thử nghiệm đã seed 001 + 003): quyền kho 401/403, lọc sắp hết, lý do bắt buộc, CSRF, chứng từ trùng 409, chặn tồn âm, `performed_by_name`; SKU tồn 0, chặn `stock_quantity`, giá khuyến mãi ≥ giá, số thực, SKU trùng/đổi mã, khung thời gian sai, SKU ngừng bán ẩn khỏi storefront; thuộc tính sai khóa/trùng; ảnh URL ngoài bị chặn, upload PNG thật pass, file PHP giả PNG bị chặn, WAREHOUSE không upload ảnh catalog; thư viện ảnh (đại diện tự động, đổi đại diện, thứ tự, xóa mềm và thay thế); phân trang lịch sử; sản phẩm ngừng bán ẩn khỏi API công khai; xóa mềm SKU (chặn khi còn tồn hoặc là SKU cuối, 403 WAREHOUSE/CSRF); giá tạo sản phẩm không float; hai lần xuất đồng thời không âm tồn; đầu vào điều chỉnh sai; cảnh báo bỏ SKU ngừng bán; danh mục 2 cấp/thứ tự, mô tả thương hiệu, thứ tự banner. Test để lại ảnh 1×1 trong `server/uploads/products/` (đã gitignore).

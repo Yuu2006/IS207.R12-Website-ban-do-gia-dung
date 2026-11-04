@@ -141,3 +141,95 @@ test('Danh mục tối đa 2 cấp có thứ tự; thương hiệu có mô tả;
   assert.equal((await admin.request('/api/banners', 'POST', banner)).status, 201);
   assert.equal((await admin.request('/api/admin/banners')).json.data.find(item => item.title === banner.title).sort_order, 1);
 });
+
+// Tạo sản phẩm + SKU đầu tiên (tồn 0) bằng ADMIN, trả { productId, sku, variantId }.
+async function createProduct(admin, tag, extra = {}) {
+  const category = (await admin.request('/api/categories')).json.data.find(item => item.slug === 'tu-lanh');
+  const brand = (await admin.request('/api/brands')).json.data[0];
+  const sku = `W${unique}${tag}`;
+  const created = await admin.request('/api/products', 'POST', { category_id: category.id, brand_id: brand.id, product_code: sku, name: `Sản phẩm tuần 2 ${sku}`, slug: `sp-tuan-2-${sku.toLowerCase()}`, sku, variant_name: 'Tiêu chuẩn', price: '1000000', ...extra });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  return { productId: created.json.data.id, sku, variantId: created.json.data.variants[0].id };
+}
+const move = (client, sku, type, quantity, ref, note = 'Kiểm thử') => client.request('/api/inventory/movements', 'POST', { sku, movement_type: type, quantity, reference_code: ref, note });
+
+test('Catalog công khai ẩn sản phẩm ngừng bán; ADMIN vẫn thấy và lọc được', async () => {
+  const admin = new Client(); await admin.staff('ADMIN');
+  const anonymous = new Client(); await anonymous.init();
+  const customer = new Client(); await customer.init();
+  await customer.request('/auth/login', 'POST', { identifier: 'customer@example.test', password });
+  const { productId, sku } = await createProduct(admin, 'V');
+  for (const viewer of [anonymous, customer]) {
+    assert.equal((await viewer.request(`/api/products?keyword=${sku}`)).json.data.length, 1);
+    assert.equal((await viewer.request(`/api/products/${productId}`)).status, 200);
+  }
+  assert.equal((await admin.request(`/api/products/${productId}`, 'PUT', { is_active: 0 })).status, 200);
+  for (const viewer of [anonymous, customer]) {
+    assert.equal((await viewer.request(`/api/products?keyword=${sku}`)).json.data.length, 0);
+    assert.equal((await viewer.request(`/api/products?keyword=${sku}&is_active=0`)).json.data.length, 0);
+    assert.equal((await viewer.request(`/api/products/${productId}`)).status, 404);
+  }
+  assert.equal((await admin.request(`/api/products?keyword=${sku}&is_active=0`)).json.data.length, 1);
+  assert.equal((await admin.request(`/api/products?keyword=${sku}&is_active=1`)).json.data.length, 0);
+  assert.equal((await admin.request(`/api/products/${productId}`)).status, 200);
+});
+
+test('Xóa mềm SKU chỉ khi tồn bằng 0; giá tạo sản phẩm không qua float', async () => {
+  const admin = new Client(); await admin.staff('ADMIN');
+  const warehouse = new Client(); await warehouse.staff('WAREHOUSE');
+  const category = (await admin.request('/api/categories')).json.data[0];
+  const brand = (await admin.request('/api/brands')).json.data[0];
+  const base = { category_id: category.id, brand_id: brand.id, variant_name: 'Giá', };
+  for (const [i, price] of [1500.5, '12345678901234', '-1', 'abc', ''].entries()) {
+    const code = `P${unique}${i}`;
+    assert.equal((await admin.request('/api/products', 'POST', { ...base, product_code: code, name: code, slug: code.toLowerCase(), sku: code, price })).status, 422, `price=${price}`);
+  }
+  const { productId, sku, variantId } = await createProduct(admin, 'D', { price: '1500.50' });
+  assert.equal((await admin.request(`/api/products/${productId}`)).json.data.variants[0].price, '1500.50');
+
+  assert.equal((await warehouse.request(`/api/variants/${variantId}`, 'DELETE')).status, 403);
+  assert.equal((await admin.request(`/api/variants/${variantId}`, 'DELETE', undefined, { 'X-CSRF-Token': 'bad' })).status, 403);
+  assert.equal((await move(warehouse, sku, 'import', 2, `W-${unique}-D1`)).status, 201);
+  assert.equal((await admin.request(`/api/variants/${variantId}`, 'DELETE')).status, 409, 'SKU cuối cùng không xóa được');
+  const spare = await admin.request(`/api/products/${productId}/variants`, 'POST', { sku: `${sku}-B`, variant_name: 'Phụ', price: '1' });
+  assert.equal(spare.status, 201);
+  assert.equal((await admin.request(`/api/variants/${variantId}`, 'DELETE')).status, 409, 'còn tồn');
+  assert.equal((await admin.request(`/api/products/${productId}/variants`)).json.data.length, 2);
+  assert.equal((await move(warehouse, sku, 'export', 2, `W-${unique}-D2`)).status, 201);
+  assert.equal((await admin.request(`/api/variants/${variantId}`, 'DELETE')).status, 200);
+  assert.deepEqual((await admin.request(`/api/products/${productId}/variants`)).json.data.map(item => item.id), [spare.json.data.id]);
+  assert.equal((await admin.request(`/api/variants/${variantId}`, 'DELETE')).status, 404);
+  assert.equal((await admin.request(`/api/products/${productId}/variants`, 'POST', { sku, variant_name: 'Lại', price: '1' })).status, 409);
+  assert.equal((await warehouse.request(`/api/inventory/movements?sku=${sku}`)).json.data.pagination.totalItems, 0, 'lịch sử của SKU đã xóa được ẩn khỏi danh sách');
+});
+
+test('Hai lần xuất đồng thời không làm tồn âm', async () => {
+  const admin = new Client(); await admin.staff('ADMIN');
+  const warehouse = new Client(); await warehouse.staff('WAREHOUSE');
+  const { sku } = await createProduct(admin, 'R');
+  assert.equal((await move(warehouse, sku, 'import', 5, `W-${unique}-R0`)).status, 201);
+  const results = await Promise.all([1, 2].map(n => move(warehouse, sku, 'export', 5, `W-${unique}-R${n}`)));
+  assert.deepEqual(results.map(result => result.status).sort(), [201, 400]);
+  assert.equal((await warehouse.request(`/api/inventory?sku=${sku}`)).json.data[0].stock_quantity, 0);
+  const rows = (await warehouse.request(`/api/inventory/movements?sku=${sku}`)).json.data.items;
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map(row => [row.quantity_before, row.quantity_after]), [[5, 0], [0, 5]]);
+});
+
+test('Đầu vào điều chỉnh kho sai bị từ chối; cảnh báo sắp hết bỏ SKU ngừng bán', async () => {
+  const admin = new Client(); await admin.staff('ADMIN');
+  const warehouse = new Client(); await warehouse.staff('WAREHOUSE');
+  const { sku, variantId } = await createProduct(admin, 'I');
+  let n = 0;
+  for (const quantity of [0, -1, 1.5, 'abc', 4294967296]) assert.equal((await move(warehouse, sku, 'import', quantity, `W-${unique}-I${n++}`)).status, 400, `quantity=${quantity}`);
+  assert.equal((await move(warehouse, sku, 'import', 1, `W-${unique}-I${n++}`, 'x'.repeat(501))).status, 400);
+  assert.equal((await move(warehouse, sku, 'adjust', 1, `W-${unique}-I${n++}`)).status, 400);
+  assert.equal((await move(warehouse, 'KHONG-CO', 'import', 1, `W-${unique}-I${n++}`)).status, 404);
+  assert.equal((await warehouse.request(`/api/inventory?sku=${sku}`)).json.data[0].stock_quantity, 0);
+  const lowSkus = async () => (await warehouse.request('/api/inventory?low_stock=1')).json.data.map(item => item.sku);
+  assert.ok((await lowSkus()).includes(sku), 'tồn 0, ngưỡng mặc định → cảnh báo');
+  assert.equal((await warehouse.request(`/api/inventory?sku=${sku}`)).json.data[0].stock_status, 'out_of_stock');
+  assert.equal((await admin.request(`/api/variants/${variantId}`, 'PUT', { is_active: false })).status, 200);
+  assert.ok(!(await lowSkus()).includes(sku), 'SKU ngừng bán không cảnh báo');
+  assert.equal((await warehouse.request(`/api/inventory?sku=${sku}`)).json.data.length, 1, 'danh sách thường vẫn thấy SKU ngừng bán');
+});

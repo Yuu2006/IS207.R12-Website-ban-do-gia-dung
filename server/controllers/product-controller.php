@@ -1,6 +1,12 @@
 <?php
 
 require_once __DIR__ . '/../models/product-model.php';
+require_once __DIR__ . '/../services/catalog-admin-service.php';
+
+function isAdminRequest(): bool
+{
+    return (currentPrincipal()['role'] ?? null) === 'ADMIN';
+}
 
 function listProducts(): void
 {
@@ -12,7 +18,7 @@ function listProducts(): void
             'is_active' => $_GET['is_active'] ?? '',
         ];
 
-        $products = getProducts($filters);
+        $products = getProducts($filters, !isAdminRequest());
 
         http_response_code(200);
         echo json_encode([
@@ -33,7 +39,7 @@ function listProducts(): void
 function showProduct(int $id): void
 {
     try {
-        $product = getProductById($id);
+        $product = getProductById($id, !isAdminRequest());
 
         if ($product === null) {
             http_response_code(404);
@@ -93,7 +99,9 @@ function createProduct(): void
         }
     }
 
-    if (!is_numeric($input['price']) || (float) $input['price'] < 0) {
+    $moneyErrors = [];
+    $price = CatalogAdminService::money($input['price'], 'price', $moneyErrors);
+    if ($moneyErrors) {
         http_response_code(422);
         echo json_encode([
             'success' => false,
@@ -143,7 +151,7 @@ function createProduct(): void
             'product_id' => $productId,
             'sku' => trim($input['sku']),
             'variant_name' => trim($input['variant_name']),
-            'price' => (string) $input['price'],
+            'price' => $price,
             // Tồn ban đầu luôn 0; nhập kho qua /api/inventory/movements để có log (WH-03).
         ]);
 
