@@ -1,0 +1,26 @@
+.dt-page { max-width: 1100px; }
+.dt-stack { display: grid; gap: 18px; }
+.dt-grid { display: grid; gap: 18px; }
+.dt-grid--room { grid-template-columns: minmax(0, 1.45fr) minmax(260px, .75fr); align-items: start; }
+.dt-grid--three { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 18px; }
+.dt-section-head { display: flex; align-items: start; gap: 12px; color: #0f5f73; margin-bottom: 18px; }
+.dt-section-head p { margin: 4px 0 0; }
+.dt-room-form { gap: 16px; }
+.dt-note { margin: 18px 0; padding: 14px 16px; border-left: 3px solid #0f5f73; background: #edf5f7; color: #344054; font-size: 12px; line-height: 1.7; }
+.dt-result { min-width: 0; padding: 18px; border: 1px solid #d0d5dd; border-radius: 8px; }
+.dt-result svg { display: block; margin-bottom: 11px; }
+.dt-result strong { font-size: 13px; }
+.dt-result p { margin: 7px 0 0; color: #475467; font-size: 12px; }
+.dt-result--fit { border-color: #a6d4bd; background: #f2faf5; color: #216444; }
+.dt-result--check { border-color: #f6d198; background: #fffaf1; color: #a45d0a; }
+.dt-result--no-fit { border-color: #efb7b1; background: #fff6f4; color: #b42318; }
+.dt-placeholder { margin-top: 16px; padding: 26px; border: 1px dashed #c9d1d8; border-radius: 8px; background: #f9fafb; color: #667085; font-size: 12px; line-height: 1.8; }
+.dt-page .hc-tabs button { display: inline-flex; align-items: center; gap: 7px; }
+.dt-page .hc-button:disabled { opacity: .55; cursor: not-allowed; }
+.dt-dashboard-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.dt-metric { padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px; background: white; }
+.dt-metric span, .dt-metric small { display: block; color: #667085; font-size: 12px; line-height: 1.6; }
+.dt-metric strong { display: block; margin: 9px 0; color: #0f5f73; font-size: 28px; }
+.dt-dashboard-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+@media (max-width: 1000px) { .dt-grid--room, .dt-dashboard-row { grid-template-columns: 1fr; } .dt-dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .dt-grid--three, .dt-dashboard-grid { grid-template-columns: 1fr; } }
