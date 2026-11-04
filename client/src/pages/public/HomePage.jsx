@@ -6,7 +6,9 @@ import {
   Headphones,
   Award,
   ChevronRight,
+  ArrowLeftRight,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import { categories, products } from "../../data";
 import ProductCard from "../../components/ProductCard";
@@ -243,6 +245,20 @@ export default function HomePage() {
               </span>
             </button>
           ))}
+        </div>
+      </section>
+
+      {/* ================= PRODUCT COMPARISON ================= */}
+      <section className="mx-auto max-w-7xl px-4 pb-12">
+        <div className="flex flex-col gap-6 rounded-2xl border border-[#B6DBE4] bg-[#E8F4F7] p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
+          <div className="flex items-start gap-4">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#176B87] text-white"><ArrowLeftRight size={23} /></span>
+            <div>
+              <h2 className="text-xl font-bold text-[#1F2937]">So sánh sản phẩm</h2>
+              <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#64748B]">Chọn hai sản phẩm cùng loại để xem giá, hãng và các thông số cạnh nhau.</p>
+            </div>
+          </div>
+          <Link to="/compare" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#176B87] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#0F4F65]">Bắt đầu so sánh <ArrowRight size={16} /></Link>
         </div>
       </section>
 
