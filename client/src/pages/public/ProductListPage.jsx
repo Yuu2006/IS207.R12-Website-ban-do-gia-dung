@@ -6,8 +6,12 @@ import {
   List,
   Search,
 } from "lucide-react";
-import { products, categories } from "../../data";
+import { products, categories, formatPrice } from "../../data";
 import ProductCard from "../../components/ProductCard";
+
+const PRICE_MIN = 0;
+const PRICE_MAX = 20000000;
+const PRICE_STEP = 100000;
 
 const brands = [
   "Samsung",
@@ -44,6 +48,7 @@ export default function ProductListPage() {
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
   const [search, setSearch] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
 
   const toggleBrand = (brand) => {
     setSelectedBrands((prev) =>
@@ -58,6 +63,26 @@ export default function ProductListPage() {
     setSelectedBrands([]);
     setPriceRange([0, 20000000]);
     setSearch("");
+    setPage(1);
+  };
+
+  const updateMinPrice = (value) => {
+    if (value === "") return;
+    const nextMin = Number(value);
+    setPriceRange(([, currentMax]) => [
+      Math.max(PRICE_MIN, Math.min(nextMin, currentMax - PRICE_STEP)),
+      currentMax,
+    ]);
+    setPage(1);
+  };
+
+  const updateMaxPrice = (value) => {
+    if (value === "") return;
+    const nextMax = Number(value);
+    setPriceRange(([currentMin, currentMax]) => [
+      currentMin,
+      Math.min(PRICE_MAX, Math.max(nextMax, currentMin + PRICE_STEP)),
+    ]);
     setPage(1);
   };
 
@@ -118,7 +143,7 @@ export default function ProductListPage() {
   };
 
   const handleAddToCart = (product) => {
-    console.log("Thêm vào giỏ:", product);
+    setActionMessage(`Chức năng giỏ hàng hiện chưa khả dụng cho ${product.name}.`);
   };
 
   return (
@@ -276,6 +301,68 @@ export default function ProductListPage() {
                   Khoảng giá
                 </div>
 
+                <div className="mb-2 flex items-center justify-between text-xs text-[#667085]">
+                  <span>{formatPrice(priceRange[0])}</span>
+                  <span>{formatPrice(priceRange[1])}</span>
+                </div>
+
+                <div
+                  className="pl-price-slider"
+                  style={{
+                    "--price-start": `${(priceRange[0] / PRICE_MAX) * 100}%`,
+                    "--price-end": `${(priceRange[1] / PRICE_MAX) * 100}%`,
+                  }}
+                >
+                  <div className="pl-price-slider__track" aria-hidden="true" />
+                  <input
+                    type="range"
+                    min={PRICE_MIN}
+                    max={PRICE_MAX}
+                    step={PRICE_STEP}
+                    value={priceRange[0]}
+                    aria-label="Giá thấp nhất"
+                    aria-valuetext={formatPrice(priceRange[0])}
+                    onChange={(event) => updateMinPrice(event.target.value)}
+                  />
+                  <input
+                    type="range"
+                    min={PRICE_MIN}
+                    max={PRICE_MAX}
+                    step={PRICE_STEP}
+                    value={priceRange[1]}
+                    aria-label="Giá cao nhất"
+                    aria-valuetext={formatPrice(priceRange[1])}
+                    onChange={(event) => updateMaxPrice(event.target.value)}
+                  />
+                </div>
+
+                <div className="mb-3 grid grid-cols-2 gap-2">
+                  <label className="pl-price-input">
+                    <span>Từ</span>
+                    <input
+                      type="number"
+                      min={PRICE_MIN}
+                      max={priceRange[1] - PRICE_STEP}
+                      step={PRICE_STEP}
+                      value={priceRange[0]}
+                      aria-label="Giá từ"
+                      onChange={(event) => updateMinPrice(event.target.value)}
+                    />
+                  </label>
+                  <label className="pl-price-input">
+                    <span>Đến</span>
+                    <input
+                      type="number"
+                      min={priceRange[0] + PRICE_STEP}
+                      max={PRICE_MAX}
+                      step={PRICE_STEP}
+                      value={priceRange[1]}
+                      aria-label="Giá đến"
+                      onChange={(event) => updateMaxPrice(event.target.value)}
+                    />
+                  </label>
+                </div>
+
                 <div className="space-y-1">
                   {[
                     [0, 2000000, "Dưới 2 triệu"],
@@ -285,12 +372,10 @@ export default function ProductListPage() {
                   ].map(([min, max, label]) => (
                     <button
                       key={label}
-                      onClick={() =>
-                        setPriceRange([
-                          Number(min),
-                          Number(max),
-                        ])
-                      }
+                      onClick={() => {
+                        setPriceRange([Number(min), Number(max)]);
+                        setPage(1);
+                      }}
                       className={`w-full rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${
                         priceRange[0] === min &&
                         priceRange[1] === max
@@ -404,6 +489,15 @@ export default function ProductListPage() {
                 </div>
               </div>
             </div>
+
+            {actionMessage && (
+              <p
+                className="mb-4 rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm text-[#B42318]"
+                role="alert"
+              >
+                {actionMessage}
+              </p>
+            )}
 
             {/* PRODUCTS */}
             {sortedProducts.length > 0 ? (

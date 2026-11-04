@@ -76,6 +76,19 @@ Hiện trạng đơn hàng và checkout ngày 08/10/2026, kết quả test và m
 
 Auth chạy thật trên MySQL qua PHP session (cookie HttpOnly `HOMECARE_SESSION` + CSRF). CUSTOMER đăng ký/đăng nhập tại `/login`, `/register` bằng email + mật khẩu; quên mật khẩu tại `/forgot-password` (mã dùng một lần hiển thị trên trang vì chưa có email). ADMIN, SALES, WAREHOUSE đăng nhập tại `/internal/login`. Tài khoản demo từ `server/db/seeds/001_auth_demo_users.sql`: `customer@`, `admin@`, `sales@`, `warehouse@example.test`, mật khẩu chung `Demo@1234567890!`.
 
-Sau đăng nhập có shell/menu và route guard theo bốn role, trang `/profile` (sửa tên/điện thoại/ngày sinh, đổi mật khẩu); CUSTOMER có `/addresses` với thêm/sửa/xóa và địa chỉ mặc định. Trang đơn hàng trong Vite dev vẫn dùng order mock của Tấn Vĩ (`VITE_ORDER_API_MODE=http` để gọi API thật).
+Sau đăng nhập có shell/menu và route guard theo bốn role, trang `/profile` (sửa tên/điện thoại/ngày sinh, đổi mật khẩu); CUSTOMER có `/addresses` với thêm/sửa/xóa và địa chỉ mặc định. Trang đơn hàng mặc định gọi API thật. Fixture chỉ bật khi cấu hình rõ `VITE_ORDER_API_MODE=mock` trong Vite dev; production không dùng fixture.
 
 Kiểm thử: `cd client && npm test && npm run build`. Backend auth trên MySQL thật: xem [Task 1/9 — Auth/Profile](docs/plan/TASK-1-AUTH-PROFILE.md). Contract: `docs/api/AUTH-PROFILE.md`.
+
+## Chạy local Windows — frontend và API là hai tiến trình
+
+`npm run dev` chỉ chạy React, không khởi động PHP/MySQL. Nếu trang đơn hàng báo không kết nối được máy chủ, kiểm tra API ở `http://localhost:8080/auth/me` trước.
+
+1. Nếu chưa có database HomeCare, làm theo [hướng dẫn tạo database mới](server/db/README.md#tạo-database-homecare-mới-trên-windows). Không import schema vào database đang có dữ liệu.
+2. Tạo `.env` ở gốc repo với thông tin DB local. Script API đọc file này; Vite chỉ đọc cấu hình frontend trong `client/.env.local`. Không commit hai file.
+3. Terminal PowerShell ở gốc repo: `$env:PHP_BIN = 'đường dẫn đầy đủ tới php.exe'`, rồi `powershell -NoProfile -File .\scripts\start-api.ps1`. Script hỗ trợ PHP portable Windows, không tự tạo/reset DB hoặc seed tài khoản.
+4. Terminal khác: `cd client`, `npm run dev`, mở đúng URL Vite thông báo. Dùng `http://localhost:5173` nhất quán để cookie phiên và CSRF cùng hostname.
+
+Script mặc định cho phép origin localhost/127.0.0.1:5173 nếu chưa có `CLIENT_URL`; đặt `CLIENT_URL` rõ trong `.env` nếu dùng cổng khác. PHP built-in server chỉ để phát triển, không dùng triển khai production.
+
+`/warranty` là trang hướng dẫn bảo hành với header/footer và link đơn hàng yêu cầu đăng nhập; không có đăng ký bảo hành giả hoặc module sửa chữa/kỹ thuật viên. Khi API không kết nối được, trang đơn hàng giữ trạng thái lỗi xác thực, không lộ đơn và không thay bằng fixture. Nút Thử lại có loading, chống gửi lặp và cập nhật thông báo khi kết nối vẫn lỗi.

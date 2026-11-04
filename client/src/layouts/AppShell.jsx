@@ -9,11 +9,11 @@ export const workspaceMenus = {
   CUSTOMER: [['/customer', 'Tổng quan'], ['/customer/decision-tools', 'Không gian & thiết bị'], ['/profile', 'Hồ sơ của tôi'], ['/addresses', 'Địa chỉ nhận hàng'], ['/orders', 'Đơn hàng của tôi'], ['/checkout', 'Thanh toán']],
   ADMIN: [['/admin', 'Tổng quan'], ['/admin/fit-rules', 'Quy tắc FitCheck'], ['/admin/products', 'Catalog sản phẩm'], ['/warehouse/inventory', 'Tồn kho'], ['/warehouse/history', 'Nhật ký kho'], ['/admin/users', 'Người dùng'], ['/admin/vouchers', 'Voucher'], ['/admin/reports', 'Báo cáo'], ['/sales/orders', 'Xử lý đơn hàng'], ['/sales/returns', 'Trả hàng / hoàn tiền'], ['/profile', 'Hồ sơ của tôi']],
   SALES: [['/sales', 'Tổng quan'], ['/sales/orders', 'Xử lý đơn hàng'], ['/sales/returns', 'Trả hàng / hoàn tiền'], ['/profile', 'Hồ sơ của tôi']],
-  WAREHOUSE: [['/warehouse', 'Tổng quan'], ['/warehouse/inventory', 'Tồn kho'], ['/warehouse/history', 'Nhật ký kho'], ['/profile', 'Hồ sơ của tôi']],
+  WAREHOUSE: [['/warehouse', 'Tổng quan'], ['/warehouse/inventory', 'Tồn kho'], ['/warehouse/history', 'Nhật ký kho'], ['/warehouse/returns', 'Nhận hàng trả'], ['/profile', 'Hồ sơ của tôi']],
 };
 
 const roleIcons = { CUSTOMER: UserRound, ADMIN: LayoutDashboard, SALES: Store, WAREHOUSE: Warehouse };
-export const pathIcons = { '/customer/decision-tools': House, '/admin/fit-rules': Ruler, '/customer': LayoutDashboard, '/admin': LayoutDashboard, '/sales': LayoutDashboard, '/warehouse': LayoutDashboard, '/admin/products': Package, '/warehouse/inventory': Boxes, '/warehouse/history': History, '/admin/users': Users, '/admin/vouchers': Ticket, '/admin/reports': ChartColumn, '/profile': UserRound, '/addresses': MapPin, '/orders': ReceiptText, '/checkout': CreditCard, '/sales/orders': ClipboardList, '/sales/returns': Undo2 };
+export const pathIcons = { '/customer/decision-tools': House, '/admin/fit-rules': Ruler, '/customer': LayoutDashboard, '/admin': LayoutDashboard, '/sales': LayoutDashboard, '/warehouse': LayoutDashboard, '/admin/products': Package, '/warehouse/inventory': Boxes, '/warehouse/history': History, '/warehouse/returns': Undo2, '/admin/users': Users, '/admin/vouchers': Ticket, '/admin/reports': ChartColumn, '/profile': UserRound, '/addresses': MapPin, '/orders': ReceiptText, '/checkout': CreditCard, '/sales/orders': ClipboardList, '/sales/returns': Undo2 };
 const overviewPaths = ['/customer', '/admin', '/sales', '/warehouse'];
 
 // Font của template chỉ nạp khi vào khu nhân viên để giao diện khách không đổi.

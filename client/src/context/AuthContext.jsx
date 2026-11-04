@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getSession, logout } from '../services/auth-service.js';
 import { AuthContext } from './auth-context.js';
 
@@ -7,13 +7,26 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const refreshRequest = useRef(null);
 
   // Đọc lại phiên sau đăng nhập hoặc cập nhật hồ sơ để shell hiển thị dữ liệu mới.
   async function refreshSession() {
-    const next = await getSession();
-    setSession(next);
+    if (refreshRequest.current) return refreshRequest.current;
+    setLoading(true);
     setError('');
-    return next;
+    const request = getSession().then(next => {
+      setSession(next);
+      return next;
+    }).catch(failure => {
+      setSession(null);
+      setError(failure.message || 'Chưa thể kiểm tra phiên đăng nhập.');
+      throw failure;
+    }).finally(() => {
+      refreshRequest.current = null;
+      setLoading(false);
+    });
+    refreshRequest.current = request;
+    return request;
   }
 
   useEffect(() => {

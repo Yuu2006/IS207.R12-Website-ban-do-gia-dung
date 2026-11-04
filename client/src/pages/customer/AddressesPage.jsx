@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { MapPin, Plus } from 'lucide-react';
 import FormField from '../../components/common/FormField.jsx';
+import AutocompleteCombobox from '../../components/common/AutocompleteCombobox.jsx';
 import { useAuth } from '../../context/auth-context.js';
 import { listAddresses, saveAddress, deleteAddress } from '../../services/user-service.js';
+import { findVietnamProvince, listProvinceWards, normalizeLocation, VIETNAM_PROVINCES } from '../../services/location-service.js';
 import { addressErrors } from '../../utils/account-validation.js';
 
 // CRUD chỉ qua service; danh sách trả về đã bảo đảm chủ sở hữu và mặc định.
@@ -17,6 +19,24 @@ export default function AddressesPage() {
   const [notice, setNotice] = useState('');
   const [pendingDelete, setPendingDelete] = useState(null);
   const [attempt, setAttempt] = useState(0);
+  const [provinceWards, setProvinceWards] = useState([]);
+  const [wardsLoading, setWardsLoading] = useState(false);
+  const [wardsError, setWardsError] = useState('');
+
+  const provinceCode = findVietnamProvince(editor?.province)?.code || '';
+
+  useEffect(() => {
+    let active = true;
+    setProvinceWards([]);
+    setWardsError('');
+    if (!provinceCode) { setWardsLoading(false); return () => { active = false; }; }
+    setWardsLoading(true);
+    listProvinceWards(provinceCode)
+      .then(items => { if (active) setProvinceWards(items); })
+      .catch(() => { if (active) setWardsError('Chưa tải được danh sách phường/xã. Ông vẫn có thể nhập tên trực tiếp.'); })
+      .finally(() => { if (active) setWardsLoading(false); });
+    return () => { active = false; };
+  }, [provinceCode]);
 
   useEffect(() => {
     document.title = 'Địa chỉ nhận hàng · HomeCare';
@@ -37,6 +57,12 @@ export default function AddressesPage() {
 
   function change(field, value) { setEditor(current => ({ ...current, [field]: value })); setErrors(current => ({ ...current, [field]: '' })); setError(''); }
 
+  function selectProvince(value) {
+    setEditor(current => current.province === value ? current : { ...current, province: value, district: '', ward: '' });
+    setErrors(current => ({ ...current, province: '', district: '', ward: '' }));
+    setError('');
+  }
+
   async function perform(action, message) {
     if (busy) return;
     setBusy(true); setError(''); setNotice('');
@@ -55,6 +81,12 @@ export default function AddressesPage() {
     perform(() => saveAddress(id, values), id ? 'Đã cập nhật địa chỉ.' : 'Đã thêm địa chỉ nhận hàng.');
   }
 
+  const currentProvince = normalizeLocation(editor?.province);
+  const savedInProvince = addresses.filter(address => normalizeLocation(address.province) === currentProvince);
+  const provinceOptions = [...new Map([...VIETNAM_PROVINCES.map(item => item.name), ...addresses.map(address => address.province).filter(Boolean)].map(value => [normalizeLocation(value), value])).values()];
+  const districtOptions = [...new Map(savedInProvince.map(address => address.district).filter(Boolean).map(value => [normalizeLocation(value), value])).values()];
+  const wardOptions = [...new Map([...provinceWards, ...savedInProvince.map(address => address.ward)].filter(Boolean).map(value => [normalizeLocation(value), value])).values()];
+
   return <section><div className="hc-page-heading hc-heading-actions"><div><span className="hc-eyebrow">Tài khoản</span><h1>Địa chỉ nhận hàng</h1><p>Giữ thông tin nhận hàng đầy đủ và chọn một địa chỉ mặc định.</p></div><button className="hc-button" type="button" disabled={busy || loading} onClick={() => start()}><Plus size={18} />Thêm địa chỉ</button></div>
     {notice && <p className="hc-success" role="status">{notice}</p>}{error && <div className="hc-error" role="alert"><p>{error}</p><button type="button" className="hc-text-button" disabled={busy} onClick={() => setAttempt(current => current + 1)}>Tải lại danh sách</button></div>}
     {loading ? <p className="hc-status" role="status">Đang tải địa chỉ…</p> : <div className={`hc-address-layout${editor ? ' hc-address-layout--editing' : ''}`}><div className="hc-address-list">
@@ -63,8 +95,8 @@ export default function AddressesPage() {
     </div>{editor && <form className="hc-card hc-form hc-address-form" noValidate onSubmit={save}><div className="hc-address-heading"><h2>{editor.id ? 'Chỉnh sửa địa chỉ' : 'Địa chỉ mới'}</h2><button className="hc-text-button" type="button" disabled={busy} onClick={() => setEditor(null)}>Đóng</button></div><p className="hc-muted">Trường có dấu * là bắt buộc.</p>
       <FormField id="address-recipientName" label="Tên người nhận" value={editor.recipientName} onChange={value => change('recipientName', value)} error={errors.recipientName} required maxLength={150} autoComplete="name" disabled={busy} />
       <FormField id="address-phone" label="Số điện thoại" value={editor.phone} onChange={value => change('phone', value)} error={errors.phone} required type="tel" maxLength={20} autoComplete="tel" disabled={busy} />
-      <FormField id="address-province" label="Tỉnh / thành phố" value={editor.province} onChange={value => change('province', value)} error={errors.province} required maxLength={100} autoComplete="address-level1" disabled={busy} />
-      <div className="hc-form-row"><FormField id="address-district" label="Quận / huyện (nếu có)" value={editor.district} onChange={value => change('district', value)} error={errors.district} maxLength={100} autoComplete="address-level2" disabled={busy} /><FormField id="address-ward" label="Phường / xã (nếu có)" value={editor.ward} onChange={value => change('ward', value)} error={errors.ward} maxLength={100} autoComplete="address-level3" disabled={busy} /></div>
+      <AutocompleteCombobox id="address-province" label="Tỉnh / thành phố" value={editor.province} onChange={value => change('province', value)} onSelect={selectProvince} options={provinceOptions} error={errors.province} required maxLength={100} autoComplete="address-level1" disabled={busy} />
+      <div className="hc-form-row"><AutocompleteCombobox id="address-district" label="Quận / huyện (nếu có)" value={editor.district} onChange={value => change('district', value)} options={districtOptions} error={errors.district} hint="Gợi ý từ các địa chỉ đã lưu; có thể nhập tên khu vực cũ." maxLength={100} autoComplete="address-level2" disabled={busy} /><AutocompleteCombobox id="address-ward" label="Phường / xã (nếu có)" value={editor.ward} onChange={value => change('ward', value)} options={wardOptions} error={errors.ward} hint={wardsError || 'Chọn tỉnh/thành để tải gợi ý phường, xã.'} loading={wardsLoading} maxLength={100} autoComplete="address-level3" disabled={busy} /></div>
       <FormField id="address-addressLine" label="Số nhà, tên đường" value={editor.addressLine} onChange={value => change('addressLine', value)} error={errors.addressLine} required maxLength={255} autoComplete="street-address" disabled={busy} />
       <label className="hc-checkbox"><input type="checkbox" checked={editor.isDefault} disabled={busy || !addresses.length || Boolean(addresses.find(item => item.id === editor.id)?.isDefault)} onChange={event => change('isDefault', event.target.checked)} />Đặt làm địa chỉ mặc định</label>{errors.isDefault && <p className="hc-field-error">{errors.isDefault}</p>}<button className="hc-button" type="submit" disabled={busy}>{busy ? 'Đang lưu…' : 'Lưu địa chỉ'}</button>
     </form>}</div>}

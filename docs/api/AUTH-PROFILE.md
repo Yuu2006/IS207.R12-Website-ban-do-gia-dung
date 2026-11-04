@@ -4,6 +4,8 @@ Phiên bản contract: 3, ngày 16/10/2026 (thay bản mock 06/10; v3 thêm đ�
 
 Source: `server/index.php` → `routes/{auth,user}-routes.php` → `controllers/{auth,user}-controller.php` → `services/{auth,user}-service.php` → `models/user-model.php`. Guard: `middleware/role-middleware.php` (`requireRole`, `requireSessionRole`, `requireAdmin`), validation: `middleware/validation-middleware.php` (khối global).
 
+Cập nhật 26/10/2026: GET `/auth/me` khi phiên máy chủ không có principal trả 200 `{success:true,message,data:{user:null,expiresAt:null,csrfToken}}` và cookie CSRF mà không cần mở PDO. Đây chỉ là xác nhận chưa đăng nhập, không phải health check DB hoặc tạo tài khoản giả. Phiên có principal vẫn phải được đối chiếu DB như trước; không chuyển thành phiên anonymous giả khi DB lỗi. Lỗi kết nối/thiếu schema trả 503 với thông báo chung, không lộ SQL hoặc credential. Client refresh có loading/chống gửi lặp, lỗi mạng không được coi là đăng nhập thành công.
+
 ## Response, session, CSRF
 
 Thành công: `{ "success": true, "message": "Thành công.", "data": ... }`. Lỗi: `{ "success": false, "message": "...", "errors": { "field": "..." } }` với HTTP status đúng. Không trả SQL, exception, password hoặc hash.

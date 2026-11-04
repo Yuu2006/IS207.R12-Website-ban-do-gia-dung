@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "HomeCare — Task 3 checkout & orders",
-    "version": "1.3.0",
-    "description": "Review 08/10/2026: MySQL đọc đơn và transaction state/payment/audit; frontend tạo yêu cầu trả hàng. Checkout/hủy/mua lại cần adapter auth/giỏ/địa chỉ/voucher/SKU/kho đã review; completed cần bridge thiết bị/bảo trì. Thiếu adapter thì fail closed 503. ID chuỗi BIGINT UNSIGNED dương, tối đa 18446744073709551615; số version/tiền là integer an toàn. Xem docs/plan/TASK-3-ORDER-UI.md."
+    "version": "1.7.0",
+    "description": "Cập nhật 04/11/2026: checkout COD/VNPay Sandbox chạy qua MySQL transaction; server tính lại SKU, voucher, phí giao hàng và tổng tiền. Task 30 có quy trình trả hàng SALES phân loại → ADMIN duyệt → WAREHOUSE kiểm nhận và ghi hoàn tiền toàn đơn mô phỏng; không hoàn tiền ngân hàng hoặc tự nhập kho. CSV ghi SALE tại lần đầu đơn COMPLETED đã PAID, REFUND âm theo ngày ghi sổ. E2E storefront vẫn chờ catalog variant ID và API ghi giỏ. Xem docs/plan/TASK-3-ORDER-UI.md."
   },
   "servers": [
     {
@@ -1097,7 +1097,7 @@
     "/orders/{orderId}/returns": {
       "post": {
         "operationId": "createReturnRequest",
-        "summary": "CUSTOMER owner only, DELIVERED/COMPLETED and PAID; one request/order. No automatic approval, refund or restock.",
+        "summary": "CUSTOMER owner only, DELIVERED/COMPLETED and PAID; one request/order. Opens staff review; no immediate refund or restock.",
         "x-roles": [
           "CUSTOMER"
         ],
@@ -1152,6 +1152,7 @@
               },
               "example": {
                 "expectedVersion": 5,
+                "issueCategory": "TRANSIT_DAMAGE",
                 "reason": "Product damaged on arrival."
               }
             }
@@ -1191,8 +1192,11 @@
                     "id": "1",
                     "orderId": "101",
                     "status": "requested",
+                    "issueCategory": "TRANSIT_DAMAGE",
+                    "severity": null,
                     "reason": "Product damaged on arrival.",
-                    "createdAt": "2026-10-08T03:00:00+00:00"
+                    "createdAt": "2026-10-08T03:00:00+00:00",
+                    "updatedAt": "2026-10-08T03:00:00+00:00"
                   }
                 }
               }
@@ -2781,7 +2785,7 @@
     "/cart": {
       "get": {
         "operationId": "getCart",
-        "summary": "Đầu vào phụ thuộc Tuấn Vũ: giỏ của session, SKU gộp và cartVersion.",
+        "summary": "Đọc giỏ của CUSTOMER đã đăng nhập; giá là giá SKU hiện hành, cartVersion dùng để phát hiện giỏ đổi.",
         "x-roles": [
           "CUSTOMER"
         ],
@@ -2935,10 +2939,10 @@
         }
       }
     },
-    "/addresses": {
+    "/users/me/addresses": {
       "get": {
         "operationId": "getAddresses",
-        "summary": "Đầu vào phụ thuộc Tuấn Vũ: địa chỉ chỉ thuộc session, chuẩn hóa addressLine.",
+        "summary": "Tái sử dụng API hồ sơ: chỉ trả các địa chỉ của CUSTOMER trong session; data là mảng địa chỉ.",
         "x-roles": [
           "CUSTOMER"
         ],
@@ -2978,17 +2982,18 @@
                 "example": {
                   "success": true,
                   "message": "Thành công.",
-                  "data": {
-                    "items": [
-                      {
-                        "id": "12",
-                        "recipientName": "Khách hàng",
-                        "phone": "0900000000",
-                        "addressLine": "12 Nguyễn Văn Bảo, TP. Hồ Chí Minh",
-                        "isDefault": true
-                      }
-                    ]
-                  }
+                  "data": [
+                    {
+                      "id": "12",
+                      "recipientName": "Khách hàng",
+                      "phone": "0900000000",
+                      "addressLine": "12 Nguyễn Văn Bảo, TP. Hồ Chí Minh",
+                      "province": "TP. Hồ Chí Minh",
+                      "district": "Gò Vấp",
+                      "ward": "Phường 4",
+                      "isDefault": true
+                    }
+                  ]
                 }
               }
             }
@@ -3085,6 +3090,1493 @@
           }
         }
       }
+    },
+    "/payments/vnpay/attempts/{paymentCode}": {
+      "get": {
+        "operationId": "getVnpayPaymentAttempt",
+        "summary": "Đọc trạng thái thanh toán VNPay đã được máy chủ xác minh; chỉ chủ đơn hàng.",
+        "x-roles": [
+          "CUSTOMER"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "paymentCode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "orderId",
+                        "orderCode",
+                        "paymentStatus",
+                        "orderStatus",
+                        "expiresAt",
+                        "refundRequired"
+                      ],
+                      "properties": {
+                        "orderId": {
+                          "type": "string",
+                          "pattern": "^[1-9][0-9]{0,19}$"
+                        },
+                        "orderCode": {
+                          "type": "string"
+                        },
+                        "paymentStatus": {
+                          "type": "string",
+                          "enum": [
+                            "pending",
+                            "paid",
+                            "failed"
+                          ]
+                        },
+                        "orderStatus": {
+                          "type": "string",
+                          "enum": [
+                            "pending",
+                            "confirmed",
+                            "preparing",
+                            "shipping",
+                            "delivered",
+                            "completed",
+                            "cancelled"
+                          ]
+                        },
+                        "expiresAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "refundRequired": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "message": "Thành công.",
+                  "data": {
+                    "orderId": "101",
+                    "orderCode": "HC202611040001",
+                    "paymentStatus": "paid",
+                    "orderStatus": "pending",
+                    "expiresAt": "2026-11-04T09:15:00+07:00",
+                    "refundRequired": false
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Vui lòng đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Vui lòng đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không có quyền khách hàng.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không có quyền khách hàng.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy lần thanh toán thuộc tài khoản.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Không tìm thấy lần thanh toán thuộc tài khoản.",
+                  "errors": {
+                    "code": "PAYMENT_ATTEMPT_NOT_FOUND",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dịch vụ dữ liệu chưa sẵn sàng.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Dịch vụ dữ liệu chưa sẵn sàng.",
+                  "errors": {
+                    "code": "SERVICE_UNAVAILABLE",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/payments/vnpay/ipn": {
+      "get": {
+        "operationId": "vnpayIpnGet",
+        "summary": "Verify signed VNPay IPN query and settle once.",
+        "x-roles": [
+          "Signed VNPay server-to-server callback"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "vnp_TmnCode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "VNPay-signed field; server verifies the HMAC before mutation."
+          },
+          {
+            "name": "vnp_TxnRef",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "VNPay-signed field; server verifies the HMAC before mutation."
+          },
+          {
+            "name": "vnp_Amount",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "VNPay-signed field; server verifies the HMAC before mutation."
+          },
+          {
+            "name": "vnp_ResponseCode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "VNPay-signed field; server verifies the HMAC before mutation."
+          },
+          {
+            "name": "vnp_TransactionStatus",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "VNPay-signed field; server verifies the HMAC before mutation."
+          },
+          {
+            "name": "vnp_TransactionNo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "VNPay-signed field; server verifies the HMAC before mutation."
+          },
+          {
+            "name": "vnp_SecureHash",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "VNPay-signed field; server verifies the HMAC before mutation."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "VNPay response code; `00` confirmed, `02` already handled, `04` invalid amount, `97` invalid signature, `99` retryable server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "RspCode",
+                    "Message"
+                  ],
+                  "properties": {
+                    "RspCode": {
+                      "type": "string",
+                      "enum": [
+                        "00",
+                        "01",
+                        "02",
+                        "04",
+                        "97",
+                        "99"
+                      ]
+                    },
+                    "Message": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "RspCode": "00",
+                  "Message": "Confirm Success"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Only GET or form-encoded POST is accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "RspCode",
+                    "Message"
+                  ],
+                  "properties": {
+                    "RspCode": {
+                      "type": "string",
+                      "enum": [
+                        "00",
+                        "01",
+                        "02",
+                        "04",
+                        "97",
+                        "99"
+                      ]
+                    },
+                    "Message": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "RspCode": "99",
+                  "Message": "System error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "vnpayIpnPost",
+        "summary": "Verify signed VNPay form callback and settle once.",
+        "x-roles": [
+          "Signed VNPay server-to-server callback"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "vnp_TmnCode",
+                  "vnp_TxnRef",
+                  "vnp_Amount",
+                  "vnp_ResponseCode",
+                  "vnp_TransactionStatus",
+                  "vnp_SecureHash"
+                ],
+                "properties": {
+                  "vnp_TmnCode": {
+                    "type": "string"
+                  },
+                  "vnp_TxnRef": {
+                    "type": "string"
+                  },
+                  "vnp_Amount": {
+                    "type": "string"
+                  },
+                  "vnp_ResponseCode": {
+                    "type": "string"
+                  },
+                  "vnp_TransactionStatus": {
+                    "type": "string"
+                  },
+                  "vnp_TransactionNo": {
+                    "type": "string"
+                  },
+                  "vnp_SecureHash": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "VNPay response code; `00` confirmed, `02` already handled, `04` invalid amount, `97` invalid signature, `99` retryable server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "RspCode",
+                    "Message"
+                  ],
+                  "properties": {
+                    "RspCode": {
+                      "type": "string",
+                      "enum": [
+                        "00",
+                        "01",
+                        "02",
+                        "04",
+                        "97",
+                        "99"
+                      ]
+                    },
+                    "Message": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "RspCode": "00",
+                  "Message": "Confirm Success"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Only GET or form-encoded POST is accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "RspCode",
+                    "Message"
+                  ],
+                  "properties": {
+                    "RspCode": {
+                      "type": "string",
+                      "enum": [
+                        "00",
+                        "01",
+                        "02",
+                        "04",
+                        "97",
+                        "99"
+                      ]
+                    },
+                    "Message": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "RspCode": "99",
+                  "Message": "System error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/returns": {
+      "get": {
+        "operationId": "listReturnRequests",
+        "summary": "Danh sách trả hàng cho SALES, ADMIN và WAREHOUSE; lọc/phân trang phía máy chủ.",
+        "x-roles": [
+          "SALES",
+          "ADMIN",
+          "WAREHOUSE"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "requested",
+                "pending_manager",
+                "approved",
+                "rejected",
+                "refunded"
+              ]
+            }
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "minor",
+                "major",
+                "critical"
+              ]
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách yêu cầu và phân trang.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "message": "Thành công.",
+                  "data": {
+                    "items": [
+                      {
+                        "id": "51",
+                        "orderId": "101",
+                        "orderCode": "HC2026110001",
+                        "status": "pending_manager",
+                        "issueCategory": "DEFECTIVE",
+                        "severity": "major",
+                        "reason": "Sản phẩm không hoạt động.",
+                        "createdAt": "2026-11-04T03:00:00+00:00"
+                      }
+                    ],
+                    "pagination": {
+                      "page": 1,
+                      "pageSize": 10,
+                      "totalItems": 1,
+                      "totalPages": 1
+                    }
+                  }
+                },
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Cần đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Cần đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Vai trò không được phép.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Vai trò không được phép.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/returns/{returnId}": {
+      "get": {
+        "operationId": "getReturnRequest",
+        "summary": "Chi tiết đơn, sản phẩm, checklist và lịch sử xử lý.",
+        "x-roles": [
+          "SALES",
+          "ADMIN",
+          "WAREHOUSE"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "returnId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chi tiết yêu cầu trả hàng.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "message": "Thành công.",
+                  "data": {
+                    "id": "51",
+                    "orderId": "101",
+                    "status": "requested",
+                    "issueCategory": "DEFECTIVE",
+                    "severity": null,
+                    "reason": "Sản phẩm không hoạt động.",
+                    "triageNote": null,
+                    "decisionReason": null,
+                    "createdAt": "2026-11-04T03:00:00+00:00",
+                    "updatedAt": "2026-11-04T03:00:00+00:00",
+                    "triagedAt": null,
+                    "managerDecidedAt": null,
+                    "receivedAt": null,
+                    "inspectionChecklist": null,
+                    "history": [],
+                    "refundAmount": null,
+                    "refundStatus": null,
+                    "refundCreatedAt": null,
+                    "customer": { "name": "Nguyen Minh", "phone": "0900000000" },
+                    "order": {
+                      "code": "HC2026110001",
+                      "status": "completed",
+                      "paymentStatus": "paid",
+                      "paymentMethod": "COD",
+                      "totalAmount": 600000,
+                      "placedAt": "2026-11-03T03:00:00+00:00",
+                      "shippingAddress": "12 Nguyen Hue, District 1, Ho Chi Minh City",
+                      "items": [{ "orderItemId": "701", "skuId": "12", "skuCode": "HC-AP-001", "productName": "HomeCare Air Fryer", "variantName": "6 liter", "unitPrice": 600000, "quantity": 1, "lineTotal": 600000, "imageUrl": "" }]
+                    }
+                  }
+                },
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Cần đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Cần đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Vai trò không được phép.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Vai trò không được phép.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sales/returns/{returnId}/triage": {
+      "post": {
+        "operationId": "triageReturnRequest",
+        "summary": "SALES phân loại mức độ; MINOR bị từ chối, MAJOR/CRITICAL mới chuyển ADMIN.",
+        "x-roles": [
+          "SALES"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "returnId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "severity": "MAJOR",
+                "note": "Hỏng chức năng, đã đối chiếu ảnh và SKU."
+              },
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "severity",
+                  "note"
+                ],
+                "properties": {
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "MINOR",
+                      "MAJOR",
+                      "CRITICAL"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Trả detail sau khi phân loại; trạng thái pending_manager hoặc rejected.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "message": "Thành công.",
+                  "data": {
+                    "id": "51",
+                    "orderId": "101",
+                    "status": "pending_manager",
+                    "issueCategory": "DEFECTIVE",
+                    "severity": "major",
+                    "reason": "Product does not work.",
+                    "triageNote": "Function failure verified against the submitted photos and SKU.",
+                    "decisionReason": null,
+                    "createdAt": "2026-11-04T03:00:00+00:00",
+                    "updatedAt": "2026-11-04T03:05:00+00:00",
+                    "triagedAt": "2026-11-04T03:05:00+00:00",
+                    "managerDecidedAt": null,
+                    "receivedAt": null,
+                    "inspectionChecklist": null,
+                    "refundAmount": null,
+                    "refundStatus": null,
+                    "refundCreatedAt": null,
+                    "history": [{ "fromStatus": "requested", "toStatus": "pending_manager", "action": "sales_triage", "actorRole": "SALES", "actorName": "Sales staff", "note": "Function failure verified.", "details": { "severity": "MAJOR" }, "changedAt": "2026-11-04T03:05:00+00:00" }],
+                    "customer": { "name": "Nguyen Minh", "phone": "0900000000" },
+                    "order": { "code": "HC2026110001", "status": "completed", "paymentStatus": "paid", "paymentMethod": "COD", "totalAmount": 600000, "placedAt": "2026-11-03T03:00:00+00:00", "shippingAddress": "12 Nguyen Hue, District 1, Ho Chi Minh City", "items": [{ "orderItemId": "701", "skuId": "12", "skuCode": "HC-AP-001", "productName": "HomeCare Air Fryer", "variantName": "6 liter", "unitPrice": 600000, "quantity": 1, "lineTotal": 600000, "imageUrl": "" }]}
+                  }
+                },
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Cần đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Cần đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Chỉ SALES được phân loại.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Chỉ SALES được phân loại.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Trạng thái yêu cầu không còn REQUESTED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Trạng thái yêu cầu không còn REQUESTED.",
+                  "errors": {
+                    "code": "RETURN_STATE_CONFLICT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Severity/note không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Severity/note không hợp lệ.",
+                  "errors": {
+                    "code": "INVALID_INPUT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/returns/{returnId}/decision": {
+      "post": {
+        "operationId": "decideReturnRequest",
+        "summary": "ADMIN duyệt hoặc từ chối yêu cầu MAJOR/CRITICAL; chưa hoàn tiền ở bước này.",
+        "x-roles": [
+          "ADMIN"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "returnId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "decision": "APPROVE",
+                "reason": "Đã xác nhận lỗi chức năng mức nặng."
+              },
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "decision",
+                  "reason"
+                ],
+                "properties": {
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "APPROVE",
+                      "REJECT"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Trả trạng thái approved hoặc rejected.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "message": "Thành công.",
+                  "data": {
+                    "id": "51",
+                    "orderId": "101",
+                    "status": "approved",
+                    "issueCategory": "DEFECTIVE",
+                    "severity": "major",
+                    "reason": "Product does not work.",
+                    "triageNote": "Function failure verified against the submitted photos and SKU.",
+                    "decisionReason": "Severe functional failure confirmed.",
+                    "createdAt": "2026-11-04T03:00:00+00:00",
+                    "updatedAt": "2026-11-04T03:10:00+00:00",
+                    "triagedAt": "2026-11-04T03:05:00+00:00",
+                    "managerDecidedAt": "2026-11-04T03:10:00+00:00",
+                    "receivedAt": null,
+                    "inspectionChecklist": null,
+                    "refundAmount": null,
+                    "refundStatus": null,
+                    "refundCreatedAt": null,
+                    "history": [{ "fromStatus": "requested", "toStatus": "pending_manager", "action": "sales_triage", "actorRole": "SALES", "actorName": "Sales staff", "note": "Function failure verified.", "details": { "severity": "MAJOR" }, "changedAt": "2026-11-04T03:05:00+00:00" }, { "fromStatus": "pending_manager", "toStatus": "approved", "action": "admin_decision", "actorRole": "ADMIN", "actorName": "Administrator", "note": "Severe functional failure confirmed.", "details": { "decision": "APPROVE" }, "changedAt": "2026-11-04T03:10:00+00:00" }],
+                    "customer": { "name": "Nguyen Minh", "phone": "0900000000" },
+                    "order": { "code": "HC2026110001", "status": "completed", "paymentStatus": "paid", "paymentMethod": "COD", "totalAmount": 600000, "placedAt": "2026-11-03T03:00:00+00:00", "shippingAddress": "12 Nguyen Hue, District 1, Ho Chi Minh City", "items": [{ "orderItemId": "701", "skuId": "12", "skuCode": "HC-AP-001", "productName": "HomeCare Air Fryer", "variantName": "6 liter", "unitPrice": 600000, "quantity": 1, "lineTotal": 600000, "imageUrl": "" }]}
+                  }
+                },
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Cần đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Cần đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Chỉ ADMIN được duyệt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Chỉ ADMIN được duyệt.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Chỉ pending_manager được quyết định.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Chỉ pending_manager được quyết định.",
+                  "errors": {
+                    "code": "RETURN_STATE_CONFLICT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Decision/reason không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Decision/reason không hợp lệ.",
+                  "errors": {
+                    "code": "INVALID_INPUT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/warehouse/returns/{returnId}/receive": {
+      "post": {
+        "operationId": "receiveReturnRequest",
+        "summary": "WAREHOUSE xác nhận checklist; sau đó ghi nhận hoàn tiền toàn bộ đơn mô phỏng, không tự nhập kho.",
+        "x-roles": [
+          "WAREHOUSE"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "returnId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "checklist": {
+                  "packageReceived": true,
+                  "orderMatched": true,
+                  "allItemsPresent": true,
+                  "conditionAssessed": true,
+                  "notes": "Đã kiểm tra đủ sản phẩm, phụ kiện và tình trạng."
+                }
+              },
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "checklist"
+                ],
+                "properties": {
+                  "checklist": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "packageReceived",
+                      "orderMatched",
+                      "allItemsPresent",
+                      "conditionAssessed"
+                    ],
+                    "properties": {
+                      "packageReceived": {
+                        "type": "boolean"
+                      },
+                      "orderMatched": {
+                        "type": "boolean"
+                      },
+                      "allItemsPresent": {
+                        "type": "boolean"
+                      },
+                      "conditionAssessed": {
+                        "type": "boolean"
+                      },
+                      "notes": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Trạng thái refunded và refundStatus simulated.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "message": "Thành công.",
+                  "data": {
+                    "id": "51",
+                    "orderId": "101",
+                    "status": "refunded",
+                    "issueCategory": "DEFECTIVE",
+                    "severity": "major",
+                    "reason": "Product does not work.",
+                    "triageNote": "Function failure verified against the submitted photos and SKU.",
+                    "decisionReason": "Severe functional failure confirmed.",
+                    "createdAt": "2026-11-04T03:00:00+00:00",
+                    "updatedAt": "2026-11-04T03:15:00+00:00",
+                    "triagedAt": "2026-11-04T03:05:00+00:00",
+                    "managerDecidedAt": "2026-11-04T03:10:00+00:00",
+                    "receivedAt": "2026-11-04T03:15:00+00:00",
+                    "inspectionChecklist": { "packageReceived": true, "orderMatched": true, "allItemsPresent": true, "conditionAssessed": true, "notes": "All items and condition checked." },
+                    "history": [{ "fromStatus": "requested", "toStatus": "pending_manager", "action": "sales_triage", "actorRole": "SALES", "actorName": "Sales staff", "note": "Function failure verified.", "details": { "severity": "MAJOR" }, "changedAt": "2026-11-04T03:05:00+00:00" }, { "fromStatus": "pending_manager", "toStatus": "approved", "action": "admin_decision", "actorRole": "ADMIN", "actorName": "Administrator", "note": "Severe functional failure confirmed.", "details": { "decision": "APPROVE" }, "changedAt": "2026-11-04T03:10:00+00:00" }, { "fromStatus": "approved", "toStatus": "refunded", "action": "warehouse_received_and_refunded", "actorRole": "WAREHOUSE", "actorName": "Warehouse staff", "note": "All items and condition checked.", "details": { "refundAmount": 600000, "refundStatus": "SIMULATED" }, "changedAt": "2026-11-04T03:15:00+00:00" }],
+                    "refundStatus": "simulated",
+                    "refundAmount": 600000,
+                    "refundCreatedAt": "2026-11-04T03:15:00+00:00",
+                    "customer": { "name": "Nguyen Minh", "phone": "0900000000" },
+                    "order": { "code": "HC2026110001", "status": "completed", "paymentStatus": "refunded", "paymentMethod": "COD", "totalAmount": 600000, "placedAt": "2026-11-03T03:00:00+00:00", "shippingAddress": "12 Nguyen Hue, District 1, Ho Chi Minh City", "items": [{ "orderItemId": "701", "skuId": "12", "skuCode": "HC-AP-001", "productName": "HomeCare Air Fryer", "variantName": "6 liter", "unitPrice": 600000, "quantity": 1, "lineTotal": 600000, "imageUrl": "" }]}
+                  }
+                },
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Cần đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Cần đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Chỉ WAREHOUSE được xác nhận nhận hàng.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Chỉ WAREHOUSE được xác nhận nhận hàng.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Yêu cầu chưa approved, checklist chưa hoàn tất hoặc payment không còn PAID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Yêu cầu chưa approved, checklist chưa hoàn tất hoặc payment không còn PAID.",
+                  "errors": {
+                    "code": "RETURN_STATE_CONFLICT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Checklist không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Checklist không hợp lệ.",
+                  "errors": {
+                    "code": "INVALID_INPUT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/reports/revenue.csv": {
+      "get": {
+        "operationId": "downloadRevenueCsv",
+        "summary": "CSV doanh thu; đơn COMPLETED đã PAID/REFUNDED là SALE dương, hoàn mô phỏng là REFUND âm; chỉ ADMIN.",
+        "x-roles": [
+          "ADMIN"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "example": "2026-11-01"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "example": "2026-11-04"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV có dòng SALE, REFUND âm và NET_TOTAL; ngày theo Asia/Ho_Chi_Minh.",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "Loại giao dịch,Thời điểm,Mã đơn,Số tiền VND\nSALE,2026-11-04 10:00:00,HC2026110001,600000\nREFUND,2026-11-04 10:15:00,HC2026110001,-600000\nNET_TOTAL,,,,0"
+              }
+            }
+          },
+          "401": {
+            "description": "Cần đăng nhập.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Cần đăng nhập.",
+                  "errors": {
+                    "code": "AUTH_REQUIRED",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Chỉ ADMIN được tải báo cáo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Chỉ ADMIN được tải báo cáo.",
+                  "errors": {
+                    "code": "FORBIDDEN",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Khoảng ngày không hợp lệ hoặc dài hơn 366 ngày.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "success": false,
+                  "message": "Khoảng ngày không hợp lệ hoặc dài hơn 366 ngày.",
+                  "errors": {
+                    "code": "INVALID_INPUT",
+                    "fields": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3102,12 +4594,17 @@
         "additionalProperties": false,
         "required": [
           "expectedVersion",
+          "issueCategory",
           "reason"
         ],
         "properties": {
           "expectedVersion": {
             "type": "integer",
             "minimum": 1
+          },
+          "issueCategory": {
+            "type": "string",
+            "enum": ["SAFETY_HAZARD", "DEFECTIVE", "TRANSIT_DAMAGE", "WRONG_ITEM", "MISSING_COMPONENT", "SPEC_MISMATCH", "COSMETIC_DAMAGE", "PACKAGING_ONLY", "BUYER_REMORSE", "CUSTOMER_MISUSE", "OTHER"]
           },
           "reason": {
             "type": "string",
@@ -3116,14 +4613,24 @@
           }
         }
       },
+      "ReturnIssueCategory": {
+        "type": "string",
+        "enum": ["SAFETY_HAZARD", "DEFECTIVE", "TRANSIT_DAMAGE", "WRONG_ITEM", "MISSING_COMPONENT", "SPEC_MISMATCH", "COSMETIC_DAMAGE", "PACKAGING_ONLY", "BUYER_REMORSE", "CUSTOMER_MISUSE", "OTHER"]
+      },
+      "ReturnSeverity": {
+        "type": "string",
+        "enum": ["minor", "major", "critical"]
+      },
       "ReturnRequest": {
         "type": "object",
         "required": [
           "id",
           "orderId",
           "status",
+          "issueCategory",
           "reason",
-          "createdAt"
+          "createdAt",
+          "updatedAt"
         ],
         "properties": {
           "id": {
@@ -3144,13 +4651,15 @@
             "type": "string",
             "enum": [
               "requested",
+              "pending_manager",
               "approved",
               "rejected",
-              "received",
-              "resolved"
+              "refunded"
             ],
-            "description": "Only requested implemented; adjudication is a separate task."
+            "description": "Request → SALES triage → ADMIN decision → WAREHOUSE receipt and simulated refund."
           },
+          "issueCategory": { "$ref": "#/components/schemas/ReturnIssueCategory" },
+          "severity": { "allOf": [{ "$ref": "#/components/schemas/ReturnSeverity" }], "nullable": true },
           "reason": {
             "type": "string",
             "minLength": 1,
@@ -3159,6 +4668,14 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decisionReason": {
+            "type": "string",
+            "nullable": true
           }
         }
       },
@@ -3276,7 +4793,7 @@
           "shipping": {
             "type": "integer",
             "minimum": 0,
-            "description": "VND nguyên, không nhân 100 trong REST API."
+            "description": "VND nguyên. 0₫ nếu subtotal từ 500.000₫; 30.000₫ nếu subtotal dưới 500.000₫. Server tự tính."
           },
           "total": {
             "type": "integer",
@@ -3596,40 +5113,42 @@
         }
       },
       "AddressList": {
-        "type": "object",
-        "required": [
-          "items"
-        ],
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "allOf": [
-                {
-                  "$ref": "#/components/schemas/Address"
+        "type": "array",
+        "items": {
+          "allOf": [
+            {
+              "$ref": "#/components/schemas/Address"
+            },
+            {
+              "type": "object",
+              "required": [
+                "id",
+                "isDefault",
+                "province"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "ID địa chỉ MySQL, serialize thành string.",
+                  "pattern": "^[1-9][0-9]{0,19}$",
+                  "maxLength": 20
                 },
-                {
-                  "type": "object",
-                  "required": [
-                    "id",
-                    "isDefault"
-                  ],
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "minLength": 1,
-                      "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
-                      "pattern": "^[1-9][0-9]{0,19}$",
-                      "maxLength": 20
-                    },
-                    "isDefault": {
-                      "type": "boolean"
-                    }
-                  }
+                "isDefault": {
+                  "type": "boolean"
+                },
+                "province": {
+                  "type": "string"
+                },
+                "district": {
+                  "type": "string"
+                },
+                "ward": {
+                  "type": "string"
                 }
-              ]
+              }
             }
-          }
+          ]
         }
       },
       "Quote": {
@@ -3841,10 +5360,17 @@
     }
   },
   "x-error-codes": {
+    "400": [
+      "MALFORMED_JSON"
+    ],
     "403": [
       "FORBIDDEN",
       "CSRF_INVALID",
       "ORIGIN_NOT_ALLOWED"
+    ],
+    "404": [
+      "PAYMENT_ATTEMPT_NOT_FOUND",
+      "RETURN_NOT_FOUND"
     ],
     "409": [
       "ORDER_VERSION_CONFLICT",
@@ -3853,6 +5379,11 @@
       "PAYMENT_NOT_PAID",
       "PAYMENT_NOT_AVAILABLE",
       "OUT_OF_STOCK",
+      "CART_NOT_AVAILABLE",
+      "CART_QUANTITY_LIMIT",
+      "CART_ITEM_UNAVAILABLE",
+      "SKU_UNAVAILABLE",
+      "ORDER_ITEMS_UNAVAILABLE",
       "CHECKOUT_CHANGED",
       "VOUCHER_EXHAUSTED",
       "REORDER_UNAVAILABLE",
@@ -3861,7 +5392,12 @@
       "PAYMENT_CONFLICT",
       "INVENTORY_UNTRACKED",
       "RETURN_UNAVAILABLE",
-      "RETURN_REQUEST_EXISTS"
+      "RETURN_REQUEST_EXISTS",
+      "RETURN_STATE_CONFLICT",
+      "RETURN_NOT_PENDING_MANAGER",
+      "RETURN_NOT_APPROVED",
+      "RETURN_PAYMENT_CONFLICT",
+      "RETURN_INSPECTION_INCOMPLETE"
     ],
     "422": [
       "INVALID_INPUT",
@@ -3869,23 +5405,27 @@
       "VOUCHER_INVALID",
       "REASON_REQUIRED",
       "COD_COLLECTION_REQUIRED",
-      "IDEMPOTENCY_KEY_REQUIRED"
+      "IDEMPOTENCY_KEY_REQUIRED",
+      "VNPAY_AMOUNT_UNSUPPORTED",
+      "VOUCHER_MINIMUM_NOT_MET",
+      "VOUCHER_CUSTOMER_LIMIT"
     ],
     "503": [
       "SERVICE_UNAVAILABLE",
       "DEPENDENCY_NOT_READY",
       "ORDER_DATA_INCOMPATIBLE",
       "ORDER_SCHEMA_NOT_READY",
-      "REQUEST_RETRYABLE"
+      "REQUEST_RETRYABLE",
+      "VNPAY_NOT_CONFIGURED"
     ]
   },
-  "x-vnpay-phase": "Tích hợp IPN, return/retry và worker hết hạn là task Tuần 3 #21 của Vĩ; mock tuần 1 chỉ COD, VNPay trả 409 PAYMENT_NOT_AVAILABLE, không giả chữ ký hay paid.",
+  "x-vnpay-phase": "Task 29 core implemented: backend-generated Sandbox URL, signed IPN, owner-only return status and 15-minute expiry worker. Before enabling: review/apply migration 014, configure Sandbox credentials and a publicly reachable IPN URL, schedule the expiry command, then run Sandbox/browser E2E. Late success after expiry is flagged for manual refund reconciliation; no bank refund is automated.",
   "x-runtime-stage": {
-    "phpRoutes": "10 operation checkout/orders/sales; validation, role, CSRF và ownership MySQL.",
-    "storage": "ORDER_STORAGE_MODE=mysql bật đọc/state/return sau baseline + migration 008; mặc định disabled. Checkout/hủy/mua lại thiếu owner adapter trả 503; completed thiếu device/care bridge trả 503.",
+    "phpRoutes": "Customer order list/detail/timeline, checkout quote/create for COD and VNPay, signed public IPN, owner-scoped payment return lookup, scheduled VNPay expiry, SALES state transitions, customer return request, SALES triage, ADMIN decision, WAREHOUSE receipt/simulated refund, and ADMIN revenue CSV; role/ownership/CSRF are enforced server-side.",
+    "storage": "ORDER_STORAGE_MODE=mysql requires baseline + migrations 008_order_runtime.sql, 013_checkout_runtime.sql, 014_vnpay_runtime.sql and 015_return_refund_reporting.sql. Order/cart/stock/voucher/payment/return/refund writes share PDO transactions; VNPay expires after 15 minutes and expiry releases reservation once.",
     "authentication": "Tuấn Vũ cấp server session user{id,role,fullName}, expiresAt integer Unix và csrfToken. DB kiểm tra ACTIVE/role hiện tại; không nhận principal từ client.",
-    "dependencies": "Auth/địa chỉ/giỏ/cartVersion/voucher: Tuấn Vũ; SKU/tồn/movement: Lan Chi; completion device/care bridge: Đinh Tùng. Adapter SQL kiểm thử chỉ ở DB riêng, không import HTTP.",
-    "idempotency": "Khóa actor+operation+key; hash payload và JSON result trong cùng transaction. Cùng payload replay, khác payload 409; rollback không lưu success. Retry deadlock/lock timeout tối đa 3 lần cùng key."
+    "dependencies": "Checkout/reorder uses owned addresses, carts/cart_items, product_variants, products, vouchers and voucher_redemptions. Full storefront E2E still requires product pages to bind real product_variants.id and cart add/update/remove APIs to mutate carts.cart_version; current public catalog uses static product data. Lan Chi/Tuấn Vũ mapping must be reviewed before claiming storefront purchase flow complete. Device/care completion bridge remains owned by Đinh Tùng.",
+    "idempotency": "Khóa actor+operation+key; hash payload và JSON result trong cùng transaction. Cùng payload replay, khác payload 409; rollback không lưu success. Return triage/decision/receipt và refund ledger được ghi transactionally, replay không tạo refund thứ hai. Retry deadlock/lock timeout tối đa 3 lần cùng key."
   },
   "x-max-body-bytes": 16384
 }

@@ -1,6 +1,6 @@
 # DASH-01 / RPT-03 — dashboard contract để TV2/TV3 duyệt
 
-Trạng thái 19/10/2026: **đề xuất, chưa được TV2/TV3 xác nhận và chưa có endpoint**. React preview tại `client/src/pages/admin/DashboardPreviewPage.jsx` hiển thị dấu `—`, không tạo số liệu giả. Owner backend báo cáo cần đối chiếu định nghĩa này với trạng thái đơn, thanh toán, trả/hoàn và kho trước khi triển khai.
+Trạng thái 04/11/2026: **dashboard tổng hợp vẫn là đề xuất, chưa được TV2/TV3 xác nhận và chưa có endpoint**. React preview tại `client/src/pages/admin/DashboardPreviewPage.jsx` hiển thị dấu `—`, không tạo số liệu giả. Task 30 đã bổ sung CSV giao dịch riêng theo quy tắc bên dưới; không coi CSV là endpoint dashboard.
 
 ## Endpoint dự kiến
 
@@ -26,7 +26,7 @@ Ví dụ chỉ mô tả shape khi nguồn dữ liệu chưa sẵn sàng, **khôn
 
 | Chỉ số | Tử số / cách tính | Mốc thời gian và loại trừ |
 |---|---|---|
-| Doanh thu thuần (VND) | Tổng `orders.total_amount` của đơn `COMPLETED` + `PAID`, trừ số hoàn tiền đã ghi nhận | Ghi nhận vào kỳ theo sự kiện hoàn tất/thanh toán; khoản hoàn theo ngày ghi nhận hoàn. Không tính đơn hủy. Cần xác nhận nguồn và trạng thái hoàn tiền trước khi triển khai. |
+| Doanh thu thuần (VND) | Tổng các sự kiện SALE trừ các sự kiện REFUND mô phỏng | CSV Task 30 ghi SALE một lần tại lần đầu đơn `COMPLETED` và đã `PAID`; ghi REFUND âm theo `created_at` của ledger. Hủy không phải SALE. Dashboard tổng hợp cần thống nhất tiếp cách hiển thị theo kỳ với TV2/TV3. |
 | Đơn hàng đã đặt | `COUNT(DISTINCT orders.id)` | Theo `placed_at` trong kỳ; có thể gồm đơn hủy, vì đây là số đơn **đã đặt**, không phải đơn thành công. |
 | Khách mua hàng | `COUNT(DISTINCT customer_id)` của đơn hợp lệ | Theo ngày hoàn tất trong kỳ; loại đơn hủy/chưa hoàn tất. |
 | Sản phẩm đã bán | `SUM(order_items.quantity)` của đơn hoàn thành | Theo ngày hoàn tất trong kỳ; điều chỉnh hàng trả chỉ khi có quy tắc trả hàng được duyệt. |
@@ -40,10 +40,14 @@ Ví dụ chỉ mô tả shape khi nguồn dữ liệu chưa sẵn sàng, **khôn
 
 ## Cần TV2/TV3 xác nhận trước khi bật endpoint
 
-1. **TV2 — đơn/tiền:** trạng thái hoàn tất là `COMPLETED` hay `DELIVERED`; mốc ghi doanh thu; nguồn số tiền hoàn mô phỏng; hàng trả có trừ `soldUnits` không. Không thể lấy doanh thu thuần chuẩn chỉ bằng cột `orders.total_amount` hiện tại.
+1. **TV2 — đơn/tiền:** CSV Task 30 đã chốt mốc SALE là lần đầu chuyển `COMPLETED` khi đơn `PAID`, và ghi khoản hoàn toàn đơn mô phỏng âm theo thời điểm lập ledger; dashboard tổng hợp còn cần thống nhất hiển thị kỳ và việc hàng trả có trừ `soldUnits` hay không. Không thể lấy doanh thu thuần chuẩn chỉ bằng cột `orders.total_amount` hiện tại.
 2. **TV3 — catalog/kho/thiết bị:** khóa tổng hợp top sản phẩm khi SKU đổi tên; ngưỡng tồn hiện tại; nguồn clearance/kích thước chuẩn mm; thời điểm bắt đầu lịch bảo trì và cách xử lý hoãn.
 3. **Cả hai:** thống nhất timezone báo cáo, dữ liệu đơn cũ thiếu mốc hoàn tất, và liệu khách hàng/đơn bị soft delete còn được tính trong báo cáo lịch sử.
 
 ## Kiểm thử nghiệm thu sau khi có API
 
 Đối chiếu ba đơn mẫu: một đơn hoàn thành/đã trả tiền, một đơn hủy, một đơn hoàn tiền một phần; kiểm tra mốc kỳ, tổng doanh thu và phân nhóm trạng thái. Gửi lặp cùng `request_key` để chứng minh FitCheck/TCO không tăng hai lượt. Kiểm tra kỳ không có mẫu trả tỷ lệ `null`. ADMIN nhận dữ liệu, CUSTOMER nhận 403. Chạy trên dữ liệu đã review; không reset database chung để tạo báo cáo.
+
+### CSV giao dịch Task 30 hiện có
+
+`GET /admin/reports/revenue.csv?from=YYYY-MM-DD&to=YYYY-MM-DD` chỉ dành cho ADMIN. Ngày bao gồm cả hai đầu theo `Asia/Ho_Chi_Minh`, tối đa 366 ngày. Một dòng SALE dương được ghi vào lần đầu lịch sử đơn chuyển `COMPLETED`, nếu thanh toán đã xác nhận `PAID` (bao gồm đơn đã hoàn sau đó); mỗi khoản hoàn mô phỏng tạo một dòng REFUND âm theo thời gian ghi sổ; NET_TOTAL bằng tổng SALE trừ REFUND trong kỳ. Refund hiện hoàn toàn bộ `orders.total_amount`, gồm phí giao hàng, sau SALES phân loại, ADMIN duyệt mức MAJOR/CRITICAL và WAREHOUSE xác nhận đủ checklist. Đây là sổ mô phỏng; không gọi ngân hàng và không tự nhập hàng trả lại vào tồn. Schema/route cần migration `015_return_refund_reporting.sql`.

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   ArrowRight,
   Star,
@@ -38,6 +39,7 @@ const reviews = [
 ];
 
 export default function HomePage() {
+  const [cartMessage, setCartMessage] = useState("");
   const featured = products.slice(0, 4);
   const bestsellers = products.slice(2, 6);
 
@@ -50,7 +52,7 @@ export default function HomePage() {
   };
 
   const addToCart = (product) => {
-    console.log("Add to cart:", product);
+    setCartMessage(`Chức năng giỏ hàng hiện chưa khả dụng cho ${product.name}.`);
   };
 
   return (
@@ -550,6 +552,14 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+      {cartMessage && (
+        <div
+          className="fixed bottom-5 right-5 z-50 max-w-sm rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm text-[#B42318] shadow-lg"
+          role="alert"
+        >
+          {cartMessage}
+        </div>
+      )}
     </div>
   );
 }

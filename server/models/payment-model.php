@@ -16,6 +16,55 @@ final class PaymentModel
         return $statement->fetchAll(\PDO::FETCH_ASSOC);
     }
 
+    public function findByCode(string $paymentCode): ?array
+    {
+        $statement = $this->pdo->prepare('SELECT id, order_id, payment_code, payment_method, amount, status, expires_at FROM payments WHERE payment_code = ? AND is_deleted = 0 LIMIT 1');
+        $statement->execute([$paymentCode]);
+        $row = $statement->fetch(\PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    public function findOwnedVnpayAttempt(string $paymentCode, string $customerId): ?array
+    {
+        $statement = $this->pdo->prepare('SELECT p.order_id, p.status, p.expires_at, o.order_code, o.order_status, o.refund_required FROM payments p JOIN orders o ON o.id = p.order_id WHERE p.payment_code = ? AND p.payment_method = ? AND p.is_deleted = 0 AND o.customer_id = ? AND o.is_deleted = 0 LIMIT 1');
+        $statement->execute([$paymentCode, 'VNPAY', $customerId]);
+        $row = $statement->fetch(\PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    public function expiredVnpayPaymentCodes(int $limit): array
+    {
+        $statement = $this->pdo->query("SELECT payment_code FROM payments WHERE payment_method = 'VNPAY' AND status IN ('PENDING', 'FAILED') AND expires_at <= UTC_TIMESTAMP() AND is_deleted = 0 ORDER BY expires_at, id LIMIT " . $limit);
+        return $statement->fetchAll(\PDO::FETCH_COLUMN);
+    }
+
+    public function markVnpayPaid(array $payment, string $transactionCode, string $responseCode): void
+    {
+        $statement = $this->pdo->prepare("UPDATE payments SET status = 'PAID', provider_transaction_code = ?, provider_response_code = ?, paid_at = UTC_TIMESTAMP(), callback_received_at = UTC_TIMESTAMP() WHERE id = ? AND payment_method = 'VNPAY' AND status IN ('PENDING', 'FAILED')");
+        $statement->execute([$transactionCode, $responseCode, $payment['id']]);
+        if ($statement->rowCount() !== 1) throw new ApiException(409, 'PAYMENT_CONFLICT', 'Khoản thanh toán VNPay đã được xử lý.');
+    }
+
+    public function markVnpayFailed(array $payment, string $responseCode): void
+    {
+        $statement = $this->pdo->prepare("UPDATE payments SET status = 'FAILED', provider_response_code = ?, callback_received_at = UTC_TIMESTAMP() WHERE id = ? AND payment_method = 'VNPAY' AND status = 'PENDING'");
+        $statement->execute([$responseCode, $payment['id']]);
+        if ($statement->rowCount() !== 1) throw new ApiException(409, 'PAYMENT_CONFLICT', 'Khoản thanh toán VNPay đã được xử lý.');
+    }
+
+    public function markVnpayExpired(array $payment): void
+    {
+        $statement = $this->pdo->prepare("UPDATE payments SET status = 'FAILED', provider_response_code = 'EXPIRED' WHERE id = ? AND payment_method = 'VNPAY' AND status IN ('PENDING', 'FAILED') AND expires_at <= UTC_TIMESTAMP()");
+        $statement->execute([$payment['id']]);
+    }
+
+    public function updateOrderPayment(string $orderId, string $status, bool $refundRequired): void
+    {
+        $statement = $this->pdo->prepare('UPDATE orders SET payment_status = ?, refund_required = ?, version = version + 1 WHERE id = ? AND payment_status <> ?');
+        $statement->execute([$status, (int) $refundRequired, $orderId, $status]);
+        if ($statement->rowCount() !== 1) throw new ApiException(409, 'PAYMENT_CONFLICT', 'Trạng thái thanh toán của đơn đã thay đổi.');
+    }
+
     // A paid order header alone is not evidence of a valid payment ledger.
     public function assertSettled(array $order, array $payments): void
     {

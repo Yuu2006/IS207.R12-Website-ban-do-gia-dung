@@ -4,6 +4,8 @@ import { test } from 'node:test';
 import { ApiError, createApiClient } from '../src/services/api-client.js';
 import { createOrderService, mapOrder } from '../src/services/order-service.js';
 import { createMockOrderService } from '../src/services/order-mock-service.js';
+import { downloadRevenueCsv } from '../src/services/reports-service.js';
+import { createReturnRefundService } from '../src/services/return-refund-service.js';
 
 const api = JSON.parse(await readFile(new URL('../../docs/api/order-checkout.openapi.json', import.meta.url), 'utf8'));
 const owner = { id: 'preview:nguyen.minh@example.com', role: 'CUSTOMER', fullName: 'Nguyễn Minh' };
@@ -46,17 +48,24 @@ function matches(schema, value) {
 test('OpenAPI operations declare role/status/security and valid request/response examples', () => {
   assert.equal(api.openapi, '3.0.3');
   for (const [path, methods] of Object.entries(api.paths)) for (const [method, operation] of Object.entries(methods)) {
+    const providerCallback = path === '/payments/vnpay/ipn';
     assert.ok(operation['x-roles'].length);
-    assert.ok(operation.security.length);
-    assert.ok(operation.responses['401']); assert.ok(operation.responses['403']);
+    assert.equal(operation.security.length > 0, !providerCallback);
+    if (!providerCallback) { assert.ok(operation.responses['401']); assert.ok(operation.responses['403']); }
     if (path.includes('{orderId}')) assert.ok(operation.parameters.some(parameter => parameter.name === 'orderId' && parameter.required));
-    if (['post', 'patch'].includes(method)) {
+    if (['post', 'patch'].includes(method) && !providerCallback) {
       const body = operation.requestBody.content['application/json']; matches(body.schema, body.example);
       assert.ok(operation.parameters.some(parameter => parameter.name === 'X-CSRF-Token'));
       if (path !== '/checkout/quote') assert.ok(operation.parameters.some(parameter => parameter.name === 'Idempotency-Key'));
     }
     for (const response of Object.values(operation.responses)) {
-      const content = response.content['application/json']; matches(content.schema, content.example);
+      const content = response.content?.['application/json'];
+      if (content) matches(content.schema, content.example);
+      else {
+        const csv = response.content?.['text/csv'];
+        assert.ok(csv, 'response must document a JSON or CSV representation');
+        matches(csv.schema, csv.example);
+      }
     }
   }
   assert.equal(api['x-inventory-decision'].vnpayHoldMinutes, 15);
@@ -157,6 +166,25 @@ test('malformed payment or unsafe redirect cannot yield successful create result
   }
 });
 
+test('VNPay create and return service use signed checkout response and server-owned attempt status', async () => {
+  const vnpayOrder = { ...order, paymentMethod: 'VNPAY', paymentStatus: 'pending' };
+  const payment = { attemptReference: 'VNPAY-HC202611040001', redirectUrl: 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_TxnRef=test', expiresAt: '2026-11-04T09:15:00+07:00' };
+  let received;
+  const service = createOrderService(async (path, input) => {
+    received = { path, input };
+    return path.startsWith('/payments/vnpay/attempts/')
+      ? api.paths['/payments/vnpay/attempts/{paymentCode}'].get.responses['200'].content['application/json'].example.data
+      : { order: vnpayOrder, payment };
+  });
+  const checkout = await service.createOrder({ cartVersion: 3, addressId: '12', paymentMethod: 'VNPAY', voucherCode: 'SAVE10', quoteFingerprint: 'fp', note: '' }, options);
+  assert.equal(checkout.order.payment, 'pending'); assert.equal(checkout.payment.attemptReference, payment.attemptReference);
+  assert.equal(received.path, '/checkout/orders'); assert.equal(received.input.idempotencyKey, idempotencyKey);
+  const attempt = await service.getVnpayAttempt('VNPAY-HC202611040001');
+  assert.equal(received.path, '/payments/vnpay/attempts/VNPAY-HC202611040001');
+  assert.equal(received.input, undefined); assert.equal(attempt.paymentStatus, 'paid');
+  assert.equal(attempt.refundRequired, false);
+});
+
 test('mock list filters before pagination and never exposes foreign customer detail', async () => {
   const service = mock();
   const page = await service.listCustomerOrders({ status: 'delivered,completed', pageSize: 1 });
@@ -219,19 +247,19 @@ test('mock reorder merges current catalog SKU once and respects cart version', a
   await assert.rejects(service.reorder('HC2026100001', input, { idempotencyKey: crypto.randomUUID() }), isError(409, 'CART_VERSION_CONFLICT'));
 });
 
-test('return service whitelists version/reason and validates response', async () => {
+test('return service whitelists version/category/reason and validates response', async () => {
   let received;
   const result = api.paths['/orders/{orderId}/returns'].post.responses['201'].content['application/json'].example.data;
   const service = createOrderService(async (path, input) => { received = { path, input }; return result; });
-  assert.deepEqual(await service.createReturnRequest('101', { expectedVersion: 5, reason: 'Hỏng khi nhận', actorId: 'attacker', approved: true, refundAmount: 9999 }, options), result);
+  assert.deepEqual(await service.createReturnRequest('101', { expectedVersion: 5, issueCategory: 'TRANSIT_DAMAGE', reason: 'Hỏng khi nhận', actorId: 'attacker', approved: true, refundAmount: 9999 }, options), result);
   assert.equal(received.path, '/orders/101/returns');
-  assert.deepEqual(received.input.body, { expectedVersion: 5, reason: 'Hỏng khi nhận' });
+  assert.deepEqual(received.input.body, { expectedVersion: 5, issueCategory: 'TRANSIT_DAMAGE', reason: 'Hỏng khi nhận' });
   await assert.rejects(createOrderService(async () => ({ ...result, status: 'paid' })).createReturnRequest('101', {}, options), isError(200, 'INVALID_API_RESPONSE'));
 });
 
 test('return mock owner/version/eligibility/replay matches separate lifecycle', async () => {
   const service = mock(); const before = await service.getCustomerOrder('HC2026100001');
-  const input = { expectedVersion: before.version, reason: 'Sản phẩm bị hỏng' };
+  const input = { expectedVersion: before.version, issueCategory: 'DEFECTIVE', reason: 'Sản phẩm bị hỏng' };
   const first = await service.createReturnRequest(before.id, input, options);
   assert.deepEqual(await service.createReturnRequest(before.id, input, options), first);
   const after = await service.getCustomerOrder(before.id);
@@ -243,4 +271,75 @@ test('return mock owner/version/eligibility/replay matches separate lifecycle', 
   const pending = await service.getCustomerOrder('HC2026100003');
   await assert.rejects(service.createReturnRequest(pending.id, { ...input, expectedVersion: pending.version }, options), isError(409, 'RETURN_UNAVAILABLE'));
   await assert.rejects(mock({ getCustomer: async () => ({ id: 'preview:other@example.com', role: 'CUSTOMER' }) }).createReturnRequest(before.id, input, options), isError(404, 'ORDER_NOT_FOUND'));
+});
+
+test('return workflow service encodes filters, detail, role actions and idempotency', async () => {
+  const detail = {
+    ...api.paths['/returns/{returnId}'].get.responses['200'].content['application/json'].example.data,
+    createdAt: '2026-11-04T03:00:00+00:00',
+    updatedAt: '2026-11-04T03:00:00+00:00',
+    order: { items: [] },
+    customer: { name: 'Nguyễn Minh', phone: '0900000000' },
+  };
+  const calls = [];
+  const service = createReturnRefundService(async (path, input) => {
+    calls.push({ path, input });
+    if (path.startsWith('/returns?')) return { items: [detail], pagination: { page: 2, pageSize: 5, totalItems: 6, totalPages: 2 } };
+    return detail;
+  });
+
+  const page = await service.list({ status: 'pending_manager', severity: 'major', search: ' HC-51 ', page: 2, pageSize: 5 });
+  assert.equal(page.items[0].id, detail.id);
+  const query = new URL(calls[0].path, 'https://example.test').searchParams;
+  assert.equal(query.get('status'), 'pending_manager');
+  assert.equal(query.get('severity'), 'major');
+  assert.equal(query.get('search'), 'HC-51');
+  assert.equal(query.get('page'), '2');
+  assert.equal(query.get('pageSize'), '5');
+
+  await service.detail('51/unsafe');
+  assert.equal(calls[1].path, '/returns/51%2Funsafe');
+  const actions = [
+    ['triage', '/sales/returns/51/triage', { severity: 'MAJOR', note: 'Đủ điều kiện chuyển quản lý.' }],
+    ['decide', '/admin/returns/51/decision', { decision: 'APPROVE', reason: 'Đã xem xét.' }],
+    ['receive', '/warehouse/returns/51/receive', { checklist: { packageReceived: true, orderMatched: true, allItemsPresent: true, conditionAssessed: true, notes: 'Đã kiểm tra.' } }],
+  ];
+  for (const [method, expectedPath, body] of actions) {
+    assert.deepEqual(await service[method]('51', body, options), detail);
+    const call = calls.at(-1);
+    assert.equal(call.path, expectedPath);
+    assert.equal(call.input.method, 'POST');
+    assert.deepEqual(call.input.body, body);
+    assert.equal(call.input.idempotencyKey, idempotencyKey);
+  }
+  await assert.rejects(service.receive('51', {}, {}), error => error.code === 'IDEMPOTENCY_KEY_REQUIRED');
+  await assert.rejects(createReturnRefundService(async () => ({ ...detail, order: undefined })).detail('51'), error => error.code === 'INVALID_API_RESPONSE');
+});
+
+test('revenue CSV download uses authenticated CSV request and rejects invalid/error responses', async () => {
+  let request;
+  const csv = 'Loại giao dịch,Thời điểm,Mã đơn,Số tiền VND\nSALE,2026-11-04 10:00:00,HC2026110001,600000\n';
+  const blob = new Blob([csv], { type: 'text/csv; charset=UTF-8' });
+  const result = await downloadRevenueCsv('2026-11-01', '2026-11-04', {
+    fetchImpl: async (url, init) => {
+      request = { url, init };
+      return new Response(blob, { status: 200, headers: { 'Content-Type': 'text/csv; charset=UTF-8' } });
+    },
+  });
+  const parsedUrl = new URL(request.url);
+  assert.equal(parsedUrl.pathname, '/admin/reports/revenue.csv');
+  assert.equal(parsedUrl.searchParams.get('from'), '2026-11-01');
+  assert.equal(parsedUrl.searchParams.get('to'), '2026-11-04');
+  assert.equal(request.init.credentials, 'include');
+  assert.equal(request.init.cache, 'no-store');
+  assert.equal(request.init.headers.Accept, 'text/csv');
+  assert.equal(await result.text(), csv);
+
+  await assert.rejects(downloadRevenueCsv('2026-11-04', '2026-11-01', {
+    fetchImpl: async () => new Response(JSON.stringify({ success: false, errors: { code: 'INVALID_INPUT' } }), { status: 422, headers: { 'Content-Type': 'application/json' } }),
+  }), error => error.status === 422 && error.code === 'INVALID_INPUT');
+  await assert.rejects(downloadRevenueCsv('2026-11-01', '2026-11-04', {
+    fetchImpl: async () => new Response('not csv', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+  }), error => error.code === 'INVALID_REPORT_RESPONSE');
+  await assert.rejects(downloadRevenueCsv('2026-11-01', '2026-11-04', { fetchImpl: async () => { throw new TypeError('Offline'); } }), error => error.code === 'NETWORK_ERROR');
 });

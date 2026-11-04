@@ -105,41 +105,23 @@ export default function Footer() {
             </h3>
 
             <div className="flex flex-col gap-3 text-sm">
-              <a
-                href="#register-warranty"
+              <Link
+                to="/warranty"
                 className="transition-colors hover:text-white"
               >
-                Đăng ký bảo hành
-              </a>
+                Hướng dẫn bảo hành
+              </Link>
 
-              <a
-                href="#warranty"
+              <Link
+                to="/orders"
                 className="transition-colors hover:text-white"
               >
-                Tra cứu bảo hành
-              </a>
+                Đơn hàng của tôi
+              </Link>
 
-              <a href="#repair" className="transition-colors hover:text-white">
-                Yêu cầu sửa chữa
-              </a>
-
-              <a
-                href="#technician"
-                className="transition-colors hover:text-white"
-              >
-                Đặt lịch kỹ thuật viên
-              </a>
-
-              <a
-                href="#tracking"
-                className="transition-colors hover:text-white"
-              >
-                Theo dõi sửa chữa
-              </a>
-
-              <a href="#history" className="transition-colors hover:text-white">
-                Lịch sử bảo hành
-              </a>
+              <Link to="/products" className="transition-colors hover:text-white">
+                Thông tin sản phẩm
+              </Link>
             </div>
           </div>
 

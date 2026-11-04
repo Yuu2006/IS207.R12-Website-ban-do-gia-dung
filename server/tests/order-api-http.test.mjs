@@ -59,20 +59,42 @@ test('health uses JSON envelope and explicitly reports skeleton/storage not read
   assert.equal(result.data.storageReady, false);
 });
 
-test('all ten real HTTP endpoints are routed and reject anonymous with 401', async () => {
+test('anonymous session check works without MySQL, issues cookies and cannot be spoofed into login', async () => {
+  const response = await fetch(`${baseUrl}/auth/me?customerId=1&role=ADMIN`, { headers: { Origin: clientOrigin, 'X-Role': 'ADMIN', Authorization: 'Bearer fake' } });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('access-control-allow-origin'), clientOrigin);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  const result = await response.json();
+  assert.equal(result.success, true);
+  assert.equal(result.data.user, null);
+  assert.equal(result.data.expiresAt, null);
+  assert.match(result.data.csrfToken, /^[a-f0-9]{64}$/);
+  const cookies = response.headers.getSetCookie();
+  assert.ok(cookies.some(cookie => /HOMECARE_SESSION=.*HttpOnly/i.test(cookie)));
+  assert.ok(cookies.some(cookie => /XSRF-TOKEN=/.test(cookie)));
+  const orders = await fetch(`${baseUrl}/orders`, { headers: { Cookie: cookies.map(cookie => cookie.split(';')[0]).join('; ') } });
+  assert.equal(orders.status, 401);
+});
+
+test('protected OpenAPI endpoints reject anonymous requests with 401', async () => {
   for (const [path, operations] of Object.entries(spec.paths)) {
-    if (['/cart', '/addresses'].includes(path)) continue;
+    if (path === '/payments/vnpay/ipn') continue;
     for (const [method, operation] of Object.entries(operations)) {
-      const body = operation.requestBody?.content['application/json'].example;
-      const response = await fetch(`${baseUrl}${path.replace('{orderId}', '101')}`, {
+      if (operation.security.length === 0) continue;
+      const jsonBody = operation.requestBody?.content?.['application/json'];
+      const body = jsonBody?.example;
+      const urlPath = path.replace(/\{[^}]+\}/g, '101');
+      const response = await fetch(`${baseUrl}${urlPath}`, {
         method: method.toUpperCase(), headers: { 'Content-Type': 'application/json' },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
       assert.equal(response.status, 401, `${method} ${path}`);
       const result = await response.json();
       assert.equal(result.success, false);
-      assert.equal(result.errors.code, 'AUTH_REQUIRED');
-      assert.deepEqual(result.errors.fields, {});
+      if (!path.startsWith('/users/')) {
+        assert.equal(result.errors.code, 'AUTH_REQUIRED');
+        assert.deepEqual(result.errors.fields, {});
+      }
       assert.equal('data' in result, false);
     }
   }

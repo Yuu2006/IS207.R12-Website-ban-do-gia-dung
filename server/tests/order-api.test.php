@@ -263,13 +263,14 @@ check('cancel controller passes server actor/id/version/reason/key and returns e
     expectError(request('POST', '/orders/101/cancel', ['expectedVersion' => '1', 'reason' => 'Đổi nhu cầu']), 422, 'INVALID_INPUT');
 });
 
-check('return controller validates reason/version and returns 201 without claiming refund', function () use ($spec): void {
+check('return controller validates issue category/reason/version and returns 201 without claiming refund', function () use ($spec): void {
     $service = new FixtureOrderService($spec);
-    $response = request('POST', '/orders/101/returns', ['expectedVersion' => 5, 'reason' => '  Hỏng khi nhận  '], [], null, null, $service);
+    $response = request('POST', '/orders/101/returns', ['expectedVersion' => 5, 'issueCategory' => 'TRANSIT_DAMAGE', 'reason' => '  Hỏng khi nhận  '], [], null, null, $service);
     ensure($response['status'] === 201 && $response['body']['data']['status'] === 'requested');
-    ensure($service->calls[0][1][2] === ['expectedVersion' => 5, 'reason' => 'Hỏng khi nhận']);
-    expectError(request('POST', '/orders/101/returns', ['expectedVersion' => 5, 'reason' => '']), 422, 'REASON_REQUIRED');
-    expectError(request('POST', '/orders/101/returns', ['expectedVersion' => 5, 'reason' => 'Test', 'refundAmount' => 1]), 422, 'INVALID_INPUT');
+    ensure($service->calls[0][1][2] === ['expectedVersion' => 5, 'issueCategory' => 'TRANSIT_DAMAGE', 'reason' => 'Hỏng khi nhận']);
+    expectError(request('POST', '/orders/101/returns', ['expectedVersion' => 5, 'issueCategory' => 'TRANSIT_DAMAGE', 'reason' => '']), 422, 'REASON_REQUIRED');
+    expectError(request('POST', '/orders/101/returns', ['expectedVersion' => 5, 'issueCategory' => 'OTHER', 'reason' => 'Test', 'refundAmount' => 1]), 422, 'INVALID_INPUT');
+    expectError(request('POST', '/orders/101/returns', ['expectedVersion' => 5, 'issueCategory' => 'NOT_A_CATEGORY', 'reason' => 'Test']), 422, 'INVALID_INPUT');
 });
 
 check('reorder controller delegates current-cart version instead of snapshot pricing', function () use ($spec): void {
