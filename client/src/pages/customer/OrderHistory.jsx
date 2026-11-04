@@ -10,6 +10,8 @@ import OrderApiState from '../../components/order/OrderApiState.jsx';
 import { isUncertainApiError } from '../../services/api-client.js';
 
 const filters = [['all', 'Tất cả'], ['pending', 'Chờ xác nhận'], ['processing', 'Đang chuẩn bị'], ['shipping', 'Đang giao'], ['delivered', 'Đã giao'], ['cancelled', 'Đã hủy']];
+const returnCategories = [['SAFETY_HAZARD', 'Nguy cơ an toàn'], ['DEFECTIVE', 'Lỗi chức năng'], ['TRANSIT_DAMAGE', 'Hư hỏng khi vận chuyển'], ['WRONG_ITEM', 'Giao sai sản phẩm'], ['MISSING_COMPONENT', 'Thiếu phụ kiện'], ['SPEC_MISMATCH', 'Sai thông số cam kết'], ['COSMETIC_DAMAGE', 'Trầy xước nhẹ'], ['PACKAGING_ONLY', 'Chỉ hư bao bì'], ['BUYER_REMORSE', 'Đổi ý sau mua'], ['CUSTOMER_MISUSE', 'Hư hỏng do sử dụng'], ['OTHER', 'Vấn đề khác']];
+const returnStatusLabels = { requested: 'Đã gửi · chờ SALES phân loại', pending_manager: 'Đang chờ quản lý xem xét', approved: 'Đã duyệt · chờ kho nhận hàng', rejected: 'Yêu cầu bị từ chối', refunded: 'Đã ghi nhận hoàn tiền mô phỏng' };
 const canCancel = canCancelOrder;
 
 // Hiển thị snapshot đơn hàng, trạng thái thanh toán và lịch sử xử lý.
@@ -32,6 +34,7 @@ export default function OrderHistory({ initialOrders, detail = false }) {
   const [cancelling, setCancelling] = useState(false);
   const [returning, setReturning] = useState(false);
   const [returnReason, setReturnReason] = useState('');
+  const [returnCategory, setReturnCategory] = useState('DEFECTIVE');
   const action = useOrderAction({ onUnauthorized: () => refreshSession().catch(() => {}) });
   const busy = action.busy;
   const [tabDirection, setTabDirection] = useState('forward');
@@ -116,7 +119,7 @@ export default function OrderHistory({ initialOrders, detail = false }) {
   async function requestReturn(event) {
     event.preventDefault();
     if (!selected || busy) return;
-    const request = { expectedVersion: selected.version, reason: returnReason.trim() };
+    const request = { expectedVersion: selected.version, issueCategory: returnCategory, reason: returnReason.trim() };
     const result = await action.run(`return:${selected.id}`, request, options => service.createReturnRequest(selected.id, request, options));
     if (!result) return;
     resource.setData({ ...selected, returnRequest: result });
@@ -135,8 +138,8 @@ export default function OrderHistory({ initialOrders, detail = false }) {
         {['delivered', 'completed', 'cancelled'].includes(selected.status) && <button className="oc-button oc-button--outline" disabled={busy} onClick={() => buyAgain(selected)}>Mua lại</button>}
         {['delivered', 'completed'].includes(selected.status) && selected.payment === 'paid' && !selected.returnRequest && <button className="oc-button oc-button--outline" disabled={busy || action.uncertain} onClick={() => setReturning(!returning)}>Yêu cầu trả hàng</button>}
       </div>
-      {selected.returnRequest && <section className="oc-card oc-form-section" aria-label="Yêu cầu trả hàng"><h2>Yêu cầu trả hàng</h2><p>{selected.returnRequest.status === 'requested' ? 'Đã gửi yêu cầu · Chờ xét duyệt' : 'Yêu cầu đã được cập nhật'}</p><p>{selected.returnRequest.reason}</p><small className="oc-muted">Gửi yêu cầu không đồng nghĩa với chấp thuận trả hàng hoặc hoàn tiền.</small></section>}
-      {returning && <form className="oc-card oc-form-section" onSubmit={requestReturn}><h2>Lý do trả hàng</h2><label className="oc-field">Mô tả vấn đề với sản phẩm<textarea value={returnReason} onChange={event => setReturnReason(event.target.value)} required maxLength={500} disabled={busy || action.uncertain} /></label><div className="oc-detail-actions"><button type="button" className="oc-button oc-button--outline" disabled={busy || action.uncertain} onClick={() => setReturning(false)}>Đóng</button><button className="oc-button" disabled={!returnReason.trim() || busy}>{busy ? 'Đang gửi…' : action.uncertain ? 'Thử lại yêu cầu trả hàng' : 'Gửi yêu cầu'}</button></div></form>}
+      {selected.returnRequest && <section className="oc-card oc-form-section" aria-label="Yêu cầu trả hàng"><h2>Yêu cầu trả hàng</h2><p>{returnStatusLabels[selected.returnRequest.status] || 'Yêu cầu đã được cập nhật'}</p><p>{selected.returnRequest.reason}</p>{selected.returnRequest.decisionReason && <p><strong>Lý do cập nhật:</strong> {selected.returnRequest.decisionReason}</p>}<small className="oc-muted">Gửi yêu cầu không đồng nghĩa với chấp thuận trả hàng hoặc hoàn tiền.</small></section>}
+      {returning && <form className="oc-card oc-form-section" onSubmit={requestReturn}><h2>Lý do trả hàng</h2><label className="oc-field">Nhóm vấn đề<select value={returnCategory} onChange={event => setReturnCategory(event.target.value)} disabled={busy || action.uncertain}>{returnCategories.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="oc-field">Mô tả vấn đề với sản phẩm<textarea value={returnReason} onChange={event => setReturnReason(event.target.value)} required maxLength={500} disabled={busy || action.uncertain} /></label><small className="oc-muted">Nhân viên sẽ đánh giá mức độ. Sự cố nhẹ không tự động đủ điều kiện duyệt trả hàng/hoàn tiền.</small><div className="oc-detail-actions"><button type="button" className="oc-button oc-button--outline" disabled={busy || action.uncertain} onClick={() => setReturning(false)}>Đóng</button><button className="oc-button" disabled={!returnReason.trim() || busy}>{busy ? 'Đang gửi…' : action.uncertain ? 'Thử lại yêu cầu trả hàng' : 'Gửi yêu cầu'}</button></div></form>}
       {cancelling && <form className="oc-card oc-form-section" onSubmit={cancelOrder}><h2>Lý do hủy đơn</h2><label className="oc-field">Vui lòng cho biết lý do<textarea value={reason} onChange={event => setReason(event.target.value)} required maxLength={500} disabled={busy || action.uncertain} /></label><div className="oc-detail-actions"><button type="button" className="oc-button oc-button--outline" disabled={busy || action.uncertain} onClick={() => setCancelling(false)}>Giữ đơn hàng</button><button className="oc-button oc-button--danger" disabled={!reason.trim() || busy}>{busy ? 'Đang gửi…' : action.uncertain ? 'Thử lại yêu cầu hủy' : 'Xác nhận hủy'}</button></div></form>}</div>
     </>}
   </main>;

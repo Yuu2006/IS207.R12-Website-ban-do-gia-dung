@@ -58,6 +58,10 @@ export const products = [
     price: 10990000,
     originalPrice: 12990000,
     discount: 15,
+    image: "https://images.unsplash.com/photo-1761330440311-16e160cad236?auto=format&fit=crop&w=800&q=80",
+    images: [
+      "https://images.unsplash.com/photo-1761330440311-16e160cad236?auto=format&fit=crop&w=800&q=80",
+    ],
     rating: 4.9,
     reviewCount: 128,
     reviews: 128,

@@ -49,6 +49,14 @@ try {
     if (($isAuth || $isCatalog) && !$readOnly && !hash_equals($_SESSION['csrfToken'], $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '')) throw new ApiException('CSRF token chưa hợp lệ. Hãy tải lại phiên đăng nhập.', 403);
 
     // Chỉ chạm MySQL khi cần; principal được đối chiếu mỗi request để hủy phiên hết hạn/bị khóa/đổi mật khẩu.
+    // Phiên chưa từng đăng nhập không cần DB để xác nhận anonymous; tuyệt đối không fallback ở phiên có principal.
+    if ($method === 'GET' && $path === '/auth/me' && currentPrincipal() === null) {
+        respondJson(['user' => null, 'expiresAt' => null, 'csrfToken' => $_SESSION['csrfToken']]);
+        exit;
+    }
+    if (str_starts_with($path, '/users/') && currentPrincipal() === null) {
+        throw new ApiException('Yêu cầu đăng nhập.', 401);
+    }
     $model = null;
     $auth = null;
     if ($isAuth || currentPrincipal()) {
@@ -90,10 +98,19 @@ try {
     $response = handleOrderApi($method, $path, $_GET, $raw === false ? '' : $raw, function_exists('getallheaders') ? getallheaders() : [], $orderSession);
     http_response_code($response['status']);
     foreach ($response['headers'] as $name => $value) header($name . ': ' . $value);
+    if (array_key_exists('rawBody', $response)) {
+        echo $response['rawBody'];
+        exit;
+    }
     echo json_encode($response['body'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 } catch (ApiException $error) {
     http_response_code($error->status);
     echo json_encode(['success' => false, 'message' => $error->getMessage(), 'errors' => (object) $error->errors], JSON_UNESCAPED_UNICODE);
+} catch (PDOException $error) {
+    error_log('API database failed: ' . $error->getCode());
+    $unavailable = in_array((int) ($error->errorInfo[1] ?? 0), [1045, 1049, 1054, 1146, 2002, 2003, 2005, 2006, 2013], true);
+    http_response_code($unavailable ? 503 : 500);
+    echo json_encode(['success' => false, 'message' => $unavailable ? 'Dịch vụ dữ liệu chưa sẵn sàng. Vui lòng thử lại sau.' : 'Máy chủ không thể xử lý yêu cầu.', 'errors' => (object) []], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $error) {
     error_log('API failed: ' . get_class($error));
     http_response_code(500);

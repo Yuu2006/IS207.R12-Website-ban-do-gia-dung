@@ -48,6 +48,7 @@ export default function ProductDetailPage() {
   const [selectedImg, setSelectedImg] = useState(0);
   const [qty, setQty] = useState(1);
   const [tab, setTab] = useState("specs");
+  const [actionMessage, setActionMessage] = useState("");
 
   if (!product) {
     return (
@@ -75,11 +76,11 @@ export default function ProductDetailPage() {
   const comparisonUrl = `/compare?${new URLSearchParams({ product: String(product.id), name: product.name, category: product.category })}`;
 
   const addToCart = () => {
-    console.log("Thêm vào giỏ:", product, "Số lượng:", qty);
+    setActionMessage("Chức năng giỏ hàng hiện chưa khả dụng.");
   };
 
   const buyNow = () => {
-    console.log("Mua ngay:", product, "Số lượng:", qty);
+    setActionMessage("Chức năng đặt hàng hiện chưa khả dụng.");
   };
 
   return (
@@ -315,6 +316,14 @@ export default function ProductDetailPage() {
                 Mua ngay
               </button>
             </div>
+            {actionMessage && (
+              <p
+                className="mt-3 rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm text-[#B42318]"
+                role="alert"
+              >
+                {actionMessage}
+              </p>
+            )}
             <Link
               to={comparisonUrl}
               className="mt-3 flex items-center justify-center gap-2 rounded-xl border border-[#176B87] px-4 py-3 text-sm font-semibold text-[#176B87] transition-colors hover:bg-[#E8F4F7]"

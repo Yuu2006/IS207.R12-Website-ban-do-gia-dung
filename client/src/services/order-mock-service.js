@@ -93,11 +93,12 @@ export function createMockOrderService({ getCustomer, getStaff = async () => sta
       await wait(options?.signal); const user = await customer(); find(id, user);
       return mutate(user, `return:${id}`, input, options, () => {
         const order = find(id, user);
-        if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1 || typeof input.reason !== 'string' || !input.reason.trim() || input.reason.trim().length > 500) fail(422, 'INVALID_INPUT', 'Vui lòng nhập lý do trả hàng hợp lệ.');
+        if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1 || !['SAFETY_HAZARD', 'DEFECTIVE', 'TRANSIT_DAMAGE', 'WRONG_ITEM', 'MISSING_COMPONENT', 'SPEC_MISMATCH', 'COSMETIC_DAMAGE', 'PACKAGING_ONLY', 'BUYER_REMORSE', 'CUSTOMER_MISUSE', 'OTHER'].includes(input.issueCategory) || typeof input.reason !== 'string' || !input.reason.trim() || input.reason.trim().length > 500) fail(422, 'INVALID_INPUT', 'Vui lòng chọn nhóm vấn đề và nhập lý do trả hàng hợp lệ.');
         if (order.version !== input.expectedVersion) fail(409, 'ORDER_VERSION_CONFLICT', 'Đơn hàng đã thay đổi.');
         if (!['delivered', 'completed'].includes(order.status) || order.payment !== 'paid') fail(409, 'RETURN_UNAVAILABLE', 'Chỉ tạo yêu cầu trả hàng cho đơn đã giao và thanh toán.');
         if (order.returnRequest) fail(409, 'RETURN_REQUEST_EXISTS', 'Đơn đã có yêu cầu trả hàng.');
-        const result = { id: `return:${id}`, orderId: String(id), status: 'requested', reason: input.reason.trim(), createdAt: new Date().toISOString() };
+        const createdAt = new Date().toISOString();
+        const result = { id: `return:${id}`, orderId: String(id), status: 'requested', issueCategory: input.issueCategory, severity: null, reason: input.reason.trim(), decisionReason: null, createdAt, updatedAt: createdAt };
         orders = orders.map(item => item.id === order.id ? { ...item, returnRequest: result } : item);
         return result;
       });

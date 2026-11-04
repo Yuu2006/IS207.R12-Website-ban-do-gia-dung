@@ -8,7 +8,8 @@ export default function CustomerRoute({ children }) {
   const location = useLocation();
   if (status === 'loading') return <main className="oc-main"><div className="oc-empty" role="status"><h1>Đang kiểm tra đăng nhập…</h1></div></main>;
   if (status === 'error') return <main className="oc-main"><div className="oc-card oc-empty" role="alert">
-    <h1>Chưa thể tải đơn hàng</h1><p>{error}</p>
+    <h1>Chưa thể kiểm tra đăng nhập</h1><p>{error}</p>
+    <p>Đơn hàng chỉ hiển thị sau khi xác minh tài khoản. Vui lòng thử kết nối lại.</p>
     <button className="oc-button" onClick={() => refreshSession().catch(() => {})}>Thử lại</button>
     <Link className="oc-text-action" to="/login" state={{ returnTo: `${location.pathname}${location.search}${location.hash}` }}>Đăng nhập</Link>
   </div></main>;
