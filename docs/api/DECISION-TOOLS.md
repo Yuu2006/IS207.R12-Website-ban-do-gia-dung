@@ -1,6 +1,6 @@
 # HOME-01 / FIT-01 / TCO-01 / LIFE-01 / CARE-01 — schema và API contract
 
-Trạng thái 19/10/2026: **contract đề xuất để tích hợp**, chưa có route/service production. UI React tại `client/src/pages/customer/DecisionToolsPage.jsx` và `client/src/pages/admin/FitRulesPreviewPage.jsx` là bản mẫu, không gọi API và không lưu dữ liệu. Schema nằm tại `server/db/migrations/012_decision_tools.sql`; chưa áp vào database. Contract này giữ ba mức FitCheck và quy tắc quản trị theo đặc tả; FitCheck có thể được hiển thị như bộ lọc trên trang sản phẩm sau khi API hoạt động.
+Trạng thái 04/11/2026: **TCO-01 đã có FE/API implementation trên branch `users/le-tan-vi`; cần migration 012 trên DB đã review trước khi dùng với MySQL.** Migration chưa được áp vào DB local/chung. HOME/FIT/LIFE/CARE vẫn là contract và UI chưa nối API. FitCheck giữ ba mức theo đặc tả; có thể hiển thị như bộ lọc trên trang sản phẩm sau khi API hoạt động.
 
 ## 1. Quy ước chung
 
@@ -66,9 +66,79 @@ ADMIN dùng `GET /api/admin/fit-rules?categoryId=&productId=`, `POST /api/admin/
 
 ## 4. TCO (`POST /api/tco/calculate`)
 
-Đây là phép tính **stateless**; chưa tạo bảng lưu kịch bản người dùng. Request có `productIds` gồm 2–4 ID cùng danh mục, `years` ∈ {1,3,5}, `usesPerWeek` ≥0, `electricityVndPerKwh` ≥0, `waterVndPerM3` ≥0, cùng `requestKey` UUID. Có thể thêm giả định vật tư/bảo trì theo sản phẩm sau khi TV2/TV3 duyệt nguồn giá. Response cho từng sản phẩm trả `purchase`, `electricity`, `water`, `consumables`, `maintenance`, `total`, `assumptions`, `formula`, `missingInputs`, `currency: "VND"`. Giá mua lấy giá bán hiệu lực **trên server** tại thời điểm tính, không nhận từ client.
+Route công khai (guest hoặc tài khoản đăng nhập), không tạo đơn và không thay đổi tồn kho. Phép tính **stateless**; chỉ ghi một sự kiện `decision_events` để thống kê. Chỉ nhận 2–4 sản phẩm không trùng, cùng danh mục, đang hoạt động và mỗi sản phẩm phải đi cùng một SKU đang bán. Giá mua được đọc từ SKU trên server; nếu sale có hiệu lực, dùng giá sale. Giá và tổng tiền trả dạng chuỗi DECIMAL, không nhận giá sản phẩm từ client.
 
-`total = purchase + electricity + water + consumables + maintenance` trong kỳ. Chuẩn hóa W→kW, lít→m³, số lần/tuần→số lần trong kỳ trước khi tính. Khi thiếu một thành phần bắt buộc, thành phần đó và `total` là `null`, kèm `missingInputs`; không thay `null` bằng 0. Số 0 chỉ dùng khi dữ liệu xác nhận thực sự không phát sinh chi phí. Chi phí là ước tính, không phải số tiền checkout. Ghi một `decision_events` loại TCO sau mỗi request thành công, dedupe bằng `requestKey`.
+Request:
+
+```json
+{
+  "productIds": [12, 15],
+  "variantIds": [31, 42],
+  "years": 3,
+  "usesPerWeek": 5,
+  "hoursPerUse": "1.50",
+  "electricityVndPerKwh": "3000.00",
+  "waterVndPerM3": "25000.00",
+  "annualCosts": [
+    { "productId": 12, "consumablesVndPerYear": "100000", "maintenanceVndPerYear": "0" },
+    { "productId": 15, "consumablesVndPerYear": "", "maintenanceVndPerYear": "150000" }
+  ],
+  "requestKey": "4d52b3d1-49dc-4e65-9476-51b4f5d1c200"
+}
+```
+
+`variantIds` ghép theo vị trí tương ứng với `productIds`. `years` chỉ nhận 1, 3 hoặc 5; `usesPerWeek` là số nguyên 0–168; `hoursPerUse` tối đa 24 giờ và cần khi tính từ công suất W với tần suất lớn hơn 0. Đơn giá điện/nước là số không âm, tối đa hai chữ số thập phân. `annualCosts` có một dòng cho mỗi sản phẩm; ô để trống là chưa biết, nhập 0 là người dùng chủ động xác nhận không phát sinh. Chi phí vật tư/bảo trì là giả định người dùng nhập theo năm, không phải giá được catalog xác nhận.
+
+Quy tắc tính hiện tại:
+
+- Tủ lạnh có `energy_kwh_year`: điện = kWh/năm trong catalog × số năm × giá điện. Không nhân thêm tần suất sử dụng vào chứng nhận kWh/năm.
+- Sản phẩm có `power_watts`: điện = W ÷ 1000 × giờ/lần × lần/tuần × 52 × số năm × giá điện. Tần suất và giờ/lần là một kịch bản chung để so sánh các sản phẩm cùng danh mục.
+- Máy giặt có `water_liters_cycle`: nước = lít/chu trình ÷ 1000 × lần/tuần × 52 × số năm × giá nước. Danh mục tủ lạnh và máy lạnh hiện không khai báo tiêu thụ nước theo chu trình nên khoản nước là 0, có ghi rõ trong assumptions/formula.
+- Vật tư và bảo trì = chi phí năm người dùng nhập × số năm. Không tự giả định khoản chưa biết bằng 0.
+
+Nếu thiếu giá hoặc thông số/giả định bắt buộc, component tương ứng và `total` là `null`, kèm `missingInputs`; các component biết vẫn được hiển thị. Tất cả phép nhân tiền dùng đơn vị cent integer, làm tròn half-up tới 0,01 VND; không dùng float cho tiền. Khi retry cùng `requestKey` và cùng tài khoản, event không bị ghi thêm lần nữa. Client chỉ dùng lại key với đúng payload retry; dùng key đã thuộc người dùng khác hoặc loại event khác trả 409.
+
+Response mẫu:
+
+```json
+{
+  "success": true,
+  "message": "Đã tính chi phí sở hữu.",
+  "data": {
+    "requestKey": "4d52b3d1-49dc-4e65-9476-51b4f5d1c200",
+    "categoryId": 3,
+    "categoryName": "Máy giặt",
+    "years": 3,
+    "usesPerWeek": 5,
+    "hoursPerUse": "1.50",
+    "electricityVndPerKwh": "3000.00",
+    "waterVndPerM3": "25000.00",
+    "products": [
+      {
+        "productId": 12,
+        "variantId": 31,
+        "productName": "Máy giặt mẫu",
+        "categoryId": 3,
+        "categoryName": "Máy giặt",
+        "sku": "SAMPLE-12-A",
+        "variantName": "Trắng",
+        "purchase": "8900000.00",
+        "electricity": "7897500.00",
+        "water": "1579500.00",
+        "consumables": "300000.00",
+        "maintenance": "0.00",
+        "total": "18677000.00",
+        "assumptions": ["Điện năng ước tính từ công suất W và kịch bản sử dụng.", "Chi phí vật tư mỗi năm do người dùng nhập."],
+        "formula": { "total": "Giá mua + điện + nước + vật tư + bảo trì." },
+        "missingInputs": [],
+        "currency": "VND"
+      }
+    ]
+  }
+}
+```
+
+Status: 400 JSON sai; 403 CSRF thiếu/sai; 404 sản phẩm/SKU không tồn tại hoặc ngừng bán; 409 `requestKey` đã gắn với user/event khác; 422 sai dữ liệu hoặc khác danh mục; 503 khi migration/schema hoặc MySQL chưa sẵn sàng. API dùng envelope chung `{success, message, data}` / `{success, message, errors}`.
 
 ## 5. Thiết bị sở hữu và chăm sóc
 
@@ -88,9 +158,9 @@ ADMIN dùng `GET/POST/PATCH /api/admin/care-rules` để cấu hình quy tắc t
 | Hai sản phẩm TCO khác danh mục | 422 |
 | Product không tồn tại/không hoạt động | 404 |
 | Quy tắc không có dữ liệu đầu vào | `NEEDS_CHECK` với `MISSING`, không lỗi 500 |
-| TCO thiếu giá hoặc thông số | `total: null` với `missingInputs` |
+| TCO thiếu giá, thông số, giờ sử dụng hoặc giả định chi phí | component tương ứng và `total: null` với `missingInputs` |
 | Completed event hoặc requestKey lặp | Không thêm device/task/event lần hai |
 
 ## 7. Ranh giới triển khai hiện tại
 
-Migration và contract này chưa thay thế API implementation. Chưa có CRUD phòng, rule evaluator, TCO calculator, completion bridge hay care scheduler production. Trước khi nối UI cần review schema và nguồn thông số với chủ module catalog/đơn hàng; chỉ bật route sau khi kiểm thử quyền, dữ liệu thiếu, biên kích thước, đổi đơn vị và idempotency.
+CRUD phòng, FitCheck evaluator, completion bridge và care scheduler chưa được triển khai. TCO implementation có mặt trên branch `users/le-tan-vi`; trước khi dùng chung cần team review migration 012, nguồn thông số với chủ catalog và kiểm tra UI trên DB có migration. TCO không lưu kịch bản, không đổi đơn hàng và không gọi dịch vụ thanh toán.
