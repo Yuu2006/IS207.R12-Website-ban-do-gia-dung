@@ -18,6 +18,7 @@ export const listProducts = (filters = {}) => requestApi(`/api/products?${new UR
 export const getProduct = productId => requestApi(`/api/products/${encodeURIComponent(productId)}`);
 export const listVariants = productId => requestApi(`/api/products/${productId}/variants`);
 export const saveVariant = (productId, id, values) => requestApi(id ? `/api/variants/${id}` : `/api/products/${productId}/variants`, { method: id ? 'PUT' : 'POST', body: values });
+export const deleteVariant = id => requestApi(`/api/variants/${id}`, { method: 'DELETE' });
 export const listCategoryAttributes = categoryId => requestApi(`/api/categories/${categoryId}/attributes`);
 export const createCategoryAttribute = (categoryId, values) => requestApi(`/api/categories/${categoryId}/attributes`, { method: 'POST', body: values });
 export const getProductAttributes = productId => requestApi(`/api/products/${productId}/attributes`);

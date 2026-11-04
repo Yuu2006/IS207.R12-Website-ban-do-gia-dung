@@ -10,6 +10,7 @@ function handleCatalogAdminRoutes(string $method, string $path): bool
         ['GET', '#^/api/products/(\d+)/variants$#', 'variants'],
         ['POST', '#^/api/products/(\d+)/variants$#', 'createVariant'],
         ['PUT', '#^/api/variants/(\d+)$#', 'updateVariant'],
+        ['DELETE', '#^/api/variants/(\d+)$#', 'deleteVariant'],
         ['GET', '#^/api/products/(\d+)/images$#', 'images'],
         ['POST', '#^/api/products/(\d+)/images$#', 'addImage'],
         ['PUT', '#^/api/product-images/(\d+)$#', 'updateImage'],

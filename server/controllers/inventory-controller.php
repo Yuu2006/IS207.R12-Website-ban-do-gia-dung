@@ -47,7 +47,8 @@ function listInventory(): void
         }
 
         if (isset($_GET['low_stock']) && $_GET['low_stock'] === '1') {
-            $sql .= " AND pv.stock_quantity <= pv.low_stock_threshold";
+            // SKU ngừng bán không cần cảnh báo nhập thêm.
+            $sql .= " AND pv.is_active = 1 AND pv.stock_quantity <= pv.low_stock_threshold";
         }
 
         $sql .= " ORDER BY p.id ASC, pv.id ASC";

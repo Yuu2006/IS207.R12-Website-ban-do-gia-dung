@@ -2,7 +2,8 @@
 
 require_once __DIR__ . '/../config/database.php';
 
-function getProducts(array $filters = []): array
+// $publicOnly: catalog công khai chỉ thấy sản phẩm đang bán; ADMIN truyền false để thấy cả sản phẩm ẩn.
+function getProducts(array $filters = [], bool $publicOnly = false): array
 {
     $pdo = db();
 
@@ -69,7 +70,9 @@ function getProducts(array $filters = []): array
         $params['brand_id'] = (int) $filters['brand_id'];
     }
 
-    if (isset($filters['is_active']) && $filters['is_active'] !== '') {
+    if ($publicOnly) {
+        $sql .= " AND p.is_active = 1";
+    } elseif (isset($filters['is_active']) && $filters['is_active'] !== '') {
         $sql .= " AND p.is_active = :is_active";
         $params['is_active'] = (int) $filters['is_active'];
     }
@@ -82,7 +85,7 @@ function getProducts(array $filters = []): array
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-function getProductById(int $id): ?array
+function getProductById(int $id, bool $publicOnly = false): ?array
 {
     $pdo = db();
 
@@ -94,7 +97,7 @@ function getProductById(int $id): ?array
         FROM products p
         INNER JOIN categories c ON c.id = p.category_id
         INNER JOIN brands b ON b.id = p.brand_id
-        WHERE p.id = :id AND p.is_deleted = 0
+        WHERE p.id = :id AND p.is_deleted = 0" . ($publicOnly ? ' AND p.is_active = 1' : '') . "
         LIMIT 1
     ");
 
