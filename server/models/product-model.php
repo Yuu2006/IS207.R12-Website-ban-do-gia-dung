@@ -19,6 +19,7 @@ function getProducts(array $filters = [], bool $publicOnly = false): array
             p.is_active,
             c.id AS category_id,
             c.name AS category_name,
+            c.slug AS category_slug,
             b.id AS brand_id,
             b.name AS brand_name,
             COALESCE(v.variant_count, 0) AS variant_count,
@@ -93,6 +94,7 @@ function getProductById(int $id, bool $publicOnly = false): ?array
         SELECT
             p.*,
             c.name AS category_name,
+            c.slug AS category_slug,
             b.name AS brand_name
         FROM products p
         INNER JOIN categories c ON c.id = p.category_id
@@ -146,6 +148,17 @@ ORDER BY id
     ");
     $stmt->execute(['product_id' => $id]);
     $product['images'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Chỉ tính đánh giá đang hiển thị của các đơn vị sản phẩm này.
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) AS review_count, ROUND(AVG(pr.rating), 1) AS rating_average
+        FROM product_reviews pr
+        INNER JOIN order_items oi ON oi.id = pr.order_item_id
+        INNER JOIN product_variants pv ON pv.id = oi.variant_id
+        WHERE pv.product_id = :product_id AND pr.is_visible = 1 AND pr.is_deleted = 0 AND oi.is_deleted = 0
+    ");
+    $stmt->execute(['product_id' => $id]);
+    $product['review_summary'] = $stmt->fetch(PDO::FETCH_ASSOC);
 
     return $product;
 }
