@@ -1,6 +1,6 @@
 # HOME-01 / FIT-01 / TCO-01 / LIFE-01 / CARE-01 — schema và API contract
 
-Trạng thái 19/10/2026: **contract đề xuất để tích hợp**, chưa có route/service production. UI React tại `client/src/pages/customer/DecisionToolsPage.jsx` và `client/src/pages/admin/FitRulesPreviewPage.jsx` là bản mẫu, không gọi API và không lưu dữ liệu. Schema nằm tại `server/db/migrations/012_decision_tools.sql`; chưa áp vào database. Contract này giữ ba mức FitCheck và quy tắc quản trị theo đặc tả; FitCheck có thể được hiển thị như bộ lọc trên trang sản phẩm sau khi API hoạt động.
+Trạng thái 06/11/2026: CRUD quy tắc FitCheck cho ADMIN đã có FE/API, cần áp migration `012_decision_tools.sql` rồi `013_fit_rule_versions.sql` trước khi dùng. FitCheck cho khách, room profile, TCO và care vẫn là contract/bản mẫu, chưa có evaluator/API production. Màn hình quản trị lấy field từ catalog, không dùng dữ liệu minh họa. Ba mức kết quả FitCheck được giữ trong contract; thay đổi rule không sửa snapshot phiên bản cũ.
 
 ## 1. Quy ước chung
 
@@ -62,7 +62,24 @@ Response mẫu (giá trị minh họa, không phải dữ liệu catalog):
 
 Áp dụng quy tắc `ACTIVE` của danh mục và sản phẩm; quy tắc sản phẩm cùng `ruleKey` **ghi đè** quy tắc danh mục. Nếu không có quy tắc áp dụng hoặc thiếu thông số bắt buộc, trả `NEEDS_CHECK`, không báo `FIT`. Với mỗi quy tắc, một vế lấy từ trường phòng hoặc thuộc tính sản phẩm trong whitelist; vế còn lại lấy từ trường/thuộc tính hoặc hằng số. So sánh bằng toán tử `LT/LTE/EQ/GTE/GT`; `marginValue` cộng vào vế trái đối với quy tắc kích thước `mm` (khoảng hở cần chừa). Không dùng `eval`. `FAIL` của `BLOCK` → `NOT_FIT`; nếu không có lỗi chặn nhưng có `MISSING` hoặc `FAIL` của `WARN` → `NEEDS_CHECK`; tất cả `PASS` → `FIT`. Response phải giải thích từng quy tắc, kể cả dữ liệu thiếu. Lưu `decision_events` chỉ sau khi tính thành công; retry cùng `requestKey` không tăng lượt.
 
-ADMIN dùng `GET /api/admin/fit-rules?categoryId=&productId=`, `POST /api/admin/fit-rules`, `PATCH /api/admin/fit-rules/{id}` để cấu hình phạm vi, nguồn/toán tử, giá trị, đơn vị, `severity`, thông điệp PASS/FAIL/MISSING, `status`. Một quy tắc thuộc **một** `categoryId` hoặc `productId`; `updatedBy`/`updatedAt` do server ghi, `version` tăng khi sửa. Cho phép vô hiệu hóa, không xóa cứng quy tắc đã được dùng. Chỉ chấp nhận key thuộc whitelist theo danh mục, đúng kiểu/đơn vị, và tối đa một khoảng hở dương. Cần thống nhất với catalog nguồn dữ liệu kích thước và clearance trước khi bật rule production.
+ADMIN dùng `GET /api/admin/fit-rules?categoryId=&productId=&status=&page=`, `GET /api/admin/fit-rules/options?categoryId=`, `GET /api/admin/fit-rules/{id}`, `GET /api/admin/fit-rules/{id}/versions`, `POST /api/admin/fit-rules`, `PATCH /api/admin/fit-rules/{id}` và `DELETE /api/admin/fit-rules/{id}` để cấu hình phạm vi, nguồn/toán tử, giá trị, đơn vị, `severity`, thông điệp PASS/FAIL/MISSING và `status`. `DELETE` chỉ đổi trạng thái sang `INACTIVE`. Một quy tắc thuộc **một** `categoryId` hoặc `productId`; `updatedBy`/`updatedAt` do server ghi theo UTC, `version` tăng khi sửa. PATCH nhận toàn bộ field và `expectedVersion` để chặn ghi đè đồng thời. Mỗi lần tạo/sửa/vô hiệu lưu snapshot JSON bất biến trong `fit_rule_versions` cùng transaction; lịch sử cũ không bị cập nhật. Migration 013 lưu trạng thái hiện tại của rule đã có thành bản `BASELINE`, không giả lập các lần sửa trước khi có audit. Chỉ chấp nhận key trong [bảng field chuẩn](SPEC-FIELDS.md) và metadata `product_attributes` của danh mục có đúng kiểu/đơn vị. Không nhận biểu thức mã nguồn và không dùng `eval`. Khoảng hở không âm, chỉ áp cho mm. Cần TV4 xác nhận nguồn field/đơn vị trước khi bật evaluator FitCheck production.
+
+Ví dụ tạo quy tắc chiều rộng (chỉ khi catalog danh mục 2 có `width_mm` kiểu `number`, đơn vị `mm`):
+
+```json
+{
+  "categoryId": 2, "productId": null, "ruleKey": "width_clearance", "title": "Chiều rộng vị trí",
+  "leftSource": "PRODUCT_ATTRIBUTE", "leftKey": "width_mm", "operator": "LTE",
+  "rightSource": "ROOM_FIELD", "rightKey": "placement_width_mm", "rightValue": null,
+  "marginValue": "20", "unit": "mm", "severity": "BLOCK", "status": "ACTIVE",
+  "passMessage": "Vừa vị trí đặt.", "failMessage": "Vượt chiều rộng vị trí đặt.",
+  "missingMessage": "Thiếu kích thước để kiểm tra."
+}
+```
+
+`GET /api/admin/fit-rules` trả `{ items, total, page, pageSize }` với `pageSize=50`; danh sách và lịch sử chỉ ADMIN xem được. POST trả 201, GET/PATCH/DELETE 200. Thiếu phiên 401, sai role 403, scope/field/đơn vị/toán tử sai 422, ID không tồn tại 404, trùng mã quy tắc hoặc `expectedVersion` cũ 409. Mọi thao tác ghi cần cookie phiên và CSRF theo `http-client.js`; `updatedBy` không nhận từ request. `GET /options` trả danh mục, sản phẩm, field phòng và các field catalog **đủ điều kiện FitCheck** của `categoryId` đã chọn. Metadata không khớp bảng chuẩn sẽ không xuất hiện và không được lưu thành rule.
+
+Kiểm thử độc lập từ gốc repo: `powershell -NoProfile -ExecutionPolicy Bypass -File server/tests/run-fit-rule-mysql.ps1` sau khi có Docker và image PHP `is207r12-website-ban-do-gia-dung-api:latest`. Runner tạo MySQL 8.4 tạm không mở cổng, áp baseline/migration trên `fit_rule_isolated`, kiểm tra CRUD, audit, bản cũ bất biến, version cũ 409, role 403, field sai đơn vị 422 và metadata seed của TV4; sau đó xóa đúng container tạm. Không chạy 012/013 trên DB chung chỉ để thử form.
 
 ## 4. TCO (`POST /api/tco/calculate`)
 
@@ -93,4 +110,4 @@ ADMIN dùng `GET/POST/PATCH /api/admin/care-rules` để cấu hình quy tắc t
 
 ## 7. Ranh giới triển khai hiện tại
 
-Migration và contract này chưa thay thế API implementation. Chưa có CRUD phòng, rule evaluator, TCO calculator, completion bridge hay care scheduler production. Trước khi nối UI cần review schema và nguồn thông số với chủ module catalog/đơn hàng; chỉ bật route sau khi kiểm thử quyền, dữ liệu thiếu, biên kích thước, đổi đơn vị và idempotency.
+CRUD rule quản trị đã triển khai nhưng cần áp cả migration 012/013 trên database được duyệt. Chưa có CRUD phòng, rule evaluator, TCO calculator, completion bridge hay care scheduler production. `decision_events` hiện chỉ ghi lượt và mức kết quả, chưa lưu chi tiết từng lần đánh giá; không được coi bảng phiên bản rule là lịch sử kết quả FitCheck của khách. Trước khi nối evaluator cần TV4 xác nhận metadata catalog và kiểm thử quyền, dữ liệu thiếu, biên kích thước, đổi đơn vị và idempotency.
