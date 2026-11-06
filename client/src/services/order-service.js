@@ -26,7 +26,7 @@ export function mapReturnRequest(dto) {
 
 // Giữ id database cho URL, code cho hiển thị; summary không giả địa chỉ/history.
 export function mapOrder(dto, detail = false) {
-  if (!isId(dto?.id) || !isId(dto.code) || !Number.isSafeInteger(dto.version) || dto.version < 1 || !statuses.includes(dto.orderStatus) || !payments.includes(dto.paymentStatus) || !['COD', 'VNPAY'].includes(dto.paymentMethod) || Number.isNaN(Date.parse(dto.createdAt)) || !Array.isArray(dto.items)) badResponse();
+  if (!isId(dto?.id) || !isId(dto.code) || !Number.isSafeInteger(dto.version) || dto.version < 1 || !statuses.includes(dto.orderStatus) || !payments.includes(dto.paymentStatus) || !['COD', 'VNPAY', 'BANK_TRANSFER'].includes(dto.paymentMethod) || Number.isNaN(Date.parse(dto.createdAt)) || !Array.isArray(dto.items)) badResponse();
   const totals = validateTotals(dto.totals);
   if (detail && (!dto.shippingAddress || !['recipientName', 'phone', 'addressLine'].every(key => typeof dto.shippingAddress[key] === 'string') || !Array.isArray(dto.history))) badResponse();
   if (dto.returnRequest != null && mapReturnRequest(dto.returnRequest).orderId !== dto.id) badResponse();

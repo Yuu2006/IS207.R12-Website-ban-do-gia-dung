@@ -71,7 +71,8 @@ try {
   const cancelled = cancelRace.map(result => JSON.parse(result.output));
   if (cancelled.filter(result => result.ok).length !== 1 || cancelled.filter(result => result.code === 'ORDER_VERSION_CONFLICT').length !== 1) throw new Error(`Cancel/shipping race failed: ${JSON.stringify(cancelled)}`);
   console.log((await call('verify-cancel-race', JSON.stringify(cancel))).output.trim());
-  console.log('PASS: isolated MySQL integration and four two-process races.');
+  console.log((await run(php, [...phpArgs, fileURLToPath(new URL('./payment-mysql.test.php', import.meta.url))])).output.trim());
+  console.log('PASS: isolated MySQL integration, payment ledger and four two-process races.');
 } finally {
   if (server?.pid && server.exitCode === null) {
     const stopped = once(server, 'exit');

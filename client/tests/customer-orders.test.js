@@ -36,7 +36,7 @@ before(async () => {
   };
   const root = fileURLToPath(new URL('../', import.meta.url));
   const config = { root, server: { middlewareMode: true, hmr: false, ws: false, watch: null }, optimizeDeps: { noDiscovery: true, include: [] }, appType: 'custom' };
-  vite = await createServer({ ...config, define: { 'import.meta.env.DEV': 'true', 'import.meta.env.VITE_AUTH_DEMO': '"true"' } });
+  vite = await createServer({ ...config, define: { 'import.meta.env.DEV': 'true', 'import.meta.env.VITE_AUTH_DEMO': '"true"', 'import.meta.env.VITE_ORDER_API_MODE': '"mock"' } });
   Workspace = (await vite.ssrLoadModule('/src/pages/customer/OrderWorkspace.jsx')).default;
   AuthContext = (await vite.ssrLoadModule('/src/context/CustomerAuthContext.jsx')).CustomerAuthContext;
   SharedAuthContext = (await vite.ssrLoadModule('/src/context/auth-context.js')).AuthContext;
@@ -155,6 +155,12 @@ test('development provider uses mock but production forces HTTP even when env re
   function ProductionMode() { return createElement('span', null, productionOrderHook().mode); }
   assert.equal(renderToStaticMarkup(createElement(orderProvider, null, createElement(DevMode))), '<span>mock</span>');
   assert.equal(renderToStaticMarkup(createElement(productionOrderProvider, null, createElement(ProductionMode))), '<span>http</span>');
+});
+
+test('cart and payment return retain a safe login return path', () => {
+  assert.equal(customerReturnPath('/cart'), '/cart');
+  assert.equal(customerReturnPath('/payment/result?vnp_TxnRef=VNPAY-HC123'), '/payment/result?vnp_TxnRef=VNPAY-HC123');
+  assert.equal(customerReturnPath('//example.com/payment/result'), '/orders');
 });
 
 test('unseeded orders render loading, not empty or sample customer data', () => {

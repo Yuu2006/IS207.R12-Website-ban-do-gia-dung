@@ -19,6 +19,8 @@ require_once __DIR__ . '/../controllers/order-controller.php';
 require_once __DIR__ . '/../controllers/checkout-controller.php';
 require_once __DIR__ . '/../routes/order-routes.php';
 require_once __DIR__ . '/../routes/checkout-routes.php';
+require_once __DIR__ . '/../routes/payment-routes.php';
+require_once __DIR__ . '/../models/catalog-checkout-model.php';
 
 // CORS credential chỉ cho origin cấu hình; không phản chiếu Origin tùy ý.
 function orderCorsHeaders(string $origin, string $allowedOrigin): array
@@ -33,7 +35,7 @@ function orderCorsHeaders(string $origin, string $allowedOrigin): array
         'Access-Control-Allow-Origin' => $allowedOrigin,
         'Access-Control-Allow-Credentials' => 'true',
         'Access-Control-Allow-Headers' => 'Content-Type, Authorization, X-CSRF-Token, Idempotency-Key',
-        'Access-Control-Allow-Methods' => 'GET, POST, PATCH, OPTIONS',
+        'Access-Control-Allow-Methods' => 'GET, POST, PUT, PATCH, OPTIONS',
         'Access-Control-Expose-Headers' => 'Allow',
         'Vary' => 'Origin',
     ];
@@ -45,7 +47,7 @@ function runtimeOrderService(): OrderServiceInterface
     if (getenv('ORDER_STORAGE_MODE') !== 'mysql') return new OrderService();
     try {
         require_once __DIR__ . '/../config/database.php';
-        return new OrderService(new OrderModel(\db()));
+        return new OrderService(new OrderModel(\db()), new CatalogCheckoutDependencies());
     } catch (\PDOException $error) {
         error_log('Order database unavailable: ' . $error->getCode());
         throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Chưa thể kết nối dữ liệu đơn hàng.');
@@ -58,7 +60,7 @@ function runtimeCheckoutService(): CheckoutServiceInterface
     if (getenv('ORDER_STORAGE_MODE') !== 'mysql') return new CheckoutService();
     try {
         require_once __DIR__ . '/../config/database.php';
-        return new CheckoutService(new OrderModel(\db()));
+        return new CheckoutService(new OrderModel(\db()), new CatalogCheckoutDependencies());
     } catch (\PDOException $error) {
         error_log('Checkout database unavailable: ' . $error->getCode());
         throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Chưa thể kết nối dữ liệu checkout.');
@@ -80,6 +82,8 @@ function handleOrderApi(
         $method = strtoupper($method);
         $path = rtrim($path, '/') ?: '/';
         $headers = array_change_key_case($headers, CASE_LOWER);
+        $paymentResponse = handlePaymentApi($method, $path, $query, $rawBody, $headers, $serverSession);
+        if ($paymentResponse !== null) return $paymentResponse;
         if ($path === '/' && $method === 'GET') {
             return apiSuccess(['version' => '0.1.0', 'orderApi' => getenv('ORDER_STORAGE_MODE') === 'mysql' ? 'mysql-configured' : 'skeleton', 'storageReady' => false], 'Household E-commerce API');
         }
