@@ -12,7 +12,7 @@ import SalesOrders from '../sales/SalesOrders.jsx';
 import './order-workspace.css';
 
 // Dùng layout storefront cho khách; trang nhân viên nằm trong AppShell (route riêng).
-export default function OrderWorkspace({ orders, cart } = {}) {
+export default function OrderWorkspace({ orders, cart, transitionDirection } = {}) {
   const location = useLocation();
   const { orderId } = useParams();
   const { user } = useCustomerAuth();
@@ -30,7 +30,7 @@ export default function OrderWorkspace({ orders, cart } = {}) {
   if (isSales) return <div className="order-app"><SalesOrders initialOrders={orders} /></div>;
 
   return <><Header /><div className="order-app order-app--storefront">
-    <div key={location.pathname} className="oc-route-panel oc-route-panel--forward">
+    <div key={location.pathname} className={`oc-route-panel${transitionDirection ? ` oc-route-panel--${transitionDirection}` : ''}`}>
       <CustomerRoute>{isPaymentReturn ? <VnpayReturnPage key="vnpay-return" /> : isCheckout ? <Checkout key={user?.id} initialCart={cart} /> :
         <OrderHistory key={`${user?.id ?? 'guest'}-${orderId ?? 'list'}`} initialOrders={customerOrders} detail={Boolean(orderId)} />
       }</CustomerRoute>

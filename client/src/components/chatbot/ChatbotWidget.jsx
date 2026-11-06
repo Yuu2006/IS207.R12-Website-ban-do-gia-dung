@@ -1,95 +1,76 @@
-import { MessageCircle, Send, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { MessageCircle, Package, Send, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import ComparisonPreview from './ComparisonPreview.jsx';
+import { API_URL } from '../../services/http-client.js';
+import { searchChatbotCatalog } from '../../services/chatbot-service.js';
 import './chatbot-preview.css';
 
-const firstMessage = {
-  id: 0,
-  role: 'assistant',
-  text: 'Tôi có thể giúp bạn xem cách hỏi giá hoặc so sánh sản phẩm. Bạn đang quan tâm sản phẩm nào?',
-};
+const quickSearches = ['Tủ lạnh', 'Máy giặt', 'Máy lạnh'];
+const initialMessage = { id: 0, role: 'assistant', text: 'Nhập tên sản phẩm, thương hiệu hoặc SKU để tra thông tin catalog hiện tại.' };
+const money = value => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(Number(value || 0));
+const imageSource = value => !value ? '' : /^https?:\/\//i.test(value) ? value : `${API_URL}${value.startsWith('/') ? value : `/${value}`}`;
 
-const sessionKey = 'homecare-chatbot-preview-messages';
-
-function restoreMessages() {
-  try {
-    const saved = JSON.parse(sessionStorage.getItem(sessionKey));
-    if (Array.isArray(saved) && saved.length > 0 && saved.every(message => Number.isSafeInteger(message.id) && message.id >= 0 && ['assistant', 'user'].includes(message.role) && typeof message.text === 'string' && message.text.length <= 1000)) return saved.slice(-40);
-  } catch { /* Session storage can be unavailable; the in-memory conversation still works. */ }
-  return [firstMessage];
-}
-
-const quickQuestions = [
-  {
-    id: 'price', label: 'Hỏi giá', prompt: 'Giá sản phẩm này bao nhiêu?',
-    reply: 'Để báo đúng giá, tôi cần biết sản phẩm và SKU bạn chọn. Bản mẫu chưa lấy giá từ catalog. Bạn muốn xem giá của sản phẩm nào?',
-  },
-  {
-    id: 'compare', label: 'So sánh sản phẩm', prompt: 'So sánh các sản phẩm giúp tôi',
-    reply: 'Bạn có thể chọn 2–4 sản phẩm cùng loại ở bảng mẫu bên dưới. Khi chưa nêu tiêu chí, tôi sẽ so sánh giá, thông số hiệu năng và nhu cầu sử dụng. Bạn muốn xem kỹ tiêu chí nào?',
-    comparisonScope: 'default',
-  },
-  {
-    id: 'compare-price', label: 'Chỉ so sánh giá', prompt: 'Chỉ so sánh giá các sản phẩm',
-    reply: 'Bảng mẫu bên dưới chỉ hiển thị giá của các sản phẩm cùng loại. Bạn muốn hỏi thêm về tiêu chí nào?',
-    comparisonScope: 'price',
-  },
-];
-
-// Bản mẫu không phân tích ý định từ tin nhắn tự do và không gọi chatbot hoặc catalog API.
+// Catalog lookup assistant; replies only with active SKU, server price, stock and a real detail route.
 export default function ChatbotWidget() {
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState(restoreMessages);
+  const [messages, setMessages] = useState([initialMessage]);
   const [draft, setDraft] = useState('');
-  const [comparisonScope, setComparisonScope] = useState(null);
+  const [loading, setLoading] = useState(false);
   const inputRef = useRef(null);
   const launcherRef = useRef(null);
   const historyRef = useRef(null);
-  const latestReplyRef = useRef(null);
-  const nextMessageIdRef = useRef(Math.max(...messages.map(message => message.id)) + 1);
+  const nextId = useRef(1);
 
   useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
-  useEffect(() => {
-    const history = historyRef.current;
-    if (!open || !history) return;
-    if (comparisonScope && latestReplyRef.current) {
-      history.scrollTop += latestReplyRef.current.getBoundingClientRect().top - history.getBoundingClientRect().top - 8;
-    } else {
-      history.scrollTop = history.scrollHeight;
-    }
-  }, [messages, open, comparisonScope]);
-  useEffect(() => { try { sessionStorage.setItem(sessionKey, JSON.stringify(messages.slice(-40))); } catch { /* Keep the current tab usable without storage. */ } }, [messages]);
+  useEffect(() => { if (open && historyRef.current) historyRef.current.scrollTop = historyRef.current.scrollHeight; }, [messages, loading, open]);
 
   function closeChat() {
     setOpen(false);
     requestAnimationFrame(() => launcherRef.current?.focus());
   }
 
-  function appendExchange(question, reply) {
-    const userId = nextMessageIdRef.current++;
-    const assistantId = nextMessageIdRef.current++;
-    setMessages(current => [...current.slice(-38), { id: userId, role: 'user', text: question }, { id: assistantId, role: 'assistant', text: reply }]);
-  }
-
-  function askQuickQuestion(question) {
-    appendExchange(question.prompt, question.reply);
-    setComparisonScope(question.comparisonScope || null);
-  }
-
-  function sendDraft(event) {
-    event.preventDefault();
-    const question = draft.trim();
-    if (!question) return;
-    appendExchange(question, 'Đây là bản mẫu giao diện nên tôi chưa thể xử lý câu hỏi tự nhập hoặc tra dữ liệu sản phẩm. Bạn muốn thử hỏi về giá hay so sánh sản phẩm nào?');
+  async function search(query) {
+    const value = query.trim();
+    if (!value || loading) return;
+    setLoading(true);
     setDraft('');
-    setComparisonScope(null);
+    setMessages(current => [...current.slice(-24), { id: nextId.current++, role: 'user', text: value }]);
+    try {
+      const result = await searchChatbotCatalog(value, { limit: 8 });
+      const items = result.items || [];
+      setMessages(current => [...current.slice(-24), {
+        id: nextId.current++, role: 'assistant',
+        text: items.length ? `Tìm thấy ${items.length} SKU phù hợp. Giá và tồn kho được lấy lúc ${new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(result.checkedAt))}.` : 'Không tìm thấy SKU phù hợp trong sản phẩm đang bán. Hãy thử tên ngắn hơn, thương hiệu hoặc mã SKU.',
+        items, checkedAt: result.checkedAt,
+      }]);
+    } catch (failure) {
+      setMessages(current => [...current.slice(-24), { id: nextId.current++, role: 'assistant', text: failure.message || 'Chưa thể tra cứu catalog. Vui lòng thử lại.', isError: true }]);
+    } finally { setLoading(false); }
   }
 
-  return <div className="hc-chatbot-root"><button ref={launcherRef} type="button" className="hc-chatbot-launcher" aria-expanded={open} aria-controls="homecare-chatbot-panel" onClick={() => open ? closeChat() : setOpen(true)}><MessageCircle size={20} aria-hidden="true" /><span>Tư vấn chọn mua</span></button>
-    {open && <section id="homecare-chatbot-panel" className="hc-chatbot-panel" aria-label="Trợ lý chọn mua - bản mẫu" onKeyDown={event => { if (event.key === 'Escape') closeChat(); }}>
-      <header className="hc-chatbot-header"><div><strong>Trợ lý chọn mua</strong><span>Bản mẫu giao diện · chưa kết nối API</span></div><button type="button" aria-label="Đóng hộp thoại" onClick={closeChat}><X size={20} aria-hidden="true" /></button></header>
-      <div className="hc-chatbot-history" ref={historyRef} aria-live="polite" aria-relevant="additions text">{messages.map((message, index) => <div className={`hc-chatbot-message hc-chatbot-message--${message.role}`} key={message.id} ref={index === messages.length - 1 && message.role === 'assistant' ? latestReplyRef : null}><span className="hc-chatbot-speaker">{message.role === 'assistant' ? 'HomeCare' : 'Bạn'}</span><p>{message.text}</p></div>)}{comparisonScope && <ComparisonPreview key={comparisonScope} initialScope={comparisonScope} />}</div>
-      <div className="hc-chatbot-input-area"><div className="hc-chatbot-quick-heading">Câu hỏi thường gặp</div><div className="hc-chatbot-quick-list">{quickQuestions.map(question => <button key={question.id} type="button" onClick={() => askQuickQuestion(question)}>{question.label}</button>)}</div><form onSubmit={sendDraft}><label className="hc-chatbot-sr-only" htmlFor="chatbot-message">Nhập câu hỏi</label><input ref={inputRef} id="chatbot-message" value={draft} onChange={event => setDraft(event.target.value)} maxLength={500} placeholder="Nhập câu hỏi của bạn…" /><button type="submit" aria-label="Gửi câu hỏi" disabled={!draft.trim()}><Send size={17} aria-hidden="true" /></button></form><p className="hc-chatbot-disclaimer">Tin nhắn tự nhập chưa được xử lý. Bản mẫu chỉ phản hồi các câu hỏi có sẵn; không cung cấp báo giá thật.</p></div>
+  function submit(event) { event.preventDefault(); search(draft); }
+
+  return <div className="hc-chatbot-root">
+    <button ref={launcherRef} type="button" className="hc-chatbot-launcher" aria-expanded={open} aria-controls="homecare-chatbot-panel" onClick={() => open ? closeChat() : setOpen(true)}><MessageCircle size={20} aria-hidden="true" /><span>Tư vấn chọn mua</span></button>
+    {open && <section id="homecare-chatbot-panel" className="hc-chatbot-panel" aria-label="Tra cứu sản phẩm HomeCare" onKeyDown={event => { if (event.key === 'Escape') closeChat(); }}>
+      <header className="hc-chatbot-header"><div><strong>Tra cứu sản phẩm</strong><span>Tên sản phẩm · thương hiệu · SKU</span></div><button type="button" aria-label="Đóng hộp thoại" onClick={closeChat}><X size={20} aria-hidden="true" /></button></header>
+      <div className="hc-chatbot-history" ref={historyRef} aria-live="polite" aria-relevant="additions text">
+        {messages.map(message => <div className={`hc-chatbot-message hc-chatbot-message--${message.role}`} key={message.id}>
+          <span className="hc-chatbot-speaker">{message.role === 'assistant' ? 'HomeCare' : 'Bạn'}</span>
+          <p>{message.text}</p>
+          {message.items?.length > 0 && <div className="hc-chatbot-results">{message.items.map(item => <Link className="hc-chatbot-product" key={item.variantId} to={item.href} onClick={closeChat}>
+            <span className="hc-chatbot-product__image">{item.imageUrl ? <img src={imageSource(item.imageUrl)} alt="" /> : <Package size={20} aria-hidden="true" />}</span>
+            <span className="hc-chatbot-product__details"><strong>{item.productName}</strong><small>{item.brandName} · {item.sku}{item.variantName ? ` · ${item.variantName}` : ''}</small><b>{money(item.currentPrice)}</b></span>
+            <span className={`hc-chatbot-stock${item.stockQuantity > 0 ? '' : ' is-empty'}`}>{item.stockQuantity > 0 ? `Còn ${item.stockQuantity}` : 'Hết hàng'}</span>
+          </Link>)}</div>}
+          {message.isError && <span className="hc-chatbot-error-tag" role="alert">Có lỗi khi tra cứu</span>}
+        </div>)}
+        {loading && <div className="hc-chatbot-message hc-chatbot-message--assistant" role="status"><span className="hc-chatbot-speaker">HomeCare</span><p>Đang tra cứu catalog…</p></div>}
+      </div>
+      <div className="hc-chatbot-input-area"><div className="hc-chatbot-quick-heading">Tìm nhanh</div><div className="hc-chatbot-quick-list">{quickSearches.map(query => <button key={query} type="button" disabled={loading} onClick={() => search(query)}>{query}</button>)}</div>
+        <form onSubmit={submit}><label className="hc-chatbot-sr-only" htmlFor="chatbot-message">Tìm tên sản phẩm, thương hiệu hoặc SKU</label><input ref={inputRef} id="chatbot-message" value={draft} onChange={event => setDraft(event.target.value)} maxLength={100} placeholder="Ví dụ: máy giặt LG, SKU…" disabled={loading} /><button type="submit" aria-label="Tìm sản phẩm" disabled={!draft.trim() || loading}><Send size={17} aria-hidden="true" /></button></form>
+        <p className="hc-chatbot-disclaimer">Giá và tồn kho là dữ liệu catalog tại thời điểm tra cứu, có thể thay đổi trước khi đặt hàng.</p>
+      </div>
     </section>}
   </div>;
 }

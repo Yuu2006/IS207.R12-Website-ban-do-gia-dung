@@ -11,7 +11,7 @@ export function comparableCandidates(products, first) {
   return products.filter(product => sameCategory(first, product) && String(product.id) !== String(first.id));
 }
 
-// Trang chi tiết storefront hiện còn dữ liệu mẫu: tên giúp tránh chọn nhầm ID trùng với API.
+// Resolve the requested catalog product by database ID and reject mismatched legacy names.
 export function findRequestedProduct(products, id, expectedName = '') {
   if (!hasValue(id)) return null;
   const product = products.find(item => String(item.id) === String(id));

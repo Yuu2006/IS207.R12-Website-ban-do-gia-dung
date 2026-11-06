@@ -116,7 +116,10 @@ final class CheckoutRuntimeModel
         $lines = $this->cartLines((string) $cart['id']);
         $variants = $this->variants($lines);
         if (count($variants) !== count($lines)) throw new ApiException(409, 'CART_ITEM_UNAVAILABLE', 'Một sản phẩm trong giỏ không còn được bán. Hãy cập nhật giỏ hàng.');
-        return ['cartVersion' => (int) $cart['cart_version'], 'items' => $this->mapItems($lines, $variants, false)];
+        $items = $this->mapItems($lines, $variants, false);
+        foreach ($items as &$item) $item['availableQuantity'] = (int) $variants[$item['skuId']]['stock_quantity'];
+        unset($item);
+        return ['cartVersion' => (int) $cart['cart_version'], 'items' => $items];
     }
 
     // Atomically decrement one available SKU and append its immutable stock movement.

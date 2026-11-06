@@ -83,6 +83,21 @@ export function createMockOrderService({ getCustomer, getStaff = async () => sta
     async listSalesOrders(options = {}) { await wait(options.signal); await sales(); return list(orders, options); },
     async getSalesOrder(id, options = {}) { await wait(options.signal); return copy(find(id, await sales())); },
     async getCart(options = {}) { await wait(options.signal); return copy(cartFor(await customer())); },
+    async updateCartItem(variantId, quantity, expectedCartVersion, options = {}) {
+      await wait(options.signal);
+      const user = await customer();
+      const input = { variantId: String(variantId), quantity, expectedCartVersion };
+      return mutate(user, `cart:update-item:${input.variantId}`, input, options, () => {
+        const cart = cartFor(user);
+        if (cart.cartVersion !== input.expectedCartVersion) fail(409, 'CART_VERSION_CONFLICT', 'Giỏ hàng đã thay đổi.');
+        const item = cart.items.find(line => String(line.sku_id) === input.variantId);
+        if (!item) fail(404, 'CART_ITEM_NOT_FOUND', 'Sản phẩm không còn trong giỏ hàng.');
+        if (!Number.isSafeInteger(input.quantity) || input.quantity < 1) fail(422, 'INVALID_CART_ITEM', 'Số lượng không hợp lệ.');
+        const next = { cartVersion: cart.cartVersion + 1, items: cart.items.map(line => String(line.sku_id) === input.variantId ? { ...line, quantity: input.quantity } : line) };
+        carts.set(user.id, next);
+        return next;
+      });
+    },
     async getAddresses(options = {}) { await wait(options.signal); return copy(addressesFor(await customer())); },
     async quoteCheckout(input, options = {}) { await wait(options.signal); return quote(await customer(), input); },
     async cancelOrder(id, input, options) {

@@ -204,6 +204,31 @@ function validateCheckoutInput(array $input, bool $create = false): array
     return $result;
 }
 
+// Validate an add-to-cart request; price, stock, customer and cart state remain server-owned.
+function validateCartAdd(array $input): array
+{
+    allowOrderFields($input, ['variantId', 'quantity', 'expectedCartVersion']);
+    $quantity = orderPositiveInteger($input['quantity'] ?? null, 'quantity');
+    if ($quantity > 4294967295) invalidOrderInput('quantity', 'Số lượng vượt giới hạn lưu trữ.');
+    return [
+        'variantId' => orderDatabaseId($input['variantId'] ?? null, 'variantId'),
+        'quantity' => $quantity,
+        'expectedCartVersion' => orderPositiveInteger($input['expectedCartVersion'] ?? null, 'expectedCartVersion'),
+    ];
+}
+
+// Validate an absolute quantity update; cart ownership/version and available stock stay server-owned.
+function validateCartUpdate(array $input): array
+{
+    allowOrderFields($input, ['quantity', 'expectedCartVersion']);
+    $quantity = orderPositiveInteger($input['quantity'] ?? null, 'quantity');
+    if ($quantity > 4294967295) invalidOrderInput('quantity', 'Số lượng vượt giới hạn lưu trữ.');
+    return [
+        'quantity' => $quantity,
+        'expectedCartVersion' => orderPositiveInteger($input['expectedCartVersion'] ?? null, 'expectedCartVersion'),
+    ];
+}
+
 // Chuẩn hóa payload ghi; state/owner/version thật phải kiểm tra lại từ database.
 function validateOrderMutation(array $input, string $operation): array
 {

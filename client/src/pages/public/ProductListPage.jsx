@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   SlidersHorizontal,
   ChevronDown,
@@ -6,23 +7,15 @@ import {
   List,
   Search,
 } from "lucide-react";
-import { products, categories, formatPrice } from "../../data";
+import { formatPrice } from "../../data";
 import ProductCard from "../../components/ProductCard";
+import { listProducts, getProduct } from "../../services/catalog-service.js";
+import { API_URL } from "../../services/http-client.js";
+import { useOrderService } from "../../context/OrderServiceContext.jsx";
 
 const PRICE_MIN = 0;
 const PRICE_MAX = 20000000;
 const PRICE_STEP = 100000;
-
-const brands = [
-  "Samsung",
-  "LG",
-  "Daikin",
-  "Panasonic",
-  "Sharp",
-  "Toshiba",
-  "Dyson",
-  "Ariston",
-];
 
 const warrantyOptions = [
   "6 tháng",
@@ -34,21 +27,70 @@ const warrantyOptions = [
 
 const sortOptions = [
   "Mới nhất",
-  "Bán chạy nhất",
   "Giá tăng dần",
   "Giá giảm dần",
-  "Đánh giá cao nhất",
 ];
 
+const imageSource = (value) => !value ? "" : /^https?:\/\//i.test(value) ? value : `${API_URL}${value.startsWith("/") ? value : `/${value}`}`;
+const categoryIcon = (name) => /tủ lạnh/i.test(name) ? "🧊" : /máy giặt/i.test(name) ? "🧺" : /lạnh|điều hòa/i.test(name) ? "❄️" : "📦";
+
+function mapCatalogProduct(product) {
+  return {
+    ...product,
+    id: String(product.id),
+    categoryId: String(product.category_id),
+    category: product.category_name,
+    brand: product.brand_name,
+    price: Number(product.min_price),
+    image: imageSource(product.primary_image),
+    rating: null,
+    reviews: 0,
+    inStock: Number(product.total_stock) > 0,
+    variant_count: Number(product.variant_count),
+  };
+}
+
 export default function ProductListPage() {
+  const navigate = useNavigate();
+  const orderService = useOrderService();
+  const [products, setProducts] = useState([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState("");
+  const [catalogRetry, setCatalogRetry] = useState(0);
+  const [addingProductId, setAddingProductId] = useState("");
   const [selectedCat, setSelectedCat] = useState(null);
   const [selectedBrands, setSelectedBrands] = useState([]);
   const [priceRange, setPriceRange] = useState([0, 20000000]);
-  const [sort, setSort] = useState("Bán chạy nhất");
+  const [sort, setSort] = useState("Mới nhất");
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
   const [search, setSearch] = useState("");
   const [actionMessage, setActionMessage] = useState("");
+  const [actionError, setActionError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setCatalogLoading(true);
+    setCatalogError("");
+    listProducts({ is_active: 1 })
+      .then((result) => {
+        if (!Array.isArray(result)) throw new Error("Danh sách sản phẩm không đúng định dạng.");
+        if (active) setProducts(result.map(mapCatalogProduct).filter((product) => product.variant_count > 0));
+      })
+      .catch((error) => { if (active) setCatalogError(error.message || "Không thể tải danh sách sản phẩm."); })
+      .finally(() => { if (active) setCatalogLoading(false); });
+    return () => { active = false; };
+  }, [catalogRetry]);
+
+  const categories = useMemo(() => {
+    const grouped = new Map();
+    products.forEach((product) => {
+      if (!grouped.has(product.categoryId)) grouped.set(product.categoryId, { id: product.categoryId, name: product.category, count: 0, icon: categoryIcon(product.category) });
+      grouped.get(product.categoryId).count += 1;
+    });
+    return [...grouped.values()].sort((left, right) => left.name.localeCompare(right.name, "vi"));
+  }, [products]);
+  const brands = useMemo(() => [...new Set(products.map((product) => product.brand).filter(Boolean))].sort((a, b) => a.localeCompare(b, "vi")), [products]);
 
   const toggleBrand = (brand) => {
     setSelectedBrands((prev) =>
@@ -89,7 +131,7 @@ export default function ProductListPage() {
   const filtered = products.filter((product) => {
     if (
       selectedCat &&
-      product.category !== selectedCat
+      product.categoryId !== String(selectedCat)
     ) {
       return false;
     }
@@ -130,33 +172,55 @@ export default function ProductListPage() {
         return b.price - a.price;
       }
 
-      if (sort === "Đánh giá cao nhất") {
-        return b.rating - a.rating;
-      }
-
       return 0;
     }
   );
+  const pageSize = 12;
+  const totalPages = Math.max(1, Math.ceil(sortedProducts.length / pageSize));
+  const visibleProducts = sortedProducts.slice((page - 1) * pageSize, page * pageSize);
 
   const handleProductClick = (id) => {
-    window.location.href = `/products/${id}`;
+    navigate(`/products/${id}`);
   };
 
-  const handleAddToCart = (product) => {
-    setActionMessage(`Chức năng giỏ hàng hiện chưa khả dụng cho ${product.name}.`);
+  const handleAddToCart = async (product) => {
+    setActionMessage("");
+    if (!product.inStock) {
+      setActionError(true);
+      setActionMessage("Sản phẩm hiện đã hết hàng.");
+      return;
+    }
+    if (product.variant_count !== 1) {
+      handleProductClick(product.id);
+      return;
+    }
+    setAddingProductId(product.id);
+    try {
+      const detail = await getProduct(product.id);
+      const variant = detail.variants?.find((item) => Number(item.stock_quantity) > 0);
+      if (!variant) throw new Error("SKU của sản phẩm hiện đã hết hàng.");
+      await orderService.addCartItem(String(variant.id), 1);
+      setActionError(false);
+      setActionMessage(`Đã thêm ${product.name} vào giỏ hàng.`);
+    } catch (error) {
+      setActionError(true);
+      setActionMessage(error.message || "Không thể thêm sản phẩm vào giỏ hàng.");
+    } finally {
+      setAddingProductId("");
+    }
   };
 
   return (
     <main className="min-h-screen bg-[#F7FAFC]">
       {/* PAGE HEADER */}
-      <section className="border-b border-[#E2E8F0] bg-white">
+      <section className="border-b border-[#E5E7EB] bg-white">
         <div className="mx-auto max-w-7xl px-4 py-8">
-          <div className="mb-2 flex items-center gap-2 text-sm text-[#64748B]">
+          <div className="mb-2 flex items-center gap-2 text-sm text-[#667085]">
             <button
               onClick={() => {
                 window.location.href = "/";
               }}
-              className="hover:text-[#176B87]"
+              className="hover:text-[#0F5F73]"
             >
               Trang chủ
             </button>
@@ -177,7 +241,7 @@ export default function ProductListPage() {
             Sản phẩm
           </h1>
 
-          <p className="mt-2 text-sm text-[#64748B]">
+          <p className="mt-2 text-sm text-[#667085]">
             Khám phá các thiết bị gia dụng chính hãng
             từ những thương hiệu hàng đầu.
           </p>
@@ -188,7 +252,7 @@ export default function ProductListPage() {
         {/* MOBILE FILTER BUTTON */}
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className="mb-4 flex items-center gap-2 rounded-xl border border-[#E2E8F0] bg-white px-4 py-2.5 text-sm font-medium text-[#1F2937] lg:hidden"
+          className="mb-4 flex items-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-4 py-2.5 text-sm font-medium text-[#1F2937] lg:hidden"
         >
           <SlidersHorizontal size={16} />
           Bộ lọc
@@ -201,13 +265,13 @@ export default function ProductListPage() {
               showFilters ? "block" : "hidden"
             } lg:block`}
           >
-            <div className="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white">
+            <div className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white">
               {/* FILTER HEADER */}
-              <div className="flex items-center justify-between border-b border-[#E2E8F0] px-4 py-3">
+              <div className="flex items-center justify-between border-b border-[#E5E7EB] px-4 py-3">
                 <div className="flex items-center gap-2">
                   <SlidersHorizontal
                     size={15}
-                    className="text-[#176B87]"
+                    className="text-[#0F5F73]"
                   />
 
                   <span className="text-sm font-semibold text-[#1F2937]">
@@ -217,15 +281,15 @@ export default function ProductListPage() {
 
                 <button
                   onClick={clearFilters}
-                  className="text-xs font-medium text-[#176B87] hover:underline"
+                  className="text-xs font-medium text-[#0F5F73] hover:underline"
                 >
                   Xóa
                 </button>
               </div>
 
               {/* CATEGORY */}
-              <div className="border-b border-[#E2E8F0] p-4">
-                <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+              <div className="border-b border-[#E5E7EB] p-4">
+                <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#667085]">
                   Danh mục
                 </div>
 
@@ -237,7 +301,7 @@ export default function ProductListPage() {
                     }}
                     className={`w-full rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${
                       !selectedCat
-                        ? "bg-[#e8f4f8] font-medium text-[#176B87]"
+                        ? "bg-[#eaf4f6] font-medium text-[#0F5F73]"
                         : "text-[#1F2937] hover:bg-gray-50"
                     }`}
                   >
@@ -253,7 +317,7 @@ export default function ProductListPage() {
                       }}
                       className={`w-full rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${
                         selectedCat === category.id
-                          ? "bg-[#e8f4f8] font-medium text-[#176B87]"
+                          ? "bg-[#eaf4f6] font-medium text-[#0F5F73]"
                           : "text-[#1F2937] hover:bg-gray-50"
                       }`}
                     >
@@ -265,8 +329,8 @@ export default function ProductListPage() {
               </div>
 
               {/* BRAND */}
-              <div className="border-b border-[#E2E8F0] p-4">
-                <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+              <div className="border-b border-[#E5E7EB] p-4">
+                <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#667085]">
                   Thương hiệu
                 </div>
 
@@ -284,7 +348,7 @@ export default function ProductListPage() {
                         onChange={() =>
                           toggleBrand(brand)
                         }
-                        className="accent-[#176B87]"
+                        className="accent-[#0F5F73]"
                       />
 
                       <span className="text-sm text-[#1F2937]">
@@ -296,8 +360,8 @@ export default function ProductListPage() {
               </div>
 
               {/* PRICE */}
-              <div className="border-b border-[#E2E8F0] p-4">
-                <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+              <div className="border-b border-[#E5E7EB] p-4">
+                <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#667085]">
                   Khoảng giá
                 </div>
 
@@ -379,7 +443,7 @@ export default function ProductListPage() {
                       className={`w-full rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${
                         priceRange[0] === min &&
                         priceRange[1] === max
-                          ? "bg-[#e8f4f8] font-medium text-[#176B87]"
+                          ? "bg-[#eaf4f6] font-medium text-[#0F5F73]"
                           : "text-[#1F2937] hover:bg-gray-50"
                       }`}
                     >
@@ -391,7 +455,7 @@ export default function ProductListPage() {
 
               {/* WARRANTY */}
               <div className="p-4">
-                <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+                <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#667085]">
                   Thời hạn bảo hành
                 </div>
 
@@ -403,7 +467,7 @@ export default function ProductListPage() {
                     >
                       <input
                         type="checkbox"
-                        className="accent-[#176B87]"
+                        className="accent-[#0F5F73]"
                       />
 
                       <span className="text-sm text-[#1F2937]">
@@ -433,14 +497,14 @@ export default function ProductListPage() {
                     setPage(1);
                   }}
                   placeholder="Tìm kiếm sản phẩm..."
-                  className="w-full rounded-xl border border-[#E2E8F0] bg-white py-2.5 pl-10 pr-4 text-sm outline-none transition-colors focus:border-[#176B87]"
+                  className="w-full rounded-xl border border-[#E5E7EB] bg-white py-2.5 pl-10 pr-4 text-sm outline-none transition-colors focus:border-[#0F5F73]"
                 />
               </div>
             </div>
 
             {/* TOOLBAR */}
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="text-sm text-[#64748B]">
+              <div className="text-sm text-[#667085]">
                 Hiển thị{" "}
                 <span className="font-semibold text-[#1F2937]">
                   {sortedProducts.length}
@@ -456,7 +520,7 @@ export default function ProductListPage() {
                     onChange={(event) =>
                       setSort(event.target.value)
                     }
-                    className="appearance-none rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 pr-8 text-sm outline-none focus:border-[#176B87]"
+                    className="appearance-none rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 pr-8 text-sm outline-none focus:border-[#0F5F73]"
                   >
                     {sortOptions.map((option) => (
                       <option key={option}>
@@ -467,22 +531,22 @@ export default function ProductListPage() {
 
                   <ChevronDown
                     size={14}
-                    className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[#64748B]"
+                    className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[#667085]"
                   />
                 </div>
 
                 {/* VIEW */}
-                <div className="flex overflow-hidden rounded-xl border border-[#E2E8F0]">
+                <div className="flex overflow-hidden rounded-xl border border-[#E5E7EB]">
                   <button
                     type="button"
-                    className="bg-[#176B87] p-2 text-white"
+                    className="bg-[#0F5F73] p-2 text-white"
                   >
                     <Grid3X3 size={15} />
                   </button>
 
                   <button
                     type="button"
-                    className="p-2 text-[#64748B] hover:bg-gray-50"
+                    className="p-2 text-[#667085] hover:bg-gray-50"
                   >
                     <List size={15} />
                   </button>
@@ -492,40 +556,48 @@ export default function ProductListPage() {
 
             {actionMessage && (
               <p
-                className="mb-4 rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm text-[#B42318]"
-                role="alert"
+                className={`mb-4 rounded-lg border px-4 py-3 text-sm ${actionError ? "border-[#FECACA] bg-[#FEF2F2] text-[#B42318]" : "border-[#A6D4BD] bg-[#F2FAF5] text-[#216444]"}`}
+                role={actionError ? "alert" : "status"}
               >
                 {actionMessage}
               </p>
             )}
 
             {/* PRODUCTS */}
-            {sortedProducts.length > 0 ? (
+            {catalogLoading ? (
+              <div className="rounded-2xl border border-[#E5E7EB] bg-white p-16 text-center text-sm text-[#667085]" role="status">Đang tải sản phẩm…</div>
+            ) : catalogError ? (
+              <div className="rounded-2xl border border-[#FECACA] bg-white p-12 text-center" role="alert">
+                <p className="text-sm text-[#B42318]">{catalogError}</p>
+                <button type="button" onClick={() => setCatalogRetry((value) => value + 1)} className="mt-3 text-sm font-semibold text-[#0F5F73]">Thử tải lại</button>
+              </div>
+            ) : sortedProducts.length > 0 ? (
               <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
-                {sortedProducts.map((product) => (
+                {visibleProducts.map((product) => (
                   <ProductCard
                     key={product.id}
                     product={product}
                     navigate={handleProductClick}
                     onAddToCart={handleAddToCart}
+                    adding={addingProductId === product.id}
                   />
                 ))}
               </div>
             ) : (
-              <div className="rounded-2xl border border-[#E2E8F0] bg-white p-16 text-center">
+              <div className="rounded-2xl border border-[#E5E7EB] bg-white p-16 text-center">
                 <div className="mb-4 text-4xl">🔍</div>
 
                 <div className="mb-2 font-semibold text-[#1F2937]">
                   Không tìm thấy sản phẩm
                 </div>
 
-                <div className="text-sm text-[#64748B]">
+                <div className="text-sm text-[#667085]">
                   Vui lòng thay đổi bộ lọc để xem thêm sản phẩm.
                 </div>
 
                 <button
                   onClick={clearFilters}
-                  className="mt-4 text-sm font-medium text-[#176B87] hover:underline"
+                  className="mt-4 text-sm font-medium text-[#0F5F73] hover:underline"
                 >
                   Xóa bộ lọc
                 </button>
@@ -534,26 +606,21 @@ export default function ProductListPage() {
 
             {/* PAGINATION */}
             <div className="mt-8 flex items-center justify-center gap-2">
-              {[1, 2, 3, 4, 5].map((number) => (
+              {Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => (
                 <button
                   key={number}
                   onClick={() => setPage(number)}
                   className={`h-9 w-9 rounded-xl text-sm font-medium transition-colors ${
                     page === number
-                      ? "bg-[#176B87] text-white"
-                      : "border border-[#E2E8F0] bg-white text-[#1F2937] hover:border-[#176B87]"
+                      ? "bg-[#0F5F73] text-white"
+                      : "border border-[#E5E7EB] bg-white text-[#1F2937] hover:border-[#0F5F73]"
                   }`}
                 >
                   {number}
                 </button>
               ))}
 
-              <button
-                type="button"
-                className="h-9 w-9 rounded-xl border border-[#E2E8F0] bg-white text-sm text-[#64748B] hover:border-[#176B87]"
-              >
-                ›
-              </button>
+              {totalPages > 1 && <button type="button" disabled={page >= totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))} className="h-9 w-9 rounded-xl border border-[#E5E7EB] bg-white text-sm text-[#667085] hover:border-[#0F5F73] disabled:opacity-40">›</button>}
             </div>
           </div>
         </div>

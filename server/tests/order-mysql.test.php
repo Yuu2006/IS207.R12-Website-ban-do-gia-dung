@@ -5,7 +5,7 @@ if (PHP_SAPI !== 'cli' || getenv('ORDER_MYSQL_TEST') !== 'isolated') { http_resp
 require_once __DIR__ . '/../utils/order-api.php';
 require_once __DIR__ . '/order-test-dependencies.php';
 
-use HomeCare\OrderApi\{ApiException, OrderModel, OrderService, CheckoutService, MysqlCheckoutDependencies, SqlTestCheckoutDependencies, VnpayGateway, VnpayPaymentService, ReturnRefundModel, ReturnRefundService, ReportModel, ReportService};
+use HomeCare\OrderApi\{ApiException, OrderModel, OrderService, CheckoutService, CartService, MysqlCheckoutDependencies, SqlTestCheckoutDependencies, VnpayGateway, VnpayPaymentService, ReturnRefundModel, ReturnRefundService, ReportModel, ReportService};
 use function HomeCare\OrderApi\{orderMoney, orderTransition, validateOrderList};
 
 // Guard all modes, including schema creation/shutdown, to the runner's private loopback DB.
@@ -50,6 +50,7 @@ $deps = new SqlTestCheckoutDependencies();
 $orders = new OrderService($model, $deps);
 $checkout = new CheckoutService($model, $deps);
 $runtimeDependencies = new MysqlCheckoutDependencies();
+$cartService = new CartService($model, $runtimeDependencies);
 $gateway = new VnpayGateway(['tmnCode' => 'TEST1234', 'hashSecret' => 'isolated-test-secret', 'returnUrl' => 'http://localhost:5173/orders/payment-return', 'ipnUrl' => 'https://merchant.example.test/api/payments/vnpay/ipn']);
 $runtimeCheckout = new CheckoutService($model, $runtimeDependencies, $gateway);
 $vnpayPayments = new VnpayPaymentService($model, $runtimeDependencies, $gateway);
@@ -213,6 +214,23 @@ check('deadlock exhaustion returns retryable 503 and persists no key or partial 
     ensure((int) sql("SELECT COUNT(*) FROM order_idempotency WHERE request_key = 'exhausted-retry-test-key'") === 0);
 });
 check('integer VND rejects decimals and overflow', function () { ensure(orderMoney('123.00') === 123); errorCode(fn () => orderMoney('123.01'), 'ORDER_DATA_INCOMPATIBLE'); errorCode(fn () => orderMoney('9007199254740992'), 'ORDER_DATA_INCOMPATIBLE'); });
+check('cart add merges SKU once, replays idempotently, rejects stale version and does not reserve stock', function () use ($cartService) {
+    $principal = actor(9);
+    $initial = $cartService->getCart($principal);
+    $stockBefore = (int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1');
+    $input = ['variantId' => '1', 'quantity' => 1, 'expectedCartVersion' => $initial['cartVersion']];
+    $added = $cartService->addItem($principal, $input, 'cart-add-runtime-key-0001');
+    $replay = $cartService->addItem($principal, $input, 'cart-add-runtime-key-0001');
+    ensure($added === $replay && $added['cartVersion'] === $initial['cartVersion'] + 1);
+    ensure(count($added['items']) === 1 && $added['items'][0]['quantity'] === 1);
+
+    $merged = $cartService->addItem($principal, ['variantId' => '1', 'quantity' => 2, 'expectedCartVersion' => $added['cartVersion']], 'cart-add-runtime-key-0002');
+    ensure($merged['cartVersion'] === $added['cartVersion'] + 1 && $merged['items'][0]['quantity'] === 3);
+    errorCode(fn () => $cartService->addItem($principal, $input, 'cart-add-runtime-key-stale'), 'CART_VERSION_CONFLICT');
+    errorCode(fn () => $cartService->addItem($principal, ['variantId' => '2', 'quantity' => 2, 'expectedCartVersion' => $merged['cartVersion']], 'cart-add-runtime-key-stock'), 'OUT_OF_STOCK');
+    ensure((int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === $stockBefore, 'Adding cart items must not decrement stock.');
+    ensure($cartService->getCart($principal) === $merged, 'Rejected mutations changed the cart.');
+});
 $input = cart();
 $quote = $checkout->quoteCheckout(actor(), $input);
 $createInput = $input + ['quoteFingerprint' => $quote['quoteFingerprint'], 'note' => 'Original note'];
