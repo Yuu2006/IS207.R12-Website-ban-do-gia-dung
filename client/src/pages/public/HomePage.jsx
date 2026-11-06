@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import { categories, products } from "../../data";
+import { useStorefront } from "../../hooks/use-storefront";
 import ProductCard from "../../components/ProductCard";
 
 const reviews = [
@@ -38,8 +38,11 @@ const reviews = [
 ];
 
 export default function HomePage() {
-  const featured = products.slice(0, 4);
-  const bestsellers = products.slice(2, 6);
+  const { data } = useStorefront();
+  const categories = data?.categories ?? [];
+  const featured = (data?.products ?? []).slice(0, 4);
+  // Chưa có API doanh số: lấy 4 sản phẩm kế tiếp thay cho "bán chạy".
+  const bestsellers = (data?.products ?? []).slice(4, 8);
 
   const goProducts = () => {
     window.location.href = "/products";
