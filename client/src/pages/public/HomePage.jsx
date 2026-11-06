@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   Star,
@@ -8,9 +9,11 @@ import {
   ChevronRight,
   ArrowLeftRight,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
-import { categories, products } from "../../data";
+import { listProducts, getProduct } from "../../services/catalog-service.js";
+import { API_URL } from "../../services/http-client.js";
+import { useOrderService } from "../../context/OrderServiceContext.jsx";
 import ProductCard from "../../components/ProductCard";
 
 const reviews = [
@@ -38,25 +41,87 @@ const reviews = [
 ];
 
 export default function HomePage() {
+  const navigate = useNavigate();
+  const orderService = useOrderService();
+  const [products, setProducts] = useState([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [cartMessage, setCartMessage] = useState("");
+  const [cartError, setCartError] = useState(false);
+  const [addingProductId, setAddingProductId] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    listProducts({ is_active: 1 })
+      .then((result) => {
+        if (!Array.isArray(result)) throw new Error("Danh sách sản phẩm không đúng định dạng.");
+        if (active) setProducts(result.filter((item) => Number(item.variant_count) > 0).map((item) => ({
+          ...item,
+          id: String(item.id),
+          brand: item.brand_name,
+          image: !item.primary_image ? "" : /^https?:\/\//i.test(item.primary_image) ? item.primary_image : `${API_URL}${item.primary_image.startsWith("/") ? item.primary_image : `/${item.primary_image}`}`,
+          price: Number(item.min_price),
+          rating: null,
+          reviews: 0,
+          inStock: Number(item.total_stock) > 0,
+          variant_count: Number(item.variant_count),
+        })));
+      })
+      .catch((error) => { if (active) setCartMessage(error.message || "Không thể tải sản phẩm."); })
+      .finally(() => { if (active) setCatalogLoading(false); });
+    return () => { active = false; };
+  }, []);
+
   const featured = products.slice(0, 4);
-  const bestsellers = products.slice(2, 6);
+  const bestsellers = products.slice(4, 8);
+  const categories = useMemo(() => {
+    const grouped = new Map();
+    products.forEach((product) => {
+      const key = String(product.category_id);
+      if (!grouped.has(key)) grouped.set(key, { id: key, name: product.category_name, count: 0, icon: /tủ lạnh/i.test(product.category_name) ? "🧊" : /máy giặt/i.test(product.category_name) ? "🧺" : /lạnh|điều hòa/i.test(product.category_name) ? "❄️" : "📦" });
+      grouped.get(key).count += 1;
+    });
+    return [...grouped.values()].sort((left, right) => left.name.localeCompare(right.name, "vi"));
+  }, [products]);
 
   const goProducts = () => {
-    window.location.href = "/products";
+    navigate("/products");
   };
 
   const goProductDetail = (id) => {
-    window.location.href = `/products/${id}`;
+    navigate(`/products/${id}`);
   };
 
-  const addToCart = (product) => {
-    console.log("Add to cart:", product);
+  const addToCart = async (product) => {
+    setCartMessage("");
+    setCartError(false);
+    if (!product.inStock) {
+      setCartError(true);
+      setCartMessage("Sản phẩm hiện đã hết hàng.");
+      return;
+    }
+    if (product.variant_count !== 1) {
+      goProductDetail(product.id);
+      return;
+    }
+    setAddingProductId(product.id);
+    try {
+      const detail = await getProduct(product.id);
+      const variant = detail.variants?.find((item) => Number(item.stock_quantity) > 0);
+      if (!variant) throw new Error("SKU của sản phẩm hiện đã hết hàng.");
+      await orderService.addCartItem(String(variant.id), 1);
+      setCartMessage(`Đã thêm ${product.name} vào giỏ hàng.`);
+    } catch (error) {
+      setCartError(true);
+      setCartMessage(error.message || "Không thể thêm sản phẩm vào giỏ hàng.");
+    } finally {
+      setAddingProductId("");
+    }
   };
 
   return (
     <div className="min-h-screen bg-[#F7FAFC]">
       {/* ================= HERO ================= */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-[#176B87] via-[#176B87] to-[#0f4f65]">
+      <section className="relative overflow-hidden bg-gradient-to-br from-[#0F5F73] via-[#0F5F73] to-[#0B4E60]">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute right-0 top-0 h-96 w-96 translate-x-1/2 -translate-y-1/2 rounded-full bg-[#64CCC5] blur-3xl" />
 
@@ -98,7 +163,7 @@ export default function HomePage() {
               <div className="flex flex-wrap gap-3">
                 <button
                   onClick={goProducts}
-                  className="flex items-center gap-2 rounded-xl bg-white px-6 py-3 font-semibold text-[#176B87] transition-all hover:bg-[#64CCC5] hover:text-white"
+                  className="flex items-center gap-2 rounded-lg bg-white px-6 py-3 font-semibold text-[#0F5F73] transition-all hover:bg-[#0B4E60] hover:text-white"
                 >
                   Khám phá sản phẩm
                   <ArrowRight size={16} />
@@ -161,7 +226,7 @@ export default function HomePage() {
       </section>
 
       {/* ================= VALUE PROPS ================= */}
-      <section className="border-b border-[#E2E8F0] bg-white">
+      <section className="border-b border-[#E5E7EB] bg-white">
         <div className="mx-auto max-w-7xl px-4 py-6">
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             {[
@@ -190,7 +255,7 @@ export default function HomePage() {
                 key={index}
                 className="flex items-center gap-3 py-2"
               >
-                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[#e8f4f8] text-[#176B87]">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[#eaf4f6] text-[#0F5F73]">
                   {item.icon}
                 </div>
 
@@ -199,7 +264,7 @@ export default function HomePage() {
                     {item.title}
                   </div>
 
-                  <div className="text-xs text-[#64748B]">
+                  <div className="text-xs text-[#667085]">
                     {item.sub}
                   </div>
                 </div>
@@ -218,7 +283,7 @@ export default function HomePage() {
 
           <button
             onClick={goProducts}
-            className="flex items-center gap-1 text-sm font-medium text-[#176B87] hover:underline"
+            className="flex items-center gap-1 text-sm font-medium text-[#0F5F73] hover:underline"
           >
             Xem tất cả
             <ChevronRight size={14} />
@@ -230,17 +295,17 @@ export default function HomePage() {
             <button
               key={category.id}
               onClick={goProducts}
-              className="group flex flex-col items-center gap-2 rounded-2xl border border-[#E2E8F0] bg-white p-3 transition-all hover:border-[#176B87] hover:shadow-md"
+              className="group flex flex-col items-center gap-2 rounded-2xl border border-[#E5E7EB] bg-white p-3 transition-all hover:border-[#0F5F73] hover:shadow-md"
             >
               <span className="text-2xl">
                 {category.icon}
               </span>
 
-              <span className="text-center text-xs font-medium leading-tight text-[#1F2937] transition-colors group-hover:text-[#176B87]">
+              <span className="text-center text-xs font-medium leading-tight text-[#1F2937] transition-colors group-hover:text-[#0F5F73]">
                 {category.name}
               </span>
 
-              <span className="text-xs text-[#64748B]">
+              <span className="text-xs text-[#667085]">
                 {category.count}
               </span>
             </button>
@@ -250,15 +315,15 @@ export default function HomePage() {
 
       {/* ================= PRODUCT COMPARISON ================= */}
       <section className="mx-auto max-w-7xl px-4 pb-12">
-        <div className="flex flex-col gap-6 rounded-2xl border border-[#B6DBE4] bg-[#E8F4F7] p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
+        <div className="flex flex-col gap-6 rounded-2xl border border-[#B6DBE4] bg-[#EAF4F6] p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
           <div className="flex items-start gap-4">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#176B87] text-white"><ArrowLeftRight size={23} /></span>
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#0F5F73] text-white"><ArrowLeftRight size={23} /></span>
             <div>
               <h2 className="text-xl font-bold text-[#1F2937]">So sánh sản phẩm</h2>
-              <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#64748B]">Chọn hai sản phẩm cùng loại để xem giá, hãng và các thông số cạnh nhau.</p>
+              <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#667085]">Chọn hai sản phẩm cùng loại để xem giá, hãng và các thông số cạnh nhau.</p>
             </div>
           </div>
-          <Link to="/compare" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#176B87] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#0F4F65]">Bắt đầu so sánh <ArrowRight size={16} /></Link>
+          <Link to="/compare" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-[#0F5F73] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#0B4E60]">Bắt đầu so sánh <ArrowRight size={16} /></Link>
         </div>
       </section>
 
@@ -267,39 +332,40 @@ export default function HomePage() {
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold text-[#1F2937]">
-              Sản phẩm nổi bật
+              Sản phẩm mới
             </h2>
 
-            <p className="mt-1 text-sm text-[#64748B]">
-              Được khách hàng yêu thích nhất
+            <p className="mt-1 text-sm text-[#667085]">
+              Sản phẩm hiện đang được niêm yết
             </p>
           </div>
 
           <button
             onClick={goProducts}
-            className="flex items-center gap-1 text-sm font-medium text-[#176B87] hover:underline"
+            className="flex items-center gap-1 text-sm font-medium text-[#0F5F73] hover:underline"
           >
             Xem thêm
             <ChevronRight size={14} />
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {catalogLoading ? <p className="py-10 text-center text-sm text-[#667085]" role="status">Đang tải sản phẩm…</p> : featured.length ? <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {featured.map((product) => (
             <ProductCard
               key={product.id}
               product={product}
               navigate={goProductDetail}
               onAddToCart={addToCart}
+              adding={addingProductId === product.id}
             />
           ))}
-        </div>
+        </div> : <p className="py-10 text-center text-sm text-[#667085]">Chưa có sản phẩm đang bán.</p>}
       </section>
 
       {/* ================= PROMO ================= */}
       <section className="mx-auto max-w-7xl px-4 pb-12">
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="relative flex min-h-36 flex-col justify-between overflow-hidden rounded-2xl bg-gradient-to-br from-[#176B87] to-[#0f4f65] p-6 text-white">
+          <div className="relative flex min-h-36 flex-col justify-between overflow-hidden rounded-xl bg-gradient-to-br from-[#0F5F73] to-[#0B4E60] p-6 text-white">
             <div className="absolute bottom-0 right-0 opacity-20">
               <div className="h-32 w-32 -translate-x-4 translate-y-4 rounded-full bg-white" />
             </div>
@@ -318,13 +384,13 @@ export default function HomePage() {
 
             <button
               onClick={goProducts}
-              className="mt-4 w-fit rounded-xl bg-white px-4 py-2 text-sm font-semibold text-[#176B87] transition-all hover:bg-[#64CCC5] hover:text-white"
+              className="mt-4 w-fit rounded-lg bg-white px-4 py-2 text-sm font-semibold text-[#0F5F73] transition-all hover:bg-[#0B4E60] hover:text-white"
             >
               Mua ngay →
             </button>
           </div>
 
-          <div className="relative flex min-h-36 flex-col justify-between overflow-hidden rounded-2xl bg-gradient-to-br from-[#0f4f65] to-[#1F2937] p-6 text-white">
+          <div className="relative flex min-h-36 flex-col justify-between overflow-hidden rounded-xl bg-gradient-to-br from-[#0B4E60] to-[#1F2937] p-6 text-white">
             <div className="absolute bottom-0 right-0 opacity-20">
               <div className="h-32 w-32 -translate-x-4 translate-y-4 rounded-full bg-[#64CCC5]" />
             </div>
@@ -345,7 +411,7 @@ export default function HomePage() {
               onClick={() =>
                 alert("Trang đặt lịch sửa chữa")
               }
-              className="mt-4 w-fit rounded-xl bg-[#64CCC5] px-4 py-2 text-sm font-semibold text-[#1F2937] transition-all hover:opacity-90"
+              className="mt-4 w-fit rounded-lg bg-white px-4 py-2 text-sm font-semibold text-[#0F5F73] transition-all hover:bg-[#EAF4F6]"
             >
               Đặt lịch ngay →
             </button>
@@ -354,47 +420,48 @@ export default function HomePage() {
       </section>
 
       {/* ================= BEST SELLERS ================= */}
-      <section className="border-y border-[#E2E8F0] bg-white py-12">
+      <section className="border-y border-[#E5E7EB] bg-white py-12">
         <div className="mx-auto max-w-7xl px-4">
           <div className="mb-6 flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold text-[#1F2937]">
-                Bán chạy nhất
+                Thêm lựa chọn
               </h2>
 
-              <p className="mt-1 text-sm text-[#64748B]">
-                Top sản phẩm được mua nhiều nhất tháng này
+              <p className="mt-1 text-sm text-[#667085]">
+                Một số sản phẩm khác đang được niêm yết
               </p>
             </div>
 
             <button
               onClick={goProducts}
-              className="flex items-center gap-1 text-sm font-medium text-[#176B87] hover:underline"
+              className="flex items-center gap-1 text-sm font-medium text-[#0F5F73] hover:underline"
             >
               Xem thêm
               <ChevronRight size={14} />
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {catalogLoading ? <p className="py-10 text-center text-sm text-[#667085]" role="status">Đang tải sản phẩm…</p> : bestsellers.length > 0 && <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             {bestsellers.map((product) => (
               <ProductCard
                 key={product.id}
                 product={product}
                 navigate={goProductDetail}
                 onAddToCart={addToCart}
+                adding={addingProductId === product.id}
               />
             ))}
-          </div>
+          </div>}
         </div>
       </section>
 
       {/* ================= WARRANTY ================= */}
       <section className="mx-auto max-w-7xl px-4 py-14">
-        <div className="rounded-3xl bg-[#e8f4f8] p-8 lg:p-12">
+        <div className="rounded-3xl bg-[#eaf4f6] p-8 lg:p-12">
           <div className="grid items-center gap-10 lg:grid-cols-2">
             <div>
-              <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-[#176B87] px-4 py-1 text-xs font-semibold text-white">
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-[#0F5F73] px-4 py-1 text-xs font-semibold text-white">
                 <Shield size={12} />
                 Dịch vụ bảo hành & sửa chữa
               </div>
@@ -402,12 +469,12 @@ export default function HomePage() {
               <h2 className="mb-4 text-3xl font-bold text-[#1F2937]">
                 Bảo hành tự động.
                 <br />
-                <span className="text-[#176B87]">
+                <span className="text-[#0F5F73]">
                   Sửa chữa nhanh chóng.
                 </span>
               </h2>
 
-              <p className="mb-6 leading-relaxed text-[#64748B]">
+              <p className="mb-6 leading-relaxed text-[#667085]">
                 Mọi sản phẩm mua tại HomeCare đều được đăng
                 ký bảo hành tự động. Khi có sự cố, đội ngũ kỹ
                 thuật viên chuyên nghiệp sẽ đến nhà bạn trong
@@ -419,7 +486,7 @@ export default function HomePage() {
                   onClick={() =>
                     alert("Trang tra cứu bảo hành")
                   }
-                  className="flex items-center gap-2 rounded-xl bg-[#176B87] px-5 py-2.5 font-semibold text-white transition-colors hover:bg-[#0f4f65]"
+                  className="flex items-center gap-2 rounded-lg bg-[#0F5F73] px-5 py-2.5 font-semibold text-white transition-colors hover:bg-[#0B4E60]"
                 >
                   <Shield size={15} />
                   Tra cứu bảo hành
@@ -429,7 +496,7 @@ export default function HomePage() {
                   onClick={() =>
                     alert("Trang đặt lịch sửa chữa")
                   }
-                  className="rounded-xl border border-[#176B87] bg-white px-5 py-2.5 font-semibold text-[#176B87] transition-colors hover:bg-[#e8f4f8]"
+                  className="rounded-xl border border-[#0F5F73] bg-white px-5 py-2.5 font-semibold text-[#0F5F73] transition-colors hover:bg-[#eaf4f6]"
                 >
                   Đặt lịch sửa chữa
                 </button>
@@ -461,7 +528,7 @@ export default function HomePage() {
               ].map((item, index) => (
                 <div
                   key={index}
-                  className="rounded-2xl border border-[#E2E8F0] bg-white p-4"
+                  className="rounded-2xl border border-[#E5E7EB] bg-white p-4"
                 >
                   <div className="mb-2 text-2xl">
                     {item.icon}
@@ -471,7 +538,7 @@ export default function HomePage() {
                     {item.title}
                   </div>
 
-                  <div className="text-xs leading-relaxed text-[#64748B]">
+                  <div className="text-xs leading-relaxed text-[#667085]">
                     {item.desc}
                   </div>
                 </div>
@@ -482,7 +549,7 @@ export default function HomePage() {
       </section>
 
       {/* ================= REVIEWS ================= */}
-      <section className="border-y border-[#E2E8F0] bg-white py-12">
+      <section className="border-y border-[#E5E7EB] bg-white py-12">
         <div className="mx-auto max-w-7xl px-4">
           <div className="mb-8 text-center">
             <h2 className="text-2xl font-bold text-[#1F2937]">
@@ -500,7 +567,7 @@ export default function HomePage() {
                 ))}
               </div>
 
-              <span className="ml-1 text-sm text-[#64748B]">
+              <span className="ml-1 text-sm text-[#667085]">
                 4.8/5 từ 2.300+ đánh giá
               </span>
             </div>
@@ -510,10 +577,10 @@ export default function HomePage() {
             {reviews.map((review, index) => (
               <div
                 key={index}
-                className="rounded-2xl border border-[#E2E8F0] bg-[#F7FAFC] p-5"
+                className="rounded-2xl border border-[#E5E7EB] bg-[#F7FAFC] p-5"
               >
                 <div className="mb-3 flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#176B87] font-bold text-white">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0F5F73] font-bold text-white">
                     {review.avatar}
                   </div>
 
@@ -522,7 +589,7 @@ export default function HomePage() {
                       {review.name}
                     </div>
 
-                    <div className="text-xs text-[#64748B]">
+                    <div className="text-xs text-[#667085]">
                       {review.product}
                     </div>
                   </div>
@@ -542,7 +609,7 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                <p className="text-sm leading-relaxed text-[#64748B]">
+                <p className="text-sm leading-relaxed text-[#667085]">
                   "{review.text}"
                 </p>
               </div>
@@ -550,6 +617,14 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+      {cartMessage && (
+        <div
+          className={`fixed bottom-5 right-5 z-50 max-w-sm rounded-lg border px-4 py-3 text-sm shadow-lg ${cartError ? "border-[#FECACA] bg-[#FEF2F2] text-[#B42318]" : "border-[#A6D4BD] bg-[#F2FAF5] text-[#216444]"}`}
+          role={cartError ? "alert" : "status"}
+        >
+          {cartMessage}{!cartError && <Link to="/checkout" className="ml-2 font-semibold text-[#0F5F73]">Thanh toán</Link>}
+        </div>
+      )}
     </div>
   );
 }

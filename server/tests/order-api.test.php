@@ -11,10 +11,12 @@ require_once __DIR__ . '/../utils/order-api.php';
 use HomeCare\OrderApi\ApiException;
 use HomeCare\OrderApi\OrderServiceInterface;
 use HomeCare\OrderApi\CheckoutServiceInterface;
+use HomeCare\OrderApi\CartServiceInterface;
 use function HomeCare\OrderApi\handleOrderApi;
 use function HomeCare\OrderApi\orderCorsHeaders;
 use function HomeCare\OrderApi\orderRoutes;
 use function HomeCare\OrderApi\checkoutRoutes;
+use function HomeCare\OrderApi\cartRoutes;
 
 $spec = json_decode(file_get_contents(__DIR__ . '/../../docs/api/order-checkout.openapi.json'), true, 512, JSON_THROW_ON_ERROR);
 $checks = 0;
@@ -103,6 +105,33 @@ class FixtureCheckoutService implements CheckoutServiceInterface
     }
 }
 
+class FixtureCartService implements CartServiceInterface
+{
+    public array $calls = [];
+
+    public function __construct(private readonly array $spec)
+    {
+    }
+
+    public function getCart(array $principal): array
+    {
+        $this->calls[] = ['GET', $principal];
+        return $this->spec['paths']['/cart']['get']['responses']['200']['content']['application/json']['example']['data'];
+    }
+
+    public function addItem(array $principal, array $input, string $key): array
+    {
+        $this->calls[] = ['POST', $principal, $input, $key];
+        return $this->spec['paths']['/cart']['get']['responses']['200']['content']['application/json']['example']['data'];
+    }
+
+    public function updateItem(array $principal, string $variantId, array $input, string $key): array
+    {
+        $this->calls[] = ['PATCH', $principal, $variantId, $input, $key];
+        return $this->spec['paths']['/cart']['get']['responses']['200']['content']['application/json']['example']['data'];
+    }
+}
+
 function ensure(bool $condition, string $message = 'Assertion failed'): void
 {
     if (!$condition) {
@@ -123,10 +152,10 @@ function check(string $name, callable $test): void
     }
 }
 
-function request(string $method, string $path, array $body = [], array $query = [], ?array $principalSession = null, ?array $requestHeaders = null, ?OrderServiceInterface $orders = null, ?CheckoutServiceInterface $checkout = null): array
+function request(string $method, string $path, array $body = [], array $query = [], ?array $principalSession = null, ?array $requestHeaders = null, ?OrderServiceInterface $orders = null, ?CheckoutServiceInterface $checkout = null, ?CartServiceInterface $cart = null): array
 {
     global $session, $headers;
-    return handleOrderApi($method, $path, $query, json_encode((object) $body, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), $requestHeaders ?? $headers, $principalSession ?? $session, $orders, $checkout);
+    return handleOrderApi($method, $path, $query, json_encode((object) $body, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), $requestHeaders ?? $headers, $principalSession ?? $session, $orders, $checkout, $cart);
 }
 
 function expectError(array $response, int $status, string $code): void
@@ -143,9 +172,9 @@ function roleSession(string $role): array
     return array_replace($session, ['user' => array_replace($session['user'], ['role' => $role])]);
 }
 
-check('ten PHP routes match OpenAPI methods, operation IDs and role matrix', function () use ($spec): void {
-    $routes = array_merge(orderRoutes(), checkoutRoutes());
-    ensure(count($routes) === 10);
+check('twelve PHP routes match OpenAPI methods, operation IDs and role matrix', function () use ($spec): void {
+    $routes = array_merge(orderRoutes(), checkoutRoutes(), cartRoutes());
+    ensure(count($routes) === 12);
     foreach ($routes as $route) {
         $operation = $spec['paths'][$route['path']][strtolower($route['method'])];
         ensure($operation['operationId'] === $route['action']);
@@ -163,7 +192,7 @@ check('only explicit health is 200; unknown path is 404 and wrong method is 405'
 });
 
 check('all protected routes reject anonymous before validation/service', function (): void {
-    foreach (array_merge(orderRoutes(), checkoutRoutes()) as $route) {
+    foreach (array_merge(orderRoutes(), checkoutRoutes(), cartRoutes()) as $route) {
         expectError(request($route['method'], str_replace('{orderId}', '101', $route['path']), [], [], []), 401, 'AUTH_REQUIRED');
     }
 });
@@ -181,7 +210,7 @@ check('expired/malformed server session is 401 and non-MVP role is 403', functio
 });
 
 check('all four roles obey endpoint role matrix; allowed valid request reaches 503 service', function () use ($spec): void {
-    foreach (array_merge(orderRoutes(), checkoutRoutes()) as $route) {
+    foreach (array_merge(orderRoutes(), checkoutRoutes(), cartRoutes()) as $route) {
         $operation = $spec['paths'][$route['path']][strtolower($route['method'])];
         $body = $operation['requestBody']['content']['application/json']['example'] ?? [];
         foreach (['CUSTOMER', 'ADMIN', 'SALES', 'WAREHOUSE'] as $role) {
@@ -198,6 +227,22 @@ check('write endpoints require matching server CSRF token; quote does not need i
         expectError(request('POST', '/checkout/quote', $body, [], null, $invalid), 403, 'CSRF_INVALID');
     }
     expectError(request('POST', '/checkout/quote', $body, [], null, ['Content-Type' => 'application/json', 'X-CSRF-Token' => 'test-csrf-token']), 503, 'SERVICE_UNAVAILABLE');
+    $cartBody = $spec['paths']['/cart/items']['post']['requestBody']['content']['application/json']['example'];
+    expectError(request('POST', '/cart/items', $cartBody, [], null, ['Content-Type' => 'application/json', 'Idempotency-Key' => $headers['Idempotency-Key']]), 403, 'CSRF_INVALID');
+    expectError(request('POST', '/cart/items', $cartBody, [], null, array_replace($headers, ['X-CSRF-Token' => 'wrong'])), 403, 'CSRF_INVALID');
+});
+
+check('cart add validates SKU-only input and delegates authenticated principal, cart version and idempotency key', function () use ($spec, $headers): void {
+    $service = new FixtureCartService($spec);
+    $body = $spec['paths']['/cart/items']['post']['requestBody']['content']['application/json']['example'];
+    $response = request('POST', '/cart/items', $body, [], null, null, null, null, $service);
+    ensure($response['status'] === 200 && $response['body']['data']['cartVersion'] === 3);
+    ensure($service->calls[0][1]['id'] === '1');
+    ensure($service->calls[0][2] === $body);
+    ensure($service->calls[0][3] === $headers['Idempotency-Key']);
+    foreach ([array_replace($body, ['quantity' => 0]), array_replace($body, ['variantId' => '0']), array_replace($body, ['price' => 1])] as $invalid) {
+        expectError(request('POST', '/cart/items', $invalid), 422, 'INVALID_INPUT');
+    }
 });
 
 check('malformed JSON, non-object, unsupported media and oversized payload use correct status', function () use ($headers, $session): void {
@@ -263,13 +308,14 @@ check('cancel controller passes server actor/id/version/reason/key and returns e
     expectError(request('POST', '/orders/101/cancel', ['expectedVersion' => '1', 'reason' => 'Đổi nhu cầu']), 422, 'INVALID_INPUT');
 });
 
-check('return controller validates reason/version and returns 201 without claiming refund', function () use ($spec): void {
+check('return controller validates issue category/reason/version and returns 201 without claiming refund', function () use ($spec): void {
     $service = new FixtureOrderService($spec);
-    $response = request('POST', '/orders/101/returns', ['expectedVersion' => 5, 'reason' => '  Hỏng khi nhận  '], [], null, null, $service);
+    $response = request('POST', '/orders/101/returns', ['expectedVersion' => 5, 'issueCategory' => 'TRANSIT_DAMAGE', 'reason' => '  Hỏng khi nhận  '], [], null, null, $service);
     ensure($response['status'] === 201 && $response['body']['data']['status'] === 'requested');
-    ensure($service->calls[0][1][2] === ['expectedVersion' => 5, 'reason' => 'Hỏng khi nhận']);
-    expectError(request('POST', '/orders/101/returns', ['expectedVersion' => 5, 'reason' => '']), 422, 'REASON_REQUIRED');
-    expectError(request('POST', '/orders/101/returns', ['expectedVersion' => 5, 'reason' => 'Test', 'refundAmount' => 1]), 422, 'INVALID_INPUT');
+    ensure($service->calls[0][1][2] === ['expectedVersion' => 5, 'issueCategory' => 'TRANSIT_DAMAGE', 'reason' => 'Hỏng khi nhận']);
+    expectError(request('POST', '/orders/101/returns', ['expectedVersion' => 5, 'issueCategory' => 'TRANSIT_DAMAGE', 'reason' => '']), 422, 'REASON_REQUIRED');
+    expectError(request('POST', '/orders/101/returns', ['expectedVersion' => 5, 'issueCategory' => 'OTHER', 'reason' => 'Test', 'refundAmount' => 1]), 422, 'INVALID_INPUT');
+    expectError(request('POST', '/orders/101/returns', ['expectedVersion' => 5, 'issueCategory' => 'NOT_A_CATEGORY', 'reason' => 'Test']), 422, 'INVALID_INPUT');
 });
 
 check('reorder controller delegates current-cart version instead of snapshot pricing', function () use ($spec): void {
@@ -304,7 +350,7 @@ check('checkout quote and create have validated DTO input and 200/201 envelopes'
 });
 
 check('all default services fail closed without database connection or fixture success', function () use ($spec): void {
-    foreach (array_merge(orderRoutes(), checkoutRoutes()) as $route) {
+    foreach (array_merge(orderRoutes(), checkoutRoutes(), cartRoutes()) as $route) {
         $operation = $spec['paths'][$route['path']][strtolower($route['method'])];
         $body = $operation['requestBody']['content']['application/json']['example'] ?? [];
         expectError(request($route['method'], str_replace('{orderId}', '101', $route['path']), $body, [], roleSession($route['roles'][0])), 503, 'SERVICE_UNAVAILABLE');

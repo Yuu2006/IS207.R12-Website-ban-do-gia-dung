@@ -12,6 +12,7 @@ const php = process.env.PHP_BIN || 'php';
 const mysqld = process.env.MYSQLD_BIN || 'mysqld';
 const phpArgs = process.env.PHP_EXTENSION_DIR ? ['-n', '-d', `extension_dir=${process.env.PHP_EXTENSION_DIR}`, '-d', 'extension=php_pdo_mysql.dll'] : [];
 const suite = fileURLToPath(new URL('./order-mysql.test.php', import.meta.url));
+const tcoSuite = fileURLToPath(new URL('./tco-mysql.test.php', import.meta.url));
 const tempParent = await realpath(tmpdir());
 const root = await mkdtemp(join(tempParent, 'homecare-order-mysql-'));
 const portProbe = createServer();
@@ -30,6 +31,7 @@ const run = (binary, args, allowedFailure = false) => new Promise((resolve, reje
   child.on('exit', code => code === 0 || allowedFailure ? resolve({ code, output }) : reject(new Error(output || `Process exited ${code}`)));
 });
 const call = (...args) => run(php, [...phpArgs, suite, ...args]);
+const callTco = (...args) => run(php, [...phpArgs, tcoSuite, ...args]);
 let server;
 let log = '';
 try {
@@ -48,10 +50,12 @@ try {
   }
   if (!ready) throw new Error(`MySQL did not become ready: ${log}`);
   console.log((await call('init')).output.trim());
+  console.log((await callTco('init')).output.trim());
   console.log((await call('test')).output.trim());
+  console.log((await callTco('test')).output.trim());
   // Two independent PHP/PDO processes contend for the same last SKU.
   const prepared = JSON.parse((await call('prepare-race')).output);
-  const checkoutRace = await Promise.all(prepared.map(input => call('checkout-worker', JSON.stringify(input))));
+  const checkoutRace = await Promise.all(prepared.map(input => call('runtime-checkout-worker', JSON.stringify(input))));
   const outcomes = checkoutRace.map(result => JSON.parse(result.output));
   if (outcomes.filter(result => result.ok).length !== 1 || outcomes.filter(result => result.code === 'OUT_OF_STOCK').length !== 1) throw new Error(`Oversell race failed: ${JSON.stringify(outcomes)}`);
   console.log((await call('verify-race')).output.trim());
@@ -71,7 +75,14 @@ try {
   const cancelled = cancelRace.map(result => JSON.parse(result.output));
   if (cancelled.filter(result => result.ok).length !== 1 || cancelled.filter(result => result.code === 'ORDER_VERSION_CONFLICT').length !== 1) throw new Error(`Cancel/shipping race failed: ${JSON.stringify(cancelled)}`);
   console.log((await call('verify-cancel-race', JSON.stringify(cancel))).output.trim());
-  console.log('PASS: isolated MySQL integration and four two-process races.');
+  // Two independent requests with the same checkout key must replay one committed order.
+  const duplicateInput = JSON.parse((await call('prepare-idempotency-race')).output);
+  const duplicateSubmit = await Promise.all([call('runtime-checkout-worker', JSON.stringify(duplicateInput)), call('runtime-checkout-worker', JSON.stringify(duplicateInput))]);
+  const duplicateResults = duplicateSubmit.map(result => JSON.parse(result.output));
+  if (!duplicateResults.every(result => result.ok)) throw new Error(`Concurrent duplicate checkout failed: ${JSON.stringify(duplicateResults)}`);
+  assert.deepEqual(duplicateResults[0], duplicateResults[1], 'Concurrent duplicate checkout must replay one identical response.');
+  console.log((await call('verify-idempotency-race', JSON.stringify(duplicateInput))).output.trim());
+  console.log('PASS: isolated MySQL integration and five two-process races.');
 } finally {
   if (server?.pid && server.exitCode === null) {
     const stopped = once(server, 'exit');

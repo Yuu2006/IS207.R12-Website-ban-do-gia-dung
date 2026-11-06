@@ -12,13 +12,31 @@ require_once __DIR__ . '/../models/order-model.php';
 require_once __DIR__ . '/../models/payment-model.php';
 require_once __DIR__ . '/../models/order-idempotency-model.php';
 require_once __DIR__ . '/../models/checkout-model.php';
+require_once __DIR__ . '/../services/vnpay-gateway.php';
+require_once __DIR__ . '/../services/vnpay-payment-service.php';
+require_once __DIR__ . '/../models/checkout-runtime-model.php';
 require_once __DIR__ . '/../services/checkout-dependencies.php';
+require_once __DIR__ . '/../services/mysql-checkout-dependencies.php';
 require_once __DIR__ . '/../services/order-service.php';
+require_once __DIR__ . '/../services/mysql-device-care-completion.php';
 require_once __DIR__ . '/../services/checkout-service.php';
+require_once __DIR__ . '/../services/cart-service.php';
 require_once __DIR__ . '/../controllers/order-controller.php';
 require_once __DIR__ . '/../controllers/checkout-controller.php';
+require_once __DIR__ . '/../controllers/cart-controller.php';
+require_once __DIR__ . '/../controllers/vnpay-payment-controller.php';
+require_once __DIR__ . '/../models/return-refund-model.php';
+require_once __DIR__ . '/../services/return-refund-service.php';
+require_once __DIR__ . '/../controllers/return-refund-controller.php';
+require_once __DIR__ . '/../models/report-model.php';
+require_once __DIR__ . '/../services/report-service.php';
+require_once __DIR__ . '/../controllers/report-controller.php';
 require_once __DIR__ . '/../routes/order-routes.php';
 require_once __DIR__ . '/../routes/checkout-routes.php';
+require_once __DIR__ . '/../routes/cart-routes.php';
+require_once __DIR__ . '/../routes/payment-routes.php';
+require_once __DIR__ . '/../routes/return-refund-routes.php';
+require_once __DIR__ . '/../routes/report-routes.php';
 
 // CORS credential chỉ cho origin cấu hình; không phản chiếu Origin tùy ý.
 function orderCorsHeaders(string $origin, string $allowedOrigin): array
@@ -45,27 +63,83 @@ function runtimeOrderService(): OrderServiceInterface
     if (getenv('ORDER_STORAGE_MODE') !== 'mysql') return new OrderService();
     try {
         require_once __DIR__ . '/../config/database.php';
-        return new OrderService(new OrderModel(\db()));
+        $pdo = \db();
+        return new OrderService(new OrderModel($pdo), new MysqlCheckoutDependencies(), new MysqlDeviceCareCompletion());
     } catch (\PDOException $error) {
         error_log('Order database unavailable: ' . $error->getCode());
         throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Chưa thể kết nối dữ liệu đơn hàng.');
     }
 }
 
-// Checkout opt-in still requires an explicit reviewed owner adapter; never load test adapters here.
+// Only production SQL adapter is loaded here; test fixtures are never exposed by HTTP.
 function runtimeCheckoutService(): CheckoutServiceInterface
 {
     if (getenv('ORDER_STORAGE_MODE') !== 'mysql') return new CheckoutService();
     try {
         require_once __DIR__ . '/../config/database.php';
-        return new CheckoutService(new OrderModel(\db()));
+        $pdo = \db();
+        return new CheckoutService(new OrderModel($pdo), new MysqlCheckoutDependencies(), VnpayGateway::fromEnvironment());
     } catch (\PDOException $error) {
         error_log('Checkout database unavailable: ' . $error->getCode());
         throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Chưa thể kết nối dữ liệu checkout.');
     }
 }
 
+function runtimeVnpayPaymentService(): VnpayPaymentServiceInterface
+{
+    if (getenv('ORDER_STORAGE_MODE') !== 'mysql') throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Dịch vụ thanh toán chưa sẵn sàng.');
+    try {
+        require_once __DIR__ . '/../config/database.php';
+        $pdo = \db();
+        return new VnpayPaymentService(new OrderModel($pdo), new MysqlCheckoutDependencies(), VnpayGateway::fromEnvironment());
+    } catch (\PDOException $error) {
+        error_log('VNPay database unavailable: ' . $error->getCode());
+        throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Chưa thể kết nối dữ liệu thanh toán.');
+    }
+}
+
+// Customer cart reads share the current MySQL checkout contract and role validation.
+function runtimeCartService(): CartServiceInterface
+{
+    if (getenv('ORDER_STORAGE_MODE') !== 'mysql') return new CartService();
+    try {
+        require_once __DIR__ . '/../config/database.php';
+        $pdo = \db();
+        return new CartService(new OrderModel($pdo), new MysqlCheckoutDependencies());
+    } catch (\PDOException $error) {
+        error_log('Cart database unavailable: ' . $error->getCode());
+        throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Chưa thể kết nối dữ liệu giỏ hàng.');
+    }
+}
+
 // Hàm thuần điều phối dùng chung HTTP/tests; principal test chỉ truyền trực tiếp trong process.
+// Return workflow and revenue export require the reviewed MySQL schema; never claim fake success.
+function runtimeReturnRefundService(): ReturnRefundService
+{
+    if (getenv('ORDER_STORAGE_MODE') !== 'mysql') throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Dịch vụ trả hàng chưa được cấu hình.');
+    try {
+        require_once __DIR__ . '/../config/database.php';
+        $pdo = \db();
+        return new ReturnRefundService($pdo, new ReturnRefundModel($pdo));
+    } catch (\PDOException $error) {
+        error_log('Return workflow database unavailable: ' . $error->getCode());
+        throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Chưa thể kết nối dữ liệu trả hàng.');
+    }
+}
+
+function runtimeReportService(): ReportService
+{
+    if (getenv('ORDER_STORAGE_MODE') !== 'mysql') throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Dịch vụ báo cáo chưa được cấu hình.');
+    try {
+        require_once __DIR__ . '/../config/database.php';
+        $pdo = \db();
+        return new ReportService($pdo, new ReportModel($pdo));
+    } catch (\PDOException $error) {
+        error_log('Report database unavailable: ' . $error->getCode());
+        throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Chưa thể kết nối dữ liệu báo cáo.');
+    }
+}
+
 function handleOrderApi(
     string $method,
     string $path,
@@ -75,6 +149,10 @@ function handleOrderApi(
     array $serverSession = [],
     ?OrderServiceInterface $orderService = null,
     ?CheckoutServiceInterface $checkoutService = null,
+    ?CartServiceInterface $cartService = null,
+    ?VnpayPaymentServiceInterface $vnpayPaymentService = null,
+    ?ReturnRefundService $returnRefundService = null,
+    ?ReportService $reportService = null,
 ): array {
     try {
         $method = strtoupper($method);
@@ -83,17 +161,42 @@ function handleOrderApi(
         if ($path === '/' && $method === 'GET') {
             return apiSuccess(['version' => '0.1.0', 'orderApi' => getenv('ORDER_STORAGE_MODE') === 'mysql' ? 'mysql-configured' : 'skeleton', 'storageReady' => false], 'Household E-commerce API');
         }
+        if ($path === '/payments/vnpay/ipn') {
+            if (!in_array($method, ['GET', 'POST'], true)) return ['status' => 405, 'headers' => ['Allow' => 'GET, POST'], 'body' => ['RspCode' => '99', 'Message' => 'System error']];
+            $parameters = $query;
+            if ($method === 'POST') {
+                $contentType = strtolower(trim(explode(';', $headers['content-type'] ?? '')[0]));
+                if ($contentType === 'application/x-www-form-urlencoded' && strlen($rawBody) <= MAX_ORDER_BODY_BYTES) parse_str($rawBody, $parameters);
+                else $parameters = [];
+            }
+            try {
+                $response = ($vnpayPaymentService ?? runtimeVnpayPaymentService())->handleIpn($parameters);
+            } catch (\Throwable $error) {
+                error_log('VNPay IPN endpoint unavailable: ' . get_class($error));
+                $response = ['RspCode' => '99', 'Message' => 'System error'];
+            }
+            return ['status' => 200, 'headers' => [], 'body' => $response];
+        }
         $allowedMethods = [];
         $matched = null;
         $orderId = null;
-        foreach (array_merge(orderRoutes(), checkoutRoutes()) as $route) {
+        $variantId = null;
+        $returnId = null;
+        $paymentCode = null;
+        foreach (array_merge(orderRoutes(), checkoutRoutes(), cartRoutes(), paymentRoutes(), returnRefundRoutes(), reportRoutes()) as $route) {
             if (preg_match($route['pattern'], $path, $captures) !== 1) {
                 continue;
             }
             $allowedMethods[] = $route['method'];
             if ($method === $route['method']) {
                 $matched = $route;
-                $orderId = isset($captures[1]) ? rawurldecode($captures[1]) : null;
+                if (isset($captures[1])) {
+                    $pathValue = rawurldecode($captures[1]);
+                    if ($route['schema'] === 'payment-attempt') $paymentCode = $pathValue;
+                    elseif (str_starts_with($route['schema'], 'return-')) $returnId = $pathValue;
+                    elseif ($route['schema'] === 'cart-update') $variantId = $pathValue;
+                    else $orderId = $pathValue;
+                }
                 break;
             }
         }
@@ -110,14 +213,17 @@ function handleOrderApi(
         if ($orderId !== null) {
             $orderId = orderDatabaseId($orderId, 'orderId');
         }
+        if ($returnId !== null) $returnId = orderDatabaseId($returnId, 'returnId');
         $key = null;
         if ($method === 'GET') {
             $input = match ($matched['schema']) {
                 'list' => validateOrderList($query),
                 'sales-list' => validateOrderList($query, true),
+                'return-list' => validateReturnList($query),
+                'report-range' => validateRevenueRange($query),
                 default => [],
             };
-            if ($matched['schema'] === 'detail') {
+            if (in_array($matched['schema'], ['detail', 'return-detail'], true)) {
                 allowOrderFields($query, []);
             }
         } else {
@@ -130,13 +236,21 @@ function handleOrderApi(
             $input = match ($matched['schema']) {
                 'quote' => validateCheckoutInput($body),
                 'create' => validateCheckoutInput($body, true),
+                'cart-add' => validateCartAdd($body),
+                'cart-update' => validateCartUpdate($body),
+                'return-triage', 'return-decision', 'return-receive' => validateReturnMutation($body, $matched['schema']),
                 default => validateOrderMutation($body, $matched['schema']),
             };
         }
-        $request = ['principal' => $principal, 'orderId' => $orderId, 'input' => $input, 'idempotencyKey' => $key];
-        $controller = $matched['controller'] === 'order'
-            ? new OrderController($orderService ?? runtimeOrderService())
-            : new CheckoutController($checkoutService ?? runtimeCheckoutService());
+        $request = ['principal' => $principal, 'orderId' => $orderId, 'variantId' => $variantId, 'returnId' => $returnId, 'paymentCode' => $paymentCode, 'input' => $input, 'idempotencyKey' => $key];
+        $controller = match ($matched['controller']) {
+            'order' => new OrderController($orderService ?? runtimeOrderService()),
+            'cart' => new CartController($cartService ?? runtimeCartService()),
+            'payment' => new VnpayPaymentController($vnpayPaymentService ?? runtimeVnpayPaymentService()),
+            'return-refund' => new ReturnRefundController($returnRefundService ?? runtimeReturnRefundService()),
+            'report' => new ReportController($reportService ?? runtimeReportService()),
+            default => new CheckoutController($checkoutService ?? runtimeCheckoutService()),
+        };
         return $controller->{$matched['action']}($request);
     } catch (ApiException $error) {
         return apiFailure($error);
