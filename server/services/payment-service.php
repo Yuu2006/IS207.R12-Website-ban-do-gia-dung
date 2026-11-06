@@ -33,7 +33,9 @@ final class PaymentService
         if (!in_array($order['payment_method'], ['COD', 'VNPAY', 'BANK_TRANSFER'], true) || $payment['status'] !== $order['payment_status'] || $payment['payment_method'] !== $order['payment_method'] || orderMoney($payment['amount']) !== orderMoney($order['total_amount'])) throw new ApiException(409, 'PAYMENT_CONFLICT', 'Khoản thanh toán không khớp snapshot đơn.');
         $result = ['orderId' => $id, 'orderCode' => $order['order_code'], 'version' => (int) $order['version'], 'reference' => $payment['payment_code'],
             'method' => $payment['payment_method'], 'status' => strtolower($payment['status']), 'amount' => orderMoney($payment['amount']),
-            'paidAt' => $payment['paid_at'] ? orderIsoDate($payment['paid_at']) : null, 'refundRequired' => (bool) $order['refund_required'], 'bank' => null];
+            'paidAt' => $payment['paid_at'] ? orderIsoDate($payment['paid_at']) : null, 'refundRequired' => (bool) $order['refund_required'], 'bank' => null,
+            'canSimulateRefund' => $staff && $actor['role'] === 'ADMIN' && $order['order_status'] === 'CANCELLED' && $payment['status'] === 'PAID' && orderMoney($payment['amount']) > 0,
+            'simulatedRefund' => (new PaymentModel($this->orders->pdo))->simulatedRefund($id)];
         if ($payment['payment_method'] === 'BANK_TRANSFER' && $payment['status'] === 'PENDING' && $order['order_status'] !== 'CANCELLED') {
             $bank = json_decode($payment['metadata_json'] ?? '{}', true, 16, JSON_THROW_ON_ERROR);
             if (!isset($bank['bankBin'], $bank['accountNo'], $bank['accountName'])) throw new ApiException(409, 'BANK_SNAPSHOT_MISSING', 'Thiếu snapshot tài khoản nhận của giao dịch.');
@@ -88,6 +90,25 @@ final class PaymentService
             if ($amount !== orderMoney($order['total_amount']) || $amount !== orderMoney($payments[0]['amount'])) throw new ApiException(422, 'AMOUNT_MISMATCH', 'Tiền thực nhận chưa khớp tổng đơn. Cần đối soát trước khi xác nhận.');
             try { $model->settle($order, $payments[0], $actor, 'BANK:' . $reference, $reason); }
             catch (\PDOException $error) { if ((int) ($error->errorInfo[1] ?? 0) === 1062) throw new ApiException(409, 'REFERENCE_ALREADY_USED', 'Giao dịch ngân hàng đã được ghi nhận.'); throw $error; }
+            return $this->status($actor, $id, true);
+        });
+    }
+
+    // ADMIN may simulate a full refund only for a cancelled, fully settled order; no bank API is called.
+    public function simulateRefund(array $actor, string $id, array $input, string $key): array
+    {
+        $this->orders->requireActor($actor, ['ADMIN']);
+        allowOrderFields($input, ['expectedVersion', 'reason']);
+        $version = orderPositiveInteger($input['expectedVersion'] ?? null, 'expectedVersion');
+        $reason = orderText($input['reason'] ?? null, 'reason', 10, 500);
+        return (new OrderIdempotencyModel($this->orders->pdo))->run($actor, 'simulate-refund:' . $id, $key, $input, function () use ($actor, $id, $version, $reason) {
+            $order = $this->scoped($actor, $id, true, true);
+            $model = new PaymentModel($this->orders->pdo);
+            $rows = $model->lock($id);
+            if ((int) $order['version'] !== $version) throw new ApiException(409, 'ORDER_VERSION_CONFLICT', 'Đơn đã thay đổi. Hãy tải lại.');
+            if ($order['order_status'] !== 'CANCELLED' || $order['payment_status'] !== 'PAID' || orderMoney($order['total_amount']) <= 0) throw new ApiException(409, 'REFUND_NOT_ALLOWED', 'Chỉ hoàn toàn bộ tiền mô phỏng cho đơn đã hủy và đã thu đủ tiền.');
+            $model->assertSettled($order, $rows);
+            $model->simulateRefund($order, $rows[0], $actor, $reason);
             return $this->status($actor, $id, true);
         });
     }
@@ -152,7 +173,7 @@ final class PaymentService
                 if ($other) $snapshot = $other['snapshot'];
                 $document = $model->insertDocument($order, $type, $snapshot);
             }
-            $result = $document + ['type' => $type, 'currentOrderStatus' => strtolower($order['order_status']), 'currentPaymentStatus' => strtolower($order['payment_status']), 'refundRequired' => (bool) $order['refund_required'], 'electronicTaxInvoice' => false];
+            $result = $document + ['type' => $type, 'currentOrderStatus' => strtolower($order['order_status']), 'currentPaymentStatus' => strtolower($order['payment_status']), 'refundRequired' => (bool) $order['refund_required'], 'simulatedRefund' => $model->simulatedRefund($id), 'electronicTaxInvoice' => false];
             if ($type === 'INTERNAL') $result['paymentAudit'] = $model->events($id);
             $pdo->commit();
             return $result;
