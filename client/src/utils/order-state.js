@@ -20,7 +20,7 @@ export function canCancelOrder(status) {
 // Kiểm tra snapshot UI; backend phải kiểm tra lại với phiên, khóa order và dữ liệu thật.
 export function validateOrderTransition(order, request) {
   if (!order || !request || !orderStatuses.includes(order.status) || !orderStatuses.includes(request.toStatus) ||
-      !Array.isArray(order.history) || !paymentStatuses.includes(order.payment) || typeof order.method !== 'string' || !['COD', 'VNPAY'].includes(order.method.toUpperCase())) {
+      !Array.isArray(order.history) || !paymentStatuses.includes(order.payment) || typeof order.method !== 'string' || !['COD', 'VNPAY', 'BANK_TRANSFER'].includes(order.method.toUpperCase())) {
     return failure('INVALID_INPUT', 'Trạng thái đơn hoặc phương thức thanh toán không hợp lệ.');
   }
   const { actor, toStatus, expectedVersion, reason, codCollected } = request;
@@ -48,7 +48,8 @@ export function validateOrderTransition(order, request) {
     return failure('INVALID_INPUT', 'Xác nhận thu COD chỉ dùng khi chuyển từ đang giao sang đã giao.');
   }
   if (toStatus !== 'cancelled') {
-    if (order.method.toUpperCase() === 'VNPAY' && order.payment !== 'paid') {
+    if (order.refundRequired) return failure('PAYMENT_REVIEW_REQUIRED', 'Khoản thu cần đối soát hoặc hoàn tiền.');
+    if (order.method.toUpperCase() !== 'COD' && order.payment !== 'paid') {
       return failure('PAYMENT_NOT_PAID', 'Chỉ xử lý đơn VNPay sau khi thanh toán đã được xác minh.');
     }
     if (order.method.toUpperCase() === 'COD') {

@@ -135,7 +135,7 @@ export default function Header() {
           </Link>
 
           <Link
-            to="/checkout"
+            to="/cart"
             aria-label="Giỏ hàng và thanh toán"
             className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-[#E2E8F0] text-[#64748B] transition-colors hover:border-[#176B87] hover:text-[#176B87]"
           >

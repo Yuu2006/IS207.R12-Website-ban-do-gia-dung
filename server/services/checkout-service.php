@@ -51,6 +51,7 @@ final class CheckoutService implements CheckoutServiceInterface
         // Existing storage uses DECIMAL(14,2): at most 12 whole-VND digits.
         if (max($totals) > 999999999999) throw new ApiException(422, 'INVALID_INPUT', 'Tổng tiền vượt giới hạn lưu trữ đơn hàng.');
         if ($totals['subtotal'] !== $subtotal || $totals['discount'] > $subtotal || $subtotal - $totals['discount'] > MAX_ORDER_INTEGER - $totals['shipping'] || $totals['total'] !== $subtotal - $totals['discount'] + $totals['shipping']) throw new \LogicException('Invalid server quote totals.');
+        if ($totals['total'] === 0 && $input['paymentMethod'] !== 'COD') throw new ApiException(422, 'ZERO_PAYMENT', 'Đơn không cần thu tiền phải dùng phương thức COD để xác nhận khi giao.');
         if (($quote['voucherId'] ?? null) !== null) orderDatabaseId($quote['voucherId'], 'voucherId');
         return $quote;
     }
@@ -66,7 +67,8 @@ final class CheckoutService implements CheckoutServiceInterface
     {
         $this->ready($principal);
         $input = validateCheckoutInput($input);
-        if ($input['paymentMethod'] !== 'COD') throw new ApiException(409, 'PAYMENT_NOT_AVAILABLE', 'VNPay sẽ được tích hợp ở task thanh toán.');
+        if ($input['paymentMethod'] === 'VNPAY') vnpayConfig();
+        if ($input['paymentMethod'] === 'BANK_TRANSFER') bankTransferConfig();
         $pdo = $this->model->pdo;
         $pdo->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
         $pdo->beginTransaction();
@@ -88,13 +90,19 @@ final class CheckoutService implements CheckoutServiceInterface
         $this->ready($principal);
         $input = validateCheckoutInput($input, true);
         orderIdempotencyKey(['idempotency-key' => $key]);
-        if ($input['paymentMethod'] !== 'COD') throw new ApiException(409, 'PAYMENT_NOT_AVAILABLE', 'VNPay sẽ được tích hợp ở task thanh toán.');
+        if ($input['paymentMethod'] === 'VNPAY') vnpayConfig();
+        if ($input['paymentMethod'] === 'BANK_TRANSFER') bankTransferConfig();
         return (new OrderIdempotencyModel($this->model->pdo))->run($principal, 'checkout', $key, $input, function () use ($principal, $input) {
             $quote = $this->normalize($this->dependencies->lockForCreate($this->model->pdo, $principal, $input), $input);
             if (!hash_equals($this->fingerprint($principal, $input, $quote), $input['quoteFingerprint'])) throw new ApiException(409, 'CHECKOUT_CHANGED', 'Giá, địa chỉ hoặc ưu đãi đã thay đổi. Hãy xác nhận lại.');
             $order = (new CheckoutModel($this->model))->insert($principal, $input, $quote);
             $this->dependencies->commitCheckout($this->model->pdo, $principal, $quote, $order);
-            return ['order' => $this->model->detail((string) $order['id'], $principal['id'], false), 'payment' => null];
+            $payment = null;
+            if ($input['paymentMethod'] === 'VNPAY') {
+                $row = (new PaymentModel($this->model->pdo))->lock((string) $order['id'])[0];
+                $payment = ['attemptReference' => $row['payment_code'], 'expiresAt' => orderIsoDate($row['expires_at']), 'redirectUrl' => vnpayRedirect($row)];
+            }
+            return ['order' => $this->model->detail((string) $order['id'], $principal['id'], false), 'payment' => $payment];
         });
     }
 }
