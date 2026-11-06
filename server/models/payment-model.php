@@ -84,6 +84,27 @@ final class PaymentModel
         }
     }
 
+    // Full simulated refund only; preserve the original receipt/payment evidence and never touch stock.
+    public function simulateRefund(array $order, array $payment, array $actor, string $reason): void
+    {
+        $query = $this->pdo->prepare("UPDATE payments SET status = 'REFUNDED' WHERE id = ? AND status = 'PAID'");
+        $query->execute([$payment['id']]);
+        if ($query->rowCount() !== 1) throw new ApiException(409, 'PAYMENT_CONFLICT', 'Khoản thu đã thay đổi.');
+        $query = $this->pdo->prepare("UPDATE orders SET payment_status = 'REFUNDED', refund_required = 0, version = version + 1 WHERE id = ? AND order_status = 'CANCELLED' AND payment_status = 'PAID' AND version = ?");
+        $query->execute([$order['id'], $order['version']]);
+        if ($query->rowCount() !== 1) throw new ApiException(409, 'ORDER_VERSION_CONFLICT', 'Đơn đã thay đổi. Hãy tải lại.');
+        $this->audit($payment, $actor, 'REFUND_SIMULATED', 'SIM-REFUND:' . $payment['id'], $reason);
+    }
+
+    // Owner-safe summary distinguishes the classroom simulation from an actual bank refund.
+    public function simulatedRefund(string $orderId): ?array
+    {
+        $query = $this->pdo->prepare("SELECT e.amount, e.created_at, e.reference_code FROM payment_events e JOIN payments p ON p.id = e.payment_id WHERE p.order_id = ? AND e.event_type = 'REFUND_SIMULATED' ORDER BY e.id LIMIT 1");
+        $query->execute([$orderId]);
+        $row = $query->fetch(\PDO::FETCH_ASSOC);
+        return $row ? ['amount' => orderMoney($row['amount']), 'refundedAt' => orderIsoDate($row['created_at']), 'reference' => $row['reference_code'], 'simulated' => true] : null;
+    }
+
     public function expiringOrderIds(): array
     {
         return $this->pdo->query("SELECT o.id FROM orders o JOIN payments p ON p.order_id = o.id WHERE o.order_status = 'PENDING' AND o.inventory_state = 'RESERVED' AND p.payment_method = 'VNPAY' AND p.status IN ('PENDING','FAILED') AND p.expires_at <= UTC_TIMESTAMP() AND p.is_deleted = 0 AND o.is_deleted = 0 ORDER BY p.expires_at LIMIT 100")->fetchAll(\PDO::FETCH_COLUMN);

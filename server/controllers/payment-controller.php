@@ -10,5 +10,6 @@ final class PaymentController
     public function status(array $actor, string $id, bool $staff): array { return apiSuccess($this->service->status($actor, $id, $staff)); }
     public function reference(array $actor, string $reference): array { return apiSuccess($this->service->byReference($actor, $reference)); }
     public function confirm(array $actor, string $id, array $input, string $key): array { return apiSuccess($this->service->confirmTransfer($actor, $id, $input, $key)); }
+    public function refund(array $actor, string $id, array $input, string $key): array { return apiSuccess($this->service->simulateRefund($actor, $id, $input, $key)); }
     public function document(array $actor, string $id, bool $staff, string $type): array { return apiSuccess($this->service->document($actor, $id, $staff, $type)); }
 }

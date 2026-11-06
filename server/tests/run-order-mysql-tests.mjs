@@ -72,7 +72,17 @@ try {
   if (cancelled.filter(result => result.ok).length !== 1 || cancelled.filter(result => result.code === 'ORDER_VERSION_CONFLICT').length !== 1) throw new Error(`Cancel/shipping race failed: ${JSON.stringify(cancelled)}`);
   console.log((await call('verify-cancel-race', JSON.stringify(cancel))).output.trim());
   console.log((await run(php, [...phpArgs, fileURLToPath(new URL('./payment-mysql.test.php', import.meta.url))])).output.trim());
-  console.log('PASS: isolated MySQL integration, payment ledger and four two-process races.');
+  const paymentSuite = fileURLToPath(new URL('./payment-mysql.test.php', import.meta.url));
+  const paymentCall = (...args) => run(php, [...phpArgs, paymentSuite, ...args]);
+  for (const sameKey of [false, true]) {
+    const refundOrder = JSON.parse((await paymentCall('prepare-refund-race')).output);
+    const refundRace = await Promise.all(['first', 'second'].map(key => paymentCall('refund-worker', JSON.stringify({ ...refundOrder, key: `refund-race-${refundOrder.id}-${sameKey ? 'same' : key}` }))));
+    const results = refundRace.map(result => JSON.parse(result.output));
+    if (sameKey) { assert.ok(results.every(result => result.ok)); assert.deepEqual(results[0], results[1]); }
+    else { assert.equal(results.filter(result => result.ok).length, 1); assert.equal(results.filter(result => result.code === 'ORDER_VERSION_CONFLICT').length, 1); }
+    console.log((await paymentCall('verify-refund-race', JSON.stringify(refundOrder))).output.trim());
+  }
+  console.log('PASS: isolated MySQL integration, payment ledger and six two-process races.');
 } finally {
   if (server?.pid && server.exitCode === null) {
     const stopped = once(server, 'exit');

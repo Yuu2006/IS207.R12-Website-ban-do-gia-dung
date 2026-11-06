@@ -12,6 +12,7 @@ putenv('BANK_TRANSFER_BIN=970422'); putenv('BANK_TRANSFER_ACCOUNT_NO=123456789')
 putenv('VNPAY_TMN_CODE=TESTCODE'); putenv('VNPAY_HASH_SECRET=isolated-test-secret-not-a-real-credential'); putenv('VNPAY_RETURN_URL=http://localhost:5173/payment/result');
 putenv('STORE_NAME=Original test merchant');
 $actor = ['id' => '1', 'role' => 'CUSTOMER']; $staff = ['id' => '3', 'role' => 'SALES'];
+$admin = ['id' => '4', 'role' => 'ADMIN'];
 $model = new OrderModel($pdo); $deps = new CatalogCheckoutDependencies(); $checkout = new CheckoutService($model, $deps); $orders = new OrderService($model, $deps); $payments = new PaymentService($model);
 function verify(bool $condition, string $message): void { if (!$condition) throw new RuntimeException($message); }
 function reject(callable $run, string $code): void { try { $run(); } catch (ApiException $e) { verify($e->errorCode === $code, "Expected $code, got {$e->errorCode}"); return; } throw new RuntimeException("Expected $code"); }
@@ -38,6 +39,29 @@ function signedIpn(array $payment, string $reference, array $overrides = []): ar
     return $query;
 }
 
+// Independent processes use the same order locks for duplicate and different-key refund races.
+$mode = $argv[1] ?? 'test';
+if ($mode === 'prepare-refund-race') {
+    $order = newOrder()['order']; $state = $payments->status($actor, $order['id'], false);
+    $paid = $payments->confirmTransfer($staff, $order['id'], ['expectedVersion'=>$state['version'], 'amount'=>$state['amount'], 'bankTransactionRef'=>'RACE-'.bin2hex(random_bytes(8)), 'reason'=>'Bank statement checked before refund race'], 'race-bank-'.bin2hex(random_bytes(8)));
+    $cancelled = $orders->cancelOrder($actor, $order['id'], ['expectedVersion'=>$paid['version'], 'reason'=>'Cancel for refund concurrency test'], 'race-cancel-'.bin2hex(random_bytes(8)));
+    echo json_encode(['id'=>$order['id'], 'version'=>$cancelled['version'], 'stock'=>(int)value('SELECT stock_quantity FROM product_variants WHERE id=1')]); exit;
+}
+if ($mode === 'refund-worker') {
+    $request = json_decode($argv[2], true, 16, JSON_THROW_ON_ERROR);
+    try { echo json_encode(['ok'=>true, 'result'=>$payments->simulateRefund($admin, $request['id'], ['expectedVersion'=>$request['version'], 'reason'=>'Simulated full refund concurrency test'], $request['key'])]); }
+    catch (ApiException $error) { echo json_encode(['ok'=>false, 'code'=>$error->errorCode]); }
+    exit;
+}
+if ($mode === 'verify-refund-race') {
+    $request = json_decode($argv[2], true, 16, JSON_THROW_ON_ERROR);
+    verify((int)value("SELECT COUNT(*) FROM payment_events e JOIN payments p ON p.id=e.payment_id WHERE p.order_id=? AND e.event_type='REFUND_SIMULATED'", [$request['id']])===1, 'Concurrent refund duplicated audit');
+    $state = $payments->status($admin, $request['id'], true);
+    verify($state['status']==='refunded' && !$state['refundRequired'] && $state['version']===$request['version']+1, 'Refund race left inconsistent state/version');
+    verify((int)value('SELECT stock_quantity FROM product_variants WHERE id=1')===$request['stock'], 'Refund touched released stock');
+    echo "ok - concurrent simulated refund: one financial event/version, no stock mutation\n"; exit;
+}
+
 $result = newOrder(); $id = $result['order']['id']; $bank = $payments->status($actor, $id, false);
 verify($bank['status'] === 'pending' && $bank['bank']['accountName'] === 'TEST BENEFICIARY', 'QR transfer must start pending');
 reject(fn () => $payments->document($actor, $id, false, 'CUSTOMER'), 'NOT_PAID');
@@ -58,8 +82,25 @@ verify($bill === $payments->document($actor,$id,false,'CUSTOMER'),'Reprint chang
 $internal = $payments->document($staff,$id,true,'INTERNAL');
 verify($bill['snapshot'] === $internal['snapshot'] && !isset($bill['paymentAudit']) && isset($internal['paymentAudit']),'Document scope/snapshots wrong');
 reject(fn () => $payments->document($actor,$id,false,'INTERNAL'),'FORBIDDEN');
+reject(fn () => $payments->simulateRefund($staff,$id,[],'sales-refund-denied'),'FORBIDDEN');
+reject(fn () => $payments->simulateRefund($actor,$id,[],'customer-refund-denied'),'FORBIDDEN');
+reject(fn () => $payments->simulateRefund($admin,$id,['expectedVersion'=>$paid['version'],'reason'=>'Paid order has not been cancelled'],'active-refund-denied'),'REFUND_NOT_ALLOWED');
+$cancelledPaid = $orders->cancelOrder($actor,$id,['expectedVersion'=>$paid['version'],'reason'=>'Cancel already paid order'],'cancel-paid-bank-refund');
+$stockAfterCancel = (int)value('SELECT stock_quantity FROM product_variants WHERE id=1');
+$refundInput = ['expectedVersion'=>$cancelledPaid['version'],'reason'=>'ADMIN approved full simulated refund'];
+reject(fn () => $payments->simulateRefund($admin,$id,$refundInput+['amount'=>1],'refund-client-amount-denied'),'INVALID_INPUT');
+$refunded = $payments->simulateRefund($admin,$id,$refundInput,'full-simulated-refund-key');
+verify(orderCanonicalHash($refunded)===orderCanonicalHash($payments->simulateRefund($admin,$id,$refundInput,'full-simulated-refund-key')), 'Refund replay differs');
+reject(fn () => $payments->simulateRefund($admin,$id,$refundInput,'different-refund-stale-key'),'ORDER_VERSION_CONFLICT');
+reject(fn () => $payments->simulateRefund($admin,$id,['expectedVersion'=>$refunded['version'],'reason'=>$refundInput['reason']],'different-refund-latest-key'),'REFUND_NOT_ALLOWED');
+verify($refunded['status']==='refunded' && !$refunded['refundRequired'] && !$refunded['canSimulateRefund'] && $refunded['simulatedRefund']['amount']===$paid['amount'] && $refunded['simulatedRefund']['simulated'], 'Full simulated refund state/amount incorrect');
+verify(count(array_filter($refunded['audit'],fn($event)=>$event['event_type']==='REFUND_SIMULATED' && $event['actor_role']==='ADMIN' && (string)$event['actor_id']==='4'))===1,'Refund audit missing/duplicated');
+verify((int)value('SELECT stock_quantity FROM product_variants WHERE id=1')===$stockAfterCancel,'Refund restored stock twice');
+$reprint = $payments->document($actor,$id,false,'CUSTOMER');
+verify($reprint['snapshot']===$bill['snapshot'] && $reprint['currentPaymentStatus']==='refunded' && $reprint['simulatedRefund']['simulated'], 'Refund rewrote original bill or lost simulation label');
 
 $second = newOrder()['order']; $state = $payments->status($actor,$second['id'],false);
+reject(fn () => $payments->simulateRefund($admin,$second['id'],['expectedVersion'=>$state['version'],'reason'=>'Cannot refund an unpaid order'],'unpaid-refund-denied'),'REFUND_NOT_ALLOWED');
 reject(fn () => $payments->confirmTransfer($staff,$second['id'],['expectedVersion'=>$state['version'],'amount'=>$state['amount'],'bankTransactionRef'=>'BANK-TEST-001','reason'=>'Same reference must not pay two orders'],'duplicate-transfer-key'),'REFERENCE_ALREADY_USED');
 verify($payments->status($actor,$second['id'],false)['status']==='pending','Duplicate reference changed order');
 $before=(int)value('SELECT stock_quantity FROM product_variants WHERE id=1');
@@ -83,6 +124,9 @@ $vnpLate=newOrder('VNPAY')['order']; $pending=$payments->status($actor,$vnpLate[
 $orders->cancelOrder($actor,$vnpLate['id'],['expectedVersion'=>$vnpLate['version'],'reason'=>'Cancel before VNPay response'],'cancel-vnpay-late-key');
 verify($payments->ipn(signedIpn($pending,'900002'))['RspCode']==='00','Late IPN not recorded');
 verify($payments->status($actor,$vnpLate['id'],false)['refundRequired'],'Late IPN not flagged');
+$lateState=$payments->status($admin,$vnpLate['id'],true);
+$payments->simulateRefund($admin,$vnpLate['id'],['expectedVersion'=>$lateState['version'],'reason'=>'Refund late VNPay payment after cancellation'],'refund-late-vnpay-key');
+verify($payments->ipn(signedIpn($pending,'900002'))['RspCode']==='02' && $payments->status($actor,$vnpLate['id'],false)['status']==='refunded','IPN revived a refunded payment');
 
 $expired = newOrder('VNPAY')['order'];
 $before = (int) value('SELECT stock_quantity FROM product_variants WHERE id=1');
@@ -98,5 +142,16 @@ $response=HomeCare\OrderApi\handleOrderApi('GET','/orders/'.$id.'/document',[], 
 verify($response['status']===404,'HTTP foreign document leaked');
 $response=HomeCare\OrderApi\handleOrderApi('POST','/sales/orders/'.$second['id'].'/payment/confirm-transfer',[], '{}', ['Content-Type'=>'application/json'], ['user'=>$staff,'expiresAt'=>time()+3600,'csrfToken'=>'payment-test-csrf']);
 verify($response['status']===403,'Missing CSRF accepted');
+$refundPath='/sales/orders/'.$second['id'].'/payment/simulate-refund';
+$response=HomeCare\OrderApi\handleOrderApi('POST',$refundPath,[], '{}', ['Content-Type'=>'application/json'], ['user'=>$admin,'expiresAt'=>time()+3600,'csrfToken'=>'payment-test-csrf']);
+verify($response['status']===403,'Refund accepted without CSRF');
+$response=HomeCare\OrderApi\handleOrderApi('POST',$refundPath,[], '{}', ['Content-Type'=>'application/json','X-CSRF-Token'=>'payment-test-csrf'], ['user'=>$staff,'expiresAt'=>time()+3600,'csrfToken'=>'payment-test-csrf']);
+verify($response['status']===403,'SALES called admin refund endpoint');
+$adminSession=['user'=>$admin,'expiresAt'=>time()+3600,'csrfToken'=>'payment-test-csrf'];
+$refundHeaders=['Content-Type'=>'application/json','X-CSRF-Token'=>'payment-test-csrf','Idempotency-Key'=>'http-admin-refund-unique'];
+$response=HomeCare\OrderApi\handleOrderApi('POST',$refundPath,[], json_encode(['expectedVersion'=>$late['version'],'reason'=>'ADMIN refund simulation through HTTP API']), $refundHeaders, $adminSession);
+verify($response['status']===200 && $response['body']['data']['status']==='refunded','Authorized HTTP refund failed');
+$ownerRefund=$payments->status($actor,$second['id'],false);
+verify($ownerRefund['simulatedRefund']['simulated'] && !isset($ownerRefund['audit']) && !$ownerRefund['canSimulateRefund'],'Owner refund response leaked internal audit/permission');
 putenv('ORDER_STORAGE_MODE=disabled');
-echo "PASS payment: real cart/checkout, bank evidence/amount/reference/replay, owner/roles, frozen customer/internal documents, signed IPN and late callbacks\n";
+echo "PASS payment: cart/checkout, bank evidence, owner/roles/CSRF, immutable documents, signed IPN, full ADMIN-only simulated refund and replay\n";

@@ -10,6 +10,14 @@ React `/cart` → `/checkout` dùng giỏ/SKU/địa chỉ/giá/khuyến mãi th
 
 `server/scripts/expire-payments.php` là worker CLI: chạy mỗi phút bằng hạ tầng triển khai để hủy đơn VNPay vẫn chờ và hết hạn, giải phóng đúng reservation/voucher một lần. Worker và IPN khóa cùng order → payment, nên không đồng thời bán/hoàn cùng lượng hàng. Không tự hủy chuyển khoản thủ công: nhân viên phải đối soát khoản tiền có thể đến muộn trước khi quyết định xử lý.
 
+## Hoàn tiền mô phỏng đã chốt
+
+- Chỉ **ADMIN** được ghi nhận hoàn toàn bộ tiền khi đơn `CANCELLED` và khoản thu `PAID` khớp đầy đủ tổng đơn. SALES/CUSTOMER bị từ chối ở backend. Yêu cầu trả hàng không tự hoàn tiền và không dùng endpoint này để bỏ qua xét duyệt.
+- ADMIN vào `/sales/orders`, mở chi tiết đơn đã hủy và đã thu tiền, nhập lý do 10–500 ký tự, đánh dấu xác nhận rồi chọn **Xác nhận hoàn tiền mô phỏng**. Server tự lấy số tiền từ ledger; không nhận số tiền hoặc người duyệt từ frontend.
+- Trong cùng transaction, khóa order → payment, kiểm tra version, đổi cả hai trạng thái thanh toán sang `REFUNDED`, xóa cờ cần hoàn và thêm sự kiện `REFUND_SIMULATED` có số tiền, ADMIN, thời điểm UTC và lý do. Reference `SIM-REFUND:{paymentId}` duy nhất và idempotency key ngăn ghi hai lần, kể cả request đồng thời.
+- Không gọi API ngân hàng, không đổi mã/thời điểm thu gốc, không sửa snapshot bill và không hoàn kho/voucher lần nữa. Bill in lại hiển thị trạng thái hoàn mô phỏng bên ngoài snapshot bán hàng. VNPay gửi lại IPN sau hoàn nhận `02`, không đổi khoản hoàn về `PAID`.
+- Dùng bảng `payment_events` của migration 014; không có migration mới cho bước bổ sung này. Báo cáo cần tách sự kiện mô phỏng khỏi dòng tiền ngân hàng thực tế.
+
 ## Bill khách và chứng từ nội bộ
 
 - Bill khách có người bán, người mua/nhận, dòng hàng/SKU, đơn giá, số lượng, tiền hàng, giảm giá, giao hàng, tổng đã thu và phương thức/thời điểm thu.
@@ -32,6 +40,7 @@ Tất cả endpoint bên dưới dùng envelope JSON chung. CUSTOMER chỉ xem �
 | GET `/orders/{id}/payment` | CUSTOMER owner | Trạng thái, số tiền, reference; thông tin QR chỉ khi còn chờ |
 | GET `/sales/orders/{id}/payment` | SALES/ADMIN | Như trên, thêm audit |
 | POST `/sales/orders/{id}/payment/confirm-transfer` | SALES/ADMIN | `{ expectedVersion, amount, bankTransactionRef, reason }` |
+| POST `/sales/orders/{id}/payment/simulate-refund` | ADMIN | `{ expectedVersion, reason }`; hoàn toàn bộ mô phỏng cho đơn đã hủy + đã thu tiền |
 | GET `/payments/reference/{reference}` | CUSTOMER owner | Tra trạng thái sau return, không cập nhật |
 | GET `/orders/{id}/document` | CUSTOMER owner | Bill khách từ snapshot |
 | GET `/sales/orders/{id}/document/customer` | SALES/ADMIN | Bill khách |
@@ -46,7 +55,7 @@ Ví dụ xác nhận thủ công (chỉ sau khi nhân viên đã thấy tiền v
 {"expectedVersion":1,"amount":1250000,"bankTransactionRef":"BANK-TXN-EXAMPLE-01","reason":"Đã đối chiếu sao kê tài khoản nhận của cửa hàng."}
 ```
 
-Response trạng thái: `{ orderId, orderCode, version, reference, method, status, amount, paidAt, refundRequired, bank }`. `bank` chỉ có lúc chờ chuyển khoản và gồm `{ bankBin, accountNo, accountName, content, qrUrl }`; nhân viên được thêm `audit`. `paidAt` của đối soát thủ công là thời điểm xác nhận; của VNPay là `vnp_PayDate` đã kiểm tra chữ ký và đổi sang UTC. Response chứng từ: `{ code, issuedAt, snapshot, type, currentPaymentStatus, refundRequired, electronicTaxInvoice: false }`; chỉ loại INTERNAL có `paymentAudit`. Snapshot gồm `merchant`, `orderCode`, `orderedAt`, `customer`, `items`, `totals`, `paymentMethod`, `paidAt`, `currency`.
+Response trạng thái: `{ orderId, orderCode, version, reference, method, status, amount, paidAt, refundRequired, bank, canSimulateRefund, simulatedRefund }`. `bank` chỉ có lúc chờ chuyển khoản và gồm `{ bankBin, accountNo, accountName, content, qrUrl }`; nhân viên được thêm `audit`. `canSimulateRefund` chỉ bật cho ADMIN khi đủ trạng thái; backend luôn kiểm tra lại ledger khi ghi. `simulatedRefund` là `null` hoặc `{ amount, refundedAt, reference, simulated: true }`, không lộ lý do/actor nội bộ cho khách. `paidAt` của đối soát thủ công là thời điểm xác nhận; của VNPay là `vnp_PayDate` đã kiểm tra chữ ký và đổi sang UTC. Response chứng từ: `{ code, issuedAt, snapshot, type, currentPaymentStatus, refundRequired, simulatedRefund, electronicTaxInvoice: false }`; chỉ loại INTERNAL có `paymentAudit`. Snapshot gồm `merchant`, `orderCode`, `orderedAt`, `customer`, `items`, `totals`, `paymentMethod`, `paidAt`, `currency`.
 
 ## Thiết lập và migration
 
@@ -65,10 +74,10 @@ Tách trạng thái đơn/tiền; QR không tự đánh dấu trả tiền; tài
 
 ## Kiểm thử và giới hạn
 
-`node server/tests/run-order-mysql-tests.mjs` với `PHP_BIN`, `PHP_EXTENSION_DIR`, `MYSQLD_BIN`: tạo datadir và port ngẫu nhiên riêng, áp 008/014, chạy test đơn/kho + bốn race hai process + test payment/bank/IPN/documents. Không dùng DB đồ án. `cd client; npm.cmd test; npm.cmd run build` kiểm tra FE.
+`node server/tests/run-order-mysql-tests.mjs` với `PHP_BIN`, `PHP_EXTENSION_DIR`, `MYSQLD_BIN`: tạo datadir và port ngẫu nhiên riêng, áp 008/014, chạy test đơn/kho + sáu race hai process (gồm hoàn tiền cùng key/khác key) + test payment/bank/IPN/documents/refund. Không dùng DB đồ án. `cd client; npm.cmd test; npm.cmd run build` kiểm tra FE.
 
 Kiểm tra thủ công: tạo QR nhưng không chuyển tiền vẫn pending; sai số tiền không chuyển PAID; trùng mã ngân hàng không trả hai đơn; replay không thêm audit; khách khác không đọc bill; bill in lại sau đổi catalog không đổi; IPN checksum/số tiền sai không đổi trạng thái; hủy trước IPN thành công không hoàn kho lần hai; xác nhận COD chỉ tại giao hàng. Bản build/test chưa thay cho một giao dịch Sandbox thật với merchant đã cấp khóa.
 
-Giới hạn: chưa chia nhiều lần trả tiền, chưa nhận thiếu/thừa tiền tự động, chưa hoàn tiền ngân hàng thật, chưa phát hành hóa đơn thuế/email; quyền xét duyệt trả hàng/hoàn tiền phải được chốt riêng. Completed vẫn cần bridge thiết bị/bảo trì của module tương ứng. Không gọi “lãi gộp” bằng doanh thu trừ tiền nhập kho trong kỳ; báo cáo doanh thu/hoàn cần dùng ledger và chính sách ghi nhận đã thống nhất với TV3.
+Giới hạn: chưa chia nhiều lần trả tiền, chưa nhận thiếu/thừa tiền tự động, chưa hoàn tiền ngân hàng thật, chưa phát hành hóa đơn thuế/email; quyền xét duyệt trả hàng/hoàn tiền từ trả hàng phải được chốt riêng. Hoàn mô phỏng cho đơn đã hủy đã được triển khai theo chính sách ADMIN ở trên. Completed vẫn cần bridge thiết bị/bảo trì của module tương ứng. Không gọi “lãi gộp” bằng doanh thu trừ tiền nhập kho trong kỳ; báo cáo doanh thu/hoàn cần dùng ledger và chính sách ghi nhận đã thống nhất với TV3.
 
 Nguồn tích hợp: [VNPAY Sandbox 2.1.0](https://sandbox.vnpayment.vn/apis/docs/thanh-toan-pay/pay.html), [VietQR Quick Link](https://www.vietqr.io/).

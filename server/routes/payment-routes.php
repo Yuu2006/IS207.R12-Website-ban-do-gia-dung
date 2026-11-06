@@ -19,7 +19,7 @@ function handlePaymentApi(string $method, string $path, array $query, string $ra
         try { return ['status' => 200, 'headers' => [], 'body' => runtimePaymentService()->ipn($query)]; }
         catch (\Throwable $error) { error_log('VNPAY IPN failed: ' . get_class($error)); return ['status' => 200, 'headers' => [], 'body' => ['RspCode' => '99', 'Message' => 'Please retry']]; }
     }
-    $matched = preg_match('~^/(orders|sales/orders)/([1-9][0-9]*)/(payment|document)(?:/(confirm-transfer|customer|internal))?$~D', $path, $parts);
+    $matched = preg_match('~^/(orders|sales/orders)/([1-9][0-9]*)/(payment|document)(?:/(confirm-transfer|simulate-refund|customer|internal))?$~D', $path, $parts);
     $byReference = preg_match('~^/payments/reference/([A-Za-z0-9-]{1,80})$~D', $path, $reference);
     if (!$matched && !$byReference && !in_array($path, ['/payments/methods', '/cart', '/addresses'], true)) return null;
     $actor = requireOrderPrincipal($session);
@@ -36,13 +36,16 @@ function handlePaymentApi(string $method, string $path, array $query, string $ra
             return apiSuccess($path === '/cart' ? $adapter->cart($orders->pdo, $actor) : $adapter->addresses($orders->pdo, $actor));
         }
         if ($byReference) return $controller->reference($actor, $reference[1]);
-        if (($parts[4] ?? '') === 'confirm-transfer') throw new ApiException(405, 'METHOD_NOT_ALLOWED', 'Cần dùng POST.');
+        if (in_array($parts[4] ?? '', ['confirm-transfer', 'simulate-refund'], true)) throw new ApiException(405, 'METHOD_NOT_ALLOWED', 'Cần dùng POST.');
         return $parts[3] === 'payment' ? $controller->status($actor, $parts[2], $staff) : $controller->document($actor, $parts[2], $staff, strtoupper($parts[4] ?? 'customer'));
     }
-    if ($method === 'POST' && $matched && $staff && $parts[3] === 'payment' && ($parts[4] ?? '') === 'confirm-transfer') {
+    if ($method === 'POST' && $matched && $staff && $parts[3] === 'payment' && in_array($parts[4] ?? '', ['confirm-transfer', 'simulate-refund'], true)) {
+        if ($parts[4] === 'simulate-refund') requireOrderRole($actor, ['ADMIN']);
         requireOrderCsrf($session, $headers);
         if ($query) throw new ApiException(422, 'INVALID_INPUT', 'Endpoint không nhận query.');
-        return (new PaymentController(runtimePaymentService()))->confirm($actor, $parts[2], parseOrderJson($raw, $headers), orderIdempotencyKey($headers));
+        $controller = new PaymentController(runtimePaymentService());
+        $input = parseOrderJson($raw, $headers); $key = orderIdempotencyKey($headers);
+        return $parts[4] === 'simulate-refund' ? $controller->refund($actor, $parts[2], $input, $key) : $controller->confirm($actor, $parts[2], $input, $key);
     }
     if ($method === 'PUT' && $path === '/cart') {
         requireOrderCsrf($session, $headers);

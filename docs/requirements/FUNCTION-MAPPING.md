@@ -8,7 +8,7 @@
 | TCO-01 | `customer/DecisionToolsPage.jsx` (màn hình mẫu) | Contract tính stateless và `decision_events`; API chưa triển khai |
 | LIFE-01 / CARE-01 / ADM-CARE-01 | `customer/DecisionToolsPage.jsx` (màn hình mẫu) | Đề xuất `owned_devices`, `care_rules`, `care_tasks`; completion bridge/API chưa triển khai |
 | BOT-01..06 | `components/chatbot/` (hộp thoại, câu hỏi gợi ý và bảng so sánh 2–4 sản phẩm mẫu) | Đề xuất intent/rule/FAQ/catalog contract tại `docs/api/CHATBOT-DESIGN-CONTRACT.md`; chưa có API chatbot/model |
-| CART / PROMO / CHK / PAY | `/cart`, checkout HTTP, QR chuyển khoản chờ đối soát, kết quả VNPay, bill khách và chứng từ nhân viên | Giỏ/version, snapshot giá/voucher/kho, COD, BANK_TRANSFER xác nhận thủ công có audit, VNPay Sandbox ký/IPN, expiry CLI, chứng từ bất biến; cần migration 014/cấu hình và test merchant thật |
+| CART / PROMO / CHK / PAY | `/cart`, checkout HTTP, QR chuyển khoản chờ đối soát, kết quả VNPay, bill khách và chứng từ nhân viên | Giỏ/version, snapshot giá/voucher/kho, COD, BANK_TRANSFER xác nhận thủ công có audit, VNPay Sandbox ký/IPN, expiry CLI, chứng từ bất biến, ADMIN hoàn toàn bộ mô phỏng cho đơn đã hủy + đã thu tiền; cần migration 014/cấu hình và test merchant thật |
 | ORD / RET | orders/returns | Order, ReturnRefund |
 | NOTI | notifications | Notification |
 | SER / WAR | warranty | Serial, Warranty |
