@@ -42,7 +42,7 @@ export default function SalesOrders({ initialOrders }) {
   }
 
   const next = selected && nextStatus[selected.status];
-  const nextAllowed = next && (selected.method.toUpperCase() === 'VNPAY' ? selected.payment === 'paid' : next === 'delivered' ? collected && selected.payment === 'unpaid' : selected.status === 'delivered' ? selected.payment === 'paid' : selected.payment === 'unpaid');
+  const nextAllowed = next && !selected.refundRequired && (selected.method.toUpperCase() !== 'COD' ? selected.payment === 'paid' : next === 'delivered' ? collected && selected.payment === 'unpaid' : selected.status === 'delivered' ? selected.payment === 'paid' : selected.payment === 'unpaid');
   return <div className="oc-main oc-main--staff"><div className="oc-title-row"><div><span className="oc-eyebrow">Không gian nhân viên</span><h1>Xử lý đơn hàng</h1><p>Tra cứu, xác nhận và theo dõi hành trình giao hàng.</p></div><span className="oc-staff-label"><Icon name="user" size={17} />Nhân viên bán hàng</span></div>
     <p className="oc-muted">Kết quả tra cứu được lọc và phân trang theo trạng thái đơn.</p>
     <div className="oc-staff-grid"><section className="oc-card oc-staff-list">
@@ -61,6 +61,6 @@ export default function SalesOrders({ initialOrders }) {
         {!nextAllowed && <p className="oc-muted">Chưa đủ điều kiện thanh toán hoặc xác nhận thu tiền COD.</p>}
       </div>}
       {canCancelOrder(selected.status) && <form className="oc-cancel-form" onSubmit={event => { event.preventDefault(); update('cancelled'); }}><label className="oc-field">Lý do hủy<textarea required value={reason} disabled={busy || action.uncertain} onChange={event => setReason(event.target.value)} maxLength={500} /></label><button className="oc-button oc-button--danger" disabled={!reason.trim() || busy}>Hủy đơn</button></form>}
-    </div><div className="oc-stack"><OrderDetailContent order={selected} /></div></> : <div className="oc-card oc-empty"><Icon name="box" size={42} /><h2>Chọn một đơn hàng</h2><p>Thông tin nhận hàng, thanh toán và lịch sử xử lý sẽ xuất hiện tại đây.</p></div>}</aside></div>
+    </div><div className="oc-stack"><OrderDetailContent order={selected} staff onUpdated={() => { detail.reload(); resource.reload(); }} /></div></> : <div className="oc-card oc-empty"><Icon name="box" size={42} /><h2>Chọn một đơn hàng</h2><p>Thông tin nhận hàng, thanh toán và lịch sử xử lý sẽ xuất hiện tại đây.</p></div>}</aside></div>
   </div>;
 }

@@ -23,6 +23,7 @@ if ($mode === 'init') {
     // Existing baseline and module migration only; never DROP/TRUNCATE/reset shared data.
     $pdo->exec(file_get_contents(__DIR__ . '/../../database/schema_database.sql'));
     $pdo->exec(file_get_contents(__DIR__ . '/../db/migrations/008_order_runtime.sql'));
+    $pdo->exec(file_get_contents(__DIR__ . '/../db/migrations/014_payment_ledger.sql'));
     $pdo->exec('CREATE TABLE test_cart_versions (cart_id BIGINT UNSIGNED PRIMARY KEY, version BIGINT UNSIGNED NOT NULL DEFAULT 1) ENGINE=InnoDB');
     foreach (['CUSTOMER', 'CUSTOMER', 'SALES', 'ADMIN', 'WAREHOUSE'] as $index => $role) {
         $statement = $pdo->prepare('INSERT INTO users (id, full_name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)');
@@ -218,7 +219,7 @@ check('corrupt line snapshot is rejected rather than silently recalculated', fun
     sql('UPDATE order_items SET line_total = unit_price * quantity WHERE order_id = ?', [$legacyId]);
 });
 check('changed price after quote rejects create without mutation', function () use ($checkout) { $input = cart(); $quote = $checkout->quoteCheckout(actor(), $input); $before = (int) sql('SELECT COUNT(*) FROM orders'); sql('UPDATE product_variants SET price = 710000 WHERE id = 1'); errorCode(fn () => $checkout->createOrder(actor(), $input + ['quoteFingerprint' => $quote['quoteFingerprint'], 'note' => ''], 'checkout-changed-price-key'), 'CHECKOUT_CHANGED'); ensure((int) sql('SELECT COUNT(*) FROM orders') === $before); });
-check('foreign address, unsupported voucher and VNPay fail before writes', function () use ($checkout) { $input = cart(); errorCode(fn () => $checkout->quoteCheckout(actor(2), $input), 'CART_VERSION_CONFLICT'); errorCode(fn () => $checkout->quoteCheckout(actor(), array_replace($input, ['addressId' => '99999'])), 'ADDRESS_NOT_FOUND'); errorCode(fn () => $checkout->quoteCheckout(actor(), array_replace($input, ['voucherCode' => 'TEST'])), 'VOUCHER_INVALID'); errorCode(fn () => $checkout->quoteCheckout(actor(), array_replace($input, ['paymentMethod' => 'VNPAY'])), 'PAYMENT_NOT_AVAILABLE'); });
+check('foreign address, unsupported voucher and VNPay fail before writes', function () use ($checkout) { $input = cart(); errorCode(fn () => $checkout->quoteCheckout(actor(2), $input), 'CART_VERSION_CONFLICT'); errorCode(fn () => $checkout->quoteCheckout(actor(), array_replace($input, ['addressId' => '99999'])), 'ADDRESS_NOT_FOUND'); errorCode(fn () => $checkout->quoteCheckout(actor(), array_replace($input, ['voucherCode' => 'TEST'])), 'VOUCHER_INVALID'); errorCode(fn () => $checkout->quoteCheckout(actor(), array_replace($input, ['paymentMethod' => 'VNPAY'])), 'VNPAY_NOT_CONFIGURED'); });
 check('failure after stock movement rolls back order/items/payment/history/key/cart/stock', function () use ($checkout, $deps) {
     $input = cart(); $quote = $checkout->quoteCheckout(actor(), $input);
     $tables = ['orders', 'order_items', 'payments', 'order_status_history', 'order_idempotency', 'inventory_movements', 'cart_items'];
@@ -239,8 +240,11 @@ check('runtime MySQL opt-in reaches real storage; owner and dependency errors ke
         ensure($response['status'] === 200 && $response['body']['data']['id'] === $id);
         $foreign = HomeCare\OrderApi\handleOrderApi('GET', '/orders/' . $id, [], '', [], array_replace($session, ['user' => actor(2)]));
         ensure($foreign['status'] === 404 && $foreign['body']['errors']['code'] === 'ORDER_NOT_FOUND');
-        $quote = HomeCare\OrderApi\handleOrderApi('POST', '/checkout/quote', [], json_encode(cart(), JSON_THROW_ON_ERROR), ['Content-Type' => 'application/json', 'X-CSRF-Token' => 'test-runtime-csrf'], $session);
-        ensure($quote['status'] === 503 && $quote['body']['errors']['code'] === 'DEPENDENCY_NOT_READY');
+        $input = cart();
+        $input['cartVersion'] = (int) sql('SELECT version FROM carts WHERE user_id = 1');
+        putenv('CHECKOUT_SHIPPING_VND=');
+        $quote = HomeCare\OrderApi\handleOrderApi('POST', '/checkout/quote', [], json_encode($input, JSON_THROW_ON_ERROR), ['Content-Type' => 'application/json', 'X-CSRF-Token' => 'test-runtime-csrf'], $session);
+        ensure($quote['status'] === 503 && $quote['body']['errors']['code'] === 'SHIPPING_NOT_CONFIGURED');
     } finally { putenv('ORDER_STORAGE_MODE=disabled'); }
 });
 echo "MySQL checks: {$checks}; failures: {$failures}\n";

@@ -117,7 +117,7 @@ final class OrderModel
     {
         $status = strtolower($row['order_status']);
         $payment = strtolower($row['payment_status']);
-        if (!in_array($status, ORDER_STATUSES, true) || !in_array($payment, ['unpaid', 'pending', 'paid', 'failed', 'refunded'], true) || !in_array($row['payment_method'], ['COD', 'VNPAY'], true)) {
+        if (!in_array($status, ORDER_STATUSES, true) || !in_array($payment, ['unpaid', 'pending', 'paid', 'failed', 'refunded'], true) || !in_array($row['payment_method'], ['COD', 'VNPAY', 'BANK_TRANSFER'], true)) {
             throw new ApiException(503, 'ORDER_DATA_INCOMPATIBLE', 'Dữ liệu trạng thái cần được chuẩn hóa.');
         }
         $totals = ['subtotal' => orderMoney($row['subtotal']), 'discount' => orderMoney($row['discount_amount']), 'shipping' => orderMoney($row['shipping_fee']), 'total' => orderMoney($row['total_amount'])];
