@@ -13,4 +13,16 @@ final class CartController
     {
         return apiSuccess($this->service->getCart($request['principal']));
     }
+
+    // Add one selected SKU using the authenticated customer's cart version.
+    public function addItem(array $request): array
+    {
+        return apiSuccess($this->service->addItem($request['principal'], $request['input'], $request['idempotencyKey']));
+    }
+
+    // Set one owned cart line to an absolute quantity; the service rechecks current stock and version.
+    public function updateItem(array $request): array
+    {
+        return apiSuccess($this->service->updateItem($request['principal'], $request['variantId'], $request['input'], $request['idempotencyKey']));
+    }
 }

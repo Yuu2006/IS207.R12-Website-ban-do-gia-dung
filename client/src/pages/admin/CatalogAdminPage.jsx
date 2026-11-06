@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import ProductAdmin from '../../components/admin/ProductAdmin.jsx';
 import SimpleCrud from '../../components/admin/SimpleCrud.jsx';
-import { Chips, PageHead } from '../../components/admin/ui.jsx';
+import AnimatedTabs from '../../components/common/AnimatedTabs.jsx';
+import { PageHead } from '../../components/admin/ui.jsx';
 import { banners, brands, categories } from '../../services/catalog-service.js';
 
 const active = item => Number(item.is_active) ? <span className="hc-badge hc-badge--in">Đang dùng</span> : <span className="hc-badge hc-badge--mute">Tạm ẩn</span>;
@@ -34,8 +35,8 @@ export default function CatalogAdminPage() {
 
   return <section>
     <PageHead title="Catalog sản phẩm" subtitle="Danh mục, thương hiệu, sản phẩm, SKU, giá khuyến mãi, thông số, ảnh và banner. Ngừng dùng là xóa mềm, không mất lịch sử đơn."><button className="hc-button" type="button" onClick={() => setAdding(current => current + 1)}><Plus size={18} aria-hidden="true" />{addLabels[tab]}</button></PageHead>
-    <Chips label="Nhóm dữ liệu catalog" options={tabs} value={tab} onChange={select} />
-    <div id={`panel-${tab}`} className="ad-panel">
+    <AnimatedTabs options={tabs} value={tab} onChange={select} label="Nhóm dữ liệu catalog" idPrefix="catalog-tab" panelId="catalog-panel" />
+    <div id="catalog-panel" key={tab} className="ad-panel hc-tab-content" role="tabpanel" aria-labelledby={`catalog-tab-${tab}`}>
       {tab === 'products' && <ProductAdmin categoryOptions={options.categories} brandOptions={options.brands} adding={adding} />}
       {tab === 'categories' && <SimpleCrud title="Danh mục" service={categories} empty="Chưa có danh mục." adding={adding}
         fields={[{ name: 'name', label: 'Tên danh mục', required: true, maxLength: 150 }, { name: 'slug', label: 'Slug (vd: tu-lanh)', required: true, maxLength: 180 }, { name: 'parent_id', label: 'Danh mục cha (chỉ chọn danh mục gốc — tối đa 2 cấp)', type: 'select', options: options.rootCategories, placeholder: 'Không có' }, sortField, { name: 'is_active', label: 'Đang dùng', type: 'checkbox' }]}

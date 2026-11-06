@@ -28,6 +28,58 @@ final class MysqlCheckoutDependencies implements CheckoutDependencies
         return $cart;
     }
 
+    // Add a SKU under cart and SKU locks; stale versions and insufficient stock do not mutate rows.
+    public function addCartItem(\PDO $pdo, array $principal, array $input): array
+    {
+        if (!$pdo->inTransaction()) throw new \LogicException('Cart writes require the idempotency transaction.');
+        $runtime = new CheckoutRuntimeModel($pdo);
+        $cart = $runtime->ensureLockedCart((string) $principal['id']);
+        $cartId = (string) $cart['id'];
+        $cartVersion = (int) $cart['cart_version'];
+        if ($cartVersion !== $input['expectedCartVersion']) throw new ApiException(409, 'CART_VERSION_CONFLICT', 'Giỏ hàng đã thay đổi. Hãy tải lại trước khi thêm sản phẩm.');
+
+        $variantId = $input['variantId'];
+        $quantity = $input['quantity'];
+        $existingQuantity = 0;
+        foreach ($runtime->cartLines($cartId, true) as $line) {
+            if ((string) $line['variant_id'] === $variantId) $existingQuantity = (int) $line['quantity'];
+        }
+        if ($existingQuantity > 4294967295 - $quantity) throw new ApiException(409, 'CART_QUANTITY_LIMIT', 'Số lượng sản phẩm vượt giới hạn giỏ hàng.');
+        $mergedQuantity = $existingQuantity + $quantity;
+        $lines = [['variant_id' => $variantId, 'quantity' => $mergedQuantity]];
+        $variants = $runtime->variants($lines, true);
+        if (!isset($variants[$variantId])) throw new ApiException(409, 'SKU_UNAVAILABLE', 'SKU này không còn được bán. Hãy tải lại danh sách sản phẩm.');
+        if ((int) $variants[$variantId]['stock_quantity'] < $mergedQuantity) throw new ApiException(409, 'OUT_OF_STOCK', 'Số lượng tồn không đủ cho yêu cầu này.');
+
+        $runtime->setCartItemQuantity($cartId, $variantId, $mergedQuantity);
+        $runtime->incrementCartVersion($cartId, $cartVersion);
+        return $runtime->cartSnapshot((string) $principal['id']);
+    }
+
+    // Update a cart line under cart/SKU locks; quantity and stock are revalidated before one version bump.
+    public function updateCartItem(\PDO $pdo, array $principal, string $variantId, array $input): array
+    {
+        if (!$pdo->inTransaction()) throw new \LogicException('Cart writes require the idempotency transaction.');
+        $runtime = new CheckoutRuntimeModel($pdo);
+        $cart = $runtime->ensureLockedCart((string) $principal['id']);
+        $cartId = (string) $cart['id'];
+        $cartVersion = (int) $cart['cart_version'];
+        if ($cartVersion !== $input['expectedCartVersion']) throw new ApiException(409, 'CART_VERSION_CONFLICT', 'Giỏ hàng đã thay đổi. Hãy tải lại trước khi cập nhật số lượng.');
+
+        $lineExists = false;
+        foreach ($runtime->cartLines($cartId, true) as $line) {
+            if ((string) $line['variant_id'] === $variantId) { $lineExists = true; break; }
+        }
+        if (!$lineExists) throw new ApiException(404, 'CART_ITEM_NOT_FOUND', 'Sản phẩm không còn trong giỏ hàng.');
+        $variants = $runtime->variants([['variant_id' => $variantId, 'quantity' => $input['quantity']]], true);
+        if (!isset($variants[$variantId])) throw new ApiException(409, 'SKU_UNAVAILABLE', 'SKU này không còn được bán.');
+        if ((int) $variants[$variantId]['stock_quantity'] < $input['quantity']) throw new ApiException(409, 'OUT_OF_STOCK', 'Số lượng tồn không đủ cho yêu cầu này.');
+
+        $runtime->setCartItemQuantity($cartId, $variantId, $input['quantity']);
+        $runtime->incrementCartVersion($cartId, $cartVersion);
+        return $runtime->cartSnapshot((string) $principal['id']);
+    }
+
     // Calculate whole-VND subtotal, voucher, shipping policy and address snapshot from database values.
     private function buildQuote(CheckoutRuntimeModel $model, array $principal, array $input, bool $lock): array
     {

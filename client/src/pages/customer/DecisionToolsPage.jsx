@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Calculator, CheckCircle2, CircleHelp, House, PackageCheck, Ruler, TriangleAlert } from 'lucide-react';
+import AnimatedTabs from '../../components/common/AnimatedTabs.jsx';
 import { getProduct, listProducts } from '../../services/catalog-service.js';
 import { calculateTco } from '../../services/decision-tools-service.js';
 import './decision-tools.css';
@@ -9,6 +11,7 @@ const tabs = [
   ['tco', 'Chi phí sở hữu', Calculator],
   ['devices', 'Thiết bị & bảo trì', PackageCheck],
 ];
+const tabOptions = tabs.map(([value, label, icon]) => ({ value, label, icon }));
 
 const exampleChecks = [
   { title: 'Phù hợp', icon: CheckCircle2, tone: 'fit', detail: 'Ví dụ: kích thước sản phẩm và khoảng hở đều nằm trong giới hạn của hồ sơ phòng.' },
@@ -256,13 +259,18 @@ function TcoPanel() {
 }
 
 function DevicesPanel() {
-  return <div className="dt-stack"><section className="hc-card"><h2>Thiết bị của tôi</h2><div className="dt-placeholder">Chưa có dữ liệu thiết bị từ API. Sau khi đơn hàng hoàn thành, thiết bị sẽ được tạo theo từng chiếc đã mua, kèm SKU, ngày mua và bảo hành.</div></section><section className="hc-card"><h2>Lịch bảo trì</h2><div className="dt-placeholder">Khi đã có thiết bị, lịch vệ sinh, kiểm tra và thay vật tư sẽ xuất hiện ở đây. Người dùng có thể đánh dấu hoàn thành hoặc hoãn theo quy tắc bảo trì.</div></section></div>;
+  return <section className="hc-card"><h2>Thiết bị của tôi</h2><p className="dt-note">Theo dõi thiết bị được ghi nhận từ đơn hàng đã hoàn tất, thời hạn bảo hành và lịch chăm sóc. Bạn có thể cập nhật số serial, hoàn thành hoặc hoãn mốc bảo trì.</p><Link className="hc-button" to="/customer/devices">Mở thiết bị của tôi</Link></section>;
 }
 
-// Bản mẫu chỉ phác họa trạng thái giao diện; không ghi dữ liệu hoặc giả lập phản hồi API.
+// Room profiles and FitCheck remain previews; TCO and the device page use their API service layers.
 export default function DecisionToolsPage() {
   const [activeTab, setActiveTab] = useState('room');
   const [room, setRoom] = useState({ name: '', placementWidthMm: '', placementDepthMm: '', placementHeightMm: '', doorWidthMm: '', floorAreaM2: '', occupantCount: '', powerAvailable: '', waterSupply: '', drainage: '' });
   useEffect(() => { document.title = 'Không gian và thiết bị · HomeCare'; }, []);
-  return <section className="dt-page"><PageHeading eyebrow="Công cụ lựa chọn và chăm sóc" title="Không gian & thiết bị" description="Kiểm tra độ phù hợp, ước tính chi phí sở hữu và theo dõi thiết bị sau mua." /><div className="hc-tabs" aria-label="Công cụ không gian và thiết bị">{tabs.map(([id, label, Icon]) => <button key={id} type="button" aria-pressed={activeTab === id} className={activeTab === id ? 'is-active' : ''} onClick={() => setActiveTab(id)}><Icon size={16} aria-hidden="true" />{label}</button>)}</div><div>{activeTab === 'room' ? <RoomPanel room={room} setRoom={setRoom} /> : activeTab === 'tco' ? <TcoPanel /> : <DevicesPanel />}</div></section>;
+  return <section className="dt-page"><PageHeading eyebrow="Công cụ lựa chọn và chăm sóc" title="Không gian & thiết bị" description="Kiểm tra độ phù hợp, ước tính chi phí sở hữu và theo dõi thiết bị sau mua." />
+    <AnimatedTabs className="dt-tabs" options={tabOptions} value={activeTab} onChange={setActiveTab} label="Công cụ không gian và thiết bị" idPrefix="decision-tool-tab" panelId="decision-tool-panel" />
+    <div id="decision-tool-panel" key={activeTab} className="hc-tab-content" role="tabpanel" aria-labelledby={`decision-tool-tab-${activeTab}`}>
+      {activeTab === 'room' ? <RoomPanel room={room} setRoom={setRoom} /> : activeTab === 'tco' ? <TcoPanel /> : <DevicesPanel />}
+    </div>
+  </section>;
 }

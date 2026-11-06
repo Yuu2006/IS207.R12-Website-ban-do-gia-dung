@@ -6,7 +6,7 @@
 .dt-section-head { display: flex; align-items: start; gap: 12px; color: #0f5f73; margin-bottom: 18px; }
 .dt-section-head p { margin: 4px 0 0; }
 .dt-room-form { gap: 16px; }
-.dt-note { margin: 18px 0; padding: 14px 16px; border-left: 3px solid #0f5f73; background: #edf5f7; color: #344054; font-size: 12px; line-height: 1.7; }
+.dt-note { margin: 18px 0; padding: 14px 16px; border-left: 3px solid #0f5f73; background: #eaf4f6; color: #344054; font-size: 12px; line-height: 1.7; }
 .dt-result { min-width: 0; padding: 18px; border: 1px solid #d0d5dd; border-radius: 8px; }
 .dt-result svg { display: block; margin-bottom: 11px; }
 .dt-result strong { font-size: 13px; }

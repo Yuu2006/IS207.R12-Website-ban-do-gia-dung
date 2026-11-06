@@ -83,6 +83,39 @@ test('HTTP client sends credential/CSRF/key and returns only successful data', a
   assert.equal(received.init.headers['Idempotency-Key'], idempotencyKey);
 });
 
+test('catalog add-to-cart uses the current cart version and retries an uncertain write with the same key', async () => {
+  const calls = [];
+  let writes = 0;
+  const service = createOrderService(async (path, input = {}) => {
+    calls.push({ path, input });
+    if (path === '/cart') return cart;
+    if (path === '/cart/items' && writes++ === 0) throw new ApiError('Unavailable', 503, 'SERVICE_UNAVAILABLE');
+    if (path === '/cart/items') return { ...cart, cartVersion: cart.cartVersion + 1 };
+    throw new Error(`Unexpected request: ${path}`);
+  });
+
+  await assert.rejects(service.addCartItem('42', 2), isError(503, 'SERVICE_UNAVAILABLE'));
+  const updated = await service.addCartItem('42', 2);
+  const reads = calls.filter(call => call.path === '/cart');
+  const writesReceived = calls.filter(call => call.path === '/cart/items');
+
+  assert.equal(reads.length, 1);
+  assert.equal(updated.cartVersion, cart.cartVersion + 1);
+  assert.equal(writesReceived.length, 2);
+  assert.deepEqual(writesReceived[0].input.body, { variantId: '42', quantity: 2, expectedCartVersion: cart.cartVersion });
+  assert.deepEqual(writesReceived[1].input.body, writesReceived[0].input.body);
+  assert.equal(writesReceived[1].input.idempotencyKey, writesReceived[0].input.idempotencyKey);
+  assert.ok(writesReceived[0].input.idempotencyKey.length >= 16);
+});
+
+test('catalog add-to-cart rejects an invalid SKU or quantity before making a request', async () => {
+  let calls = 0;
+  const service = createOrderService(async () => { calls += 1; return cart; });
+  await assert.rejects(service.addCartItem('sku-42'), error => error.code === 'INVALID_CART_ITEM');
+  await assert.rejects(service.addCartItem('42', 0), error => error.code === 'INVALID_CART_ITEM');
+  assert.equal(calls, 0);
+});
+
 test('HTTP error status/code/fields survive; 5xx does not expose SQL message', async () => {
   for (const status of [400, 401, 403, 404, 409, 422, 503]) {
     const request = createApiClient({ fetchImpl: async () => Response.json({ success: false, message: 'SQL private exception', errors: { code: 'EXPECTED_ERROR', fields: { reason: 'Required' } } }, { status }) });

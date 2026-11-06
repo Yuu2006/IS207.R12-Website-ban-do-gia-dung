@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Icon, ProductLines, StatusBadge, Totals } from '../../components/order/OrderParts.jsx';
 import { money, orderTotal, paymentLabel } from '../../services/order-ui-data.js';
@@ -8,6 +8,7 @@ import { useOrderService } from '../../context/OrderServiceContext.jsx';
 import { useOrderAction, useOrderQuery } from '../../hooks/use-order-api.js';
 import OrderApiState from '../../components/order/OrderApiState.jsx';
 import { isUncertainApiError } from '../../services/api-client.js';
+import AnimatedTabs from '../../components/common/AnimatedTabs.jsx';
 
 const filters = [['all', 'Tất cả'], ['pending', 'Chờ xác nhận'], ['processing', 'Đang chuẩn bị'], ['shipping', 'Đang giao'], ['delivered', 'Đã giao'], ['cancelled', 'Đã hủy']];
 const returnCategories = [['SAFETY_HAZARD', 'Nguy cơ an toàn'], ['DEFECTIVE', 'Lỗi chức năng'], ['TRANSIT_DAMAGE', 'Hư hỏng khi vận chuyển'], ['WRONG_ITEM', 'Giao sai sản phẩm'], ['MISSING_COMPONENT', 'Thiếu phụ kiện'], ['SPEC_MISMATCH', 'Sai thông số cam kết'], ['COSMETIC_DAMAGE', 'Trầy xước nhẹ'], ['PACKAGING_ONLY', 'Chỉ hư bao bì'], ['BUYER_REMORSE', 'Đổi ý sau mua'], ['CUSTOMER_MISUSE', 'Hư hỏng do sử dụng'], ['OTHER', 'Vấn đề khác']];
@@ -38,9 +39,6 @@ export default function OrderHistory({ initialOrders, detail = false }) {
   const action = useOrderAction({ onUnauthorized: () => refreshSession().catch(() => {}) });
   const busy = action.busy;
   const [tabDirection, setTabDirection] = useState('forward');
-  const [indicator, setIndicator] = useState({ left: 0, width: 0 });
-  const tabListRef = useRef(null);
-  const tabRefs = useRef({});
   const reorderAttempt = useRef(null);
   const { orderId } = useParams();
   const navigate = useNavigate();
@@ -51,45 +49,11 @@ export default function OrderHistory({ initialOrders, detail = false }) {
   const selected = detail ? resource.data : null;
   const customerOrders = detail ? [] : resource.data?.items ?? [];
 
-  useLayoutEffect(() => {
-    const activeTab = tabRefs.current[filter];
-    if (!activeTab) return undefined;
-
-    const updateIndicator = () => {
-      setIndicator({ left: activeTab.offsetLeft, width: activeTab.offsetWidth });
-    };
-    updateIndicator();
-    activeTab.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
-
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateIndicator);
-    observer?.observe(tabListRef.current);
-    observer?.observe(activeTab);
-    window.addEventListener('resize', updateIndicator);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener('resize', updateIndicator);
-    };
-  }, [filter]);
-
   function selectFilter(nextFilter) {
     if (nextFilter === filter) return;
     setTabDirection(filters.findIndex(([value]) => value === nextFilter) > filters.findIndex(([value]) => value === filter) ? 'forward' : 'backward');
     setFilter(nextFilter);
     setPage(1);
-  }
-
-  function handleTabKey(event) {
-    const currentIndex = filters.findIndex(([value]) => value === filter);
-    let nextIndex = currentIndex;
-    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % filters.length;
-    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + filters.length) % filters.length;
-    else if (event.key === 'Home') nextIndex = 0;
-    else if (event.key === 'End') nextIndex = filters.length - 1;
-    else return;
-    event.preventDefault();
-    const nextFilter = filters[nextIndex][0];
-    selectFilter(nextFilter);
-    tabRefs.current[nextFilter]?.focus();
   }
 
   async function buyAgain(order) {
@@ -146,7 +110,7 @@ export default function OrderHistory({ initialOrders, detail = false }) {
 
   const visible = customerOrders.filter(order => filter === 'all' || (filter === 'processing' ? ['confirmed', 'preparing'].includes(order.status) : filter === 'delivered' ? ['delivered', 'completed'].includes(order.status) : order.status === filter));
   return <main className="oc-main"><nav className="oc-breadcrumb" aria-label="Đường dẫn"><Link to="/">Trang chủ</Link><span aria-hidden="true">/</span><span aria-current="page">Đơn hàng</span></nav><div className="oc-title-row"><div><h1>Đơn hàng của tôi</h1><p>Theo dõi trạng thái và thông tin các đơn hàng của bạn.</p></div></div>
-    <div className="oc-filter-tabs" ref={tabListRef} role="tablist" aria-label="Lọc đơn theo trạng thái" onKeyDown={handleTabKey}>{filters.map(([value, label]) => <button id={`orders-filter-${value}`} key={value} ref={element => { tabRefs.current[value] = element; }} type="button" role="tab" tabIndex={filter === value ? 0 : -1} aria-selected={filter === value} aria-controls="orders-panel" className={filter === value ? 'is-selected' : ''} onClick={() => selectFilter(value)}>{label}</button>)}<span className="oc-filter-indicator" aria-hidden="true" style={{ width: `${indicator.width}px`, transform: `translateX(${indicator.left}px)` }} /></div>
+    <AnimatedTabs className="oc-filter-tabs" options={filters} value={filter} onChange={selectFilter} label="Lọc đơn theo trạng thái" idPrefix="orders-filter" panelId="orders-panel" />
     {action.error && <p className="oc-error" role="alert">{action.error.message}</p>}
     <div id="orders-panel" key={filter} className={`oc-order-list oc-order-list--${tabDirection}`} role="tabpanel" aria-labelledby={`orders-filter-${filter}`}>{resource.loading || resource.error ? <OrderApiState {...resource} retry={resource.reload} /> : visible.length ? visible.map(order => <article className="oc-card oc-order-card" key={order.id}>
       <Link to={`/orders/${order.id}`} className="oc-order-header"><span className="oc-section-icon"><Icon name="box" size={18} /></span><span className="oc-order-meta"><strong>#{order.code || order.id}</strong><small>Đặt ngày {order.date}</small></span><StatusBadge status={order.status} /><Icon name="arrow" size={16} /></Link>

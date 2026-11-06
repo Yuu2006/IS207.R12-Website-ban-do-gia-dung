@@ -18,6 +18,7 @@ require_once __DIR__ . '/../models/checkout-runtime-model.php';
 require_once __DIR__ . '/../services/checkout-dependencies.php';
 require_once __DIR__ . '/../services/mysql-checkout-dependencies.php';
 require_once __DIR__ . '/../services/order-service.php';
+require_once __DIR__ . '/../services/mysql-device-care-completion.php';
 require_once __DIR__ . '/../services/checkout-service.php';
 require_once __DIR__ . '/../services/cart-service.php';
 require_once __DIR__ . '/../controllers/order-controller.php';
@@ -63,7 +64,7 @@ function runtimeOrderService(): OrderServiceInterface
     try {
         require_once __DIR__ . '/../config/database.php';
         $pdo = \db();
-        return new OrderService(new OrderModel($pdo), new MysqlCheckoutDependencies());
+        return new OrderService(new OrderModel($pdo), new MysqlCheckoutDependencies(), new MysqlDeviceCareCompletion());
     } catch (\PDOException $error) {
         error_log('Order database unavailable: ' . $error->getCode());
         throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Chưa thể kết nối dữ liệu đơn hàng.');
@@ -179,6 +180,7 @@ function handleOrderApi(
         $allowedMethods = [];
         $matched = null;
         $orderId = null;
+        $variantId = null;
         $returnId = null;
         $paymentCode = null;
         foreach (array_merge(orderRoutes(), checkoutRoutes(), cartRoutes(), paymentRoutes(), returnRefundRoutes(), reportRoutes()) as $route) {
@@ -192,6 +194,7 @@ function handleOrderApi(
                     $pathValue = rawurldecode($captures[1]);
                     if ($route['schema'] === 'payment-attempt') $paymentCode = $pathValue;
                     elseif (str_starts_with($route['schema'], 'return-')) $returnId = $pathValue;
+                    elseif ($route['schema'] === 'cart-update') $variantId = $pathValue;
                     else $orderId = $pathValue;
                 }
                 break;
@@ -233,11 +236,13 @@ function handleOrderApi(
             $input = match ($matched['schema']) {
                 'quote' => validateCheckoutInput($body),
                 'create' => validateCheckoutInput($body, true),
+                'cart-add' => validateCartAdd($body),
+                'cart-update' => validateCartUpdate($body),
                 'return-triage', 'return-decision', 'return-receive' => validateReturnMutation($body, $matched['schema']),
                 default => validateOrderMutation($body, $matched['schema']),
             };
         }
-        $request = ['principal' => $principal, 'orderId' => $orderId, 'returnId' => $returnId, 'paymentCode' => $paymentCode, 'input' => $input, 'idempotencyKey' => $key];
+        $request = ['principal' => $principal, 'orderId' => $orderId, 'variantId' => $variantId, 'returnId' => $returnId, 'paymentCode' => $paymentCode, 'input' => $input, 'idempotencyKey' => $key];
         $controller = match ($matched['controller']) {
             'order' => new OrderController($orderService ?? runtimeOrderService()),
             'cart' => new CartController($cartService ?? runtimeCartService()),

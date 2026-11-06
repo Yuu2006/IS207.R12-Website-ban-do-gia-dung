@@ -1,5 +1,116 @@
 @import "tailwindcss";
 
+:root {
+  --hc-primary: #0f5f73;
+  --hc-primary-hover: #0b4e60;
+  --hc-text: #1f2937;
+  --hc-text-muted: #667085;
+  --hc-border: #e5e7eb;
+  --hc-page: #f7f8fa;
+  --hc-card: #ffffff;
+  --hc-tint: #eaf4f6;
+  --hc-motion-duration: 360ms;
+  --hc-motion-ease: cubic-bezier(.22, 1, .36, 1);
+}
+
+.hc-tabs {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  gap: 24px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--hc-border);
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.hc-tabs::-webkit-scrollbar { display: none; }
+
+.hc-tabs__button {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 48px;
+  padding: 8px 2px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--hc-text-muted);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--hc-motion-duration) var(--hc-motion-ease);
+}
+
+.hc-tabs__button:hover,
+.hc-tabs__button.is-active { color: var(--hc-primary); }
+.hc-tabs__button.is-active { font-weight: 600; }
+.hc-tabs__button:focus-visible { outline: 2px solid var(--hc-primary); outline-offset: -3px; }
+
+.hc-tabs__indicator {
+  position: absolute;
+  z-index: 2;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--hc-primary);
+  pointer-events: none;
+  transition: width var(--hc-motion-duration) var(--hc-motion-ease), transform var(--hc-motion-duration) var(--hc-motion-ease), opacity 120ms ease;
+  will-change: width, transform;
+}
+
+.hc-tab-content {
+  min-width: 0;
+  animation: hc-tab-content-enter var(--hc-motion-duration) var(--hc-motion-ease) both;
+}
+
+@keyframes hc-tab-content-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hc-tabs__button, .hc-tabs__indicator, .hc-store-nav-link, .hc-store-mobile-link, .hc-store-nav-indicator { transition-duration: 1ms; }
+  .hc-tab-content, .hc-route-transition--forward, .hc-route-transition--backward { animation-duration: 1ms; }
+}
+
+.hc-store-nav { position: relative; }
+.hc-store-nav-link { transition: color var(--hc-motion-duration) var(--hc-motion-ease); }
+.hc-store-nav-link.is-active { color: var(--hc-primary); font-weight: 600; }
+.hc-store-nav-link:not(.is-active):hover { color: var(--hc-primary); }
+.hc-store-mobile-link { transition: color var(--hc-motion-duration) var(--hc-motion-ease), background-color var(--hc-motion-duration) var(--hc-motion-ease); }
+.hc-store-mobile-link:not(.is-active):hover { background: #f1f6f7; color: var(--hc-primary); }
+.hc-store-nav-indicator {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 10px;
+  background: var(--hc-tint);
+  pointer-events: none;
+  transition: width var(--hc-motion-duration) var(--hc-motion-ease), transform var(--hc-motion-duration) var(--hc-motion-ease), opacity 120ms ease;
+  will-change: width, transform;
+}
+
+.hc-route-transition--forward { animation: hc-route-enter-forward var(--hc-motion-duration) var(--hc-motion-ease) both; }
+.hc-route-transition--backward { animation: hc-route-enter-backward var(--hc-motion-duration) var(--hc-motion-ease) both; }
+@keyframes hc-route-enter-forward { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes hc-route-enter-backward { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: translateX(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .hc-store-nav-link, .hc-store-mobile-link, .hc-store-nav-indicator { transition-duration: 1ms; }
+  .hc-route-transition--forward, .hc-route-transition--backward { animation-duration: 1ms; }
+}
+
 .pl-price-slider {
   position: relative;
   height: 26px;
@@ -91,7 +202,7 @@
   min-width: 0;
   height: 34px;
   padding: 0 8px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #e5e7eb;
   border-radius: 7px;
   color: #1f2937;
   font-size: 12px;

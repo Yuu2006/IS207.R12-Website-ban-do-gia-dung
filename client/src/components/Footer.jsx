@@ -10,7 +10,7 @@ export default function Footer() {
           {/* BRAND */}
           <div>
             <Link to="/" className="mb-4 inline-flex items-center gap-2">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#176B87] text-white">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0F5F73] text-white">
                 <span className="text-lg font-bold">⌂</span>
               </div>
 
@@ -33,14 +33,14 @@ export default function Footer() {
             <div className="mt-5 flex gap-3">
               <a
                 href="#facebook"
-                className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#374151] text-white transition-colors hover:bg-[#176B87]"
+                className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#374151] text-white transition-colors hover:bg-[#0F5F73]"
               >
                 <span className="text-sm font-bold">f</span>
               </a>
 
               <a
                 href="#youtube"
-                className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#374151] text-white transition-colors hover:bg-[#176B87]"
+                className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#374151] text-white transition-colors hover:bg-[#0F5F73]"
               >
                 <span className="text-sm font-bold">▶</span>
               </a>

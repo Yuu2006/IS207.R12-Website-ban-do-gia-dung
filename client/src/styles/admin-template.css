@@ -14,11 +14,11 @@
 
 /* ==== Giao diện nhân viên theo admin-template: token dùng chung, mọi ghi đè nằm dưới .hc-app--staff để trang khách giữ nguyên ==== */
 .hc-app--staff {
-  --bg-page: #F4F6F8; --bg-card: #FFFFFF; --bg-sidebar: #151A22; --bg-table-head: #F8F9FB; --bg-mute: #EDF0F4; --scrim: rgba(21, 26, 34, .55);
-  --border: #E3E7EC; --border-input: #CBD2DB;
-  --text: #151A22; --text-2: #3F4A59; --text-muted: #5B6573;
-  --accent: #3B82F6; --accent-dark: #2563EB; --accent-tint: #EFF6FF; --accent-ink: #1D4ED8;
-  --ok-bg: #E3F4EE; --ok-text: #0B5D4C; --warn-bg: #FFF1D6; --warn-text: #7A4A00; --bad-bg: #FDE6E4; --bad-text: #A4261D; --danger: #C23B30; --danger-dark: #A4261D;
+  --bg-page: #F7F8FA; --bg-card: #FFFFFF; --bg-sidebar: #1F2937; --bg-table-head: #F8F9FB; --bg-mute: #EDF0F4; --scrim: rgba(21, 26, 34, .55);
+  --border: #E5E7EB; --border-input: #D0D5DD;
+  --text: #1F2937; --text-2: #344054; --text-muted: #667085;
+  --accent: #0F5F73; --accent-dark: #0B4E60; --accent-tint: #EAF4F6; --accent-ink: #0F5F73;
+  --ok-bg: #ECFDF3; --ok-text: #027A48; --warn-bg: #FFF7E6; --warn-text: #B54708; --bad-bg: #FEF3F2; --bad-text: #B42318; --danger: #B42318; --danger-dark: #912018;
 }
 .hc-app--staff { background: var(--bg-page); color: var(--text); font-size: 14px; line-height: 1.45; }
 .hc-app--staff :is(a, button, input, select, textarea, summary):focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
@@ -181,9 +181,9 @@
 .ad-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; }
 .ad-select { flex: 0 0 190px; max-width: 100%; min-height: 44px; padding: 0 12px; border: 1px solid var(--border-input); border-radius: 8px; background: #fff; color: var(--text); font: inherit; }
 .ad-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.ad-chip { display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border: 1px solid var(--border-input); border-radius: 999px; background: #fff; color: var(--text-2); font-size: 13px; font-weight: 500; cursor: pointer; }
-.ad-chip:hover { border-color: var(--accent); }
-.ad-chip.on { border-color: var(--bg-sidebar); background: var(--bg-sidebar); color: #fff; }
+.ad-chip { display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border: 1px solid var(--border-input); border-radius: 8px; background: #fff; color: var(--text-muted); font-size: 13px; font-weight: 500; cursor: pointer; transition: border-color var(--hc-motion-duration) var(--hc-motion-ease), background-color var(--hc-motion-duration) var(--hc-motion-ease), color var(--hc-motion-duration) var(--hc-motion-ease); }
+.ad-chip:hover { border-color: var(--accent); color: var(--accent); }
+.ad-chip.on { border-color: var(--accent); background: var(--accent-tint); color: var(--accent); font-weight: 600; }
 
 .hc-app--staff .ad-card { padding: 0; overflow: hidden; }
 .ad-scroll { overflow-x: auto; }
