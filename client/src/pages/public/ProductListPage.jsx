@@ -6,19 +6,10 @@ import {
   List,
   Search,
 } from "lucide-react";
-import { products, categories } from "../../data";
+import { useStorefront } from "../../hooks/use-storefront";
 import ProductCard from "../../components/ProductCard";
 
-const brands = [
-  "Samsung",
-  "LG",
-  "Daikin",
-  "Panasonic",
-  "Sharp",
-  "Toshiba",
-  "Dyson",
-  "Ariston",
-];
+const ALL_PRICES = [0, Number.MAX_SAFE_INTEGER];
 
 const warrantyOptions = [
   "6 tháng",
@@ -39,11 +30,15 @@ const sortOptions = [
 export default function ProductListPage() {
   const [selectedCat, setSelectedCat] = useState(null);
   const [selectedBrands, setSelectedBrands] = useState([]);
-  const [priceRange, setPriceRange] = useState([0, 20000000]);
+  const [priceRange, setPriceRange] = useState(ALL_PRICES);
   const [sort, setSort] = useState("Bán chạy nhất");
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
   const [search, setSearch] = useState("");
+  const { data, error, loading } = useStorefront();
+  const products = data?.products ?? [];
+  const categories = data?.categories ?? [];
+  const brands = [...new Set(products.map((product) => product.brand))].sort();
 
   const toggleBrand = (brand) => {
     setSelectedBrands((prev) =>
@@ -56,7 +51,7 @@ export default function ProductListPage() {
   const clearFilters = () => {
     setSelectedCat(null);
     setSelectedBrands([]);
-    setPriceRange([0, 20000000]);
+    setPriceRange(ALL_PRICES);
     setSearch("");
     setPage(1);
   };
@@ -281,7 +276,7 @@ export default function ProductListPage() {
                     [0, 2000000, "Dưới 2 triệu"],
                     [2000000, 5000000, "2–5 triệu"],
                     [5000000, 10000000, "5–10 triệu"],
-                    [10000000, 20000000, "Trên 10 triệu"],
+                    [10000000, Number.MAX_SAFE_INTEGER, "Trên 10 triệu"],
                   ].map(([min, max, label]) => (
                     <button
                       key={label}
@@ -406,7 +401,15 @@ export default function ProductListPage() {
             </div>
 
             {/* PRODUCTS */}
-            {sortedProducts.length > 0 ? (
+            {loading ? (
+              <div className="rounded-2xl border border-[#E2E8F0] bg-white p-16 text-center text-sm text-[#64748B]">
+                Đang tải sản phẩm...
+              </div>
+            ) : error ? (
+              <div role="alert" className="rounded-2xl border border-[#E2E8F0] bg-white p-16 text-center text-sm text-[#B91C1C]">
+                {error.message}
+              </div>
+            ) : sortedProducts.length > 0 ? (
               <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
                 {sortedProducts.map((product) => (
                   <ProductCard
