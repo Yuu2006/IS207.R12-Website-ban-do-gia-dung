@@ -10,10 +10,12 @@ Compose chỉ mount `server/db` và MySQL không tự chạy file trong thư m�
 2. `migrations/008_product_attributes.sql`, `009_product_attribute_values.sql` (catalog — Lan Chi)
 3. `migrations/008_order_runtime.sql` (đơn hàng — Tấn Vĩ)
 4. `migrations/010_auth_profile.sql` (auth/hồ sơ — Tuấn Vũ: unique phone, ngày sinh, khóa đăng nhập tạm), rồi `migrations/011_auth_catalog_completion.sql` (thứ tự danh mục/banner, mô tả thương hiệu, bảng `auth_login_attempts`)
-5. `migrations/013_checkout_runtime.sql` (cart version và voucher redemption ledger)
-6. `migrations/014_vnpay_runtime.sql` (VNPay expiry and callback fields; apply only when enabling Task 29)
-7. `migrations/015_return_refund_reporting.sql` (quy trình duyệt trả hàng, ledger hoàn tiền mô phỏng và audit history; apply only when enabling Task 30)
-8. `migrations/seeds/001_auth_demo_users.sql`, `migrations/seeds/002_demo_data.sql`, `migrations/seeds/003_catalog_appliances.sql` (30 sản phẩm dữ liệu phát triển: 10 tủ lạnh, 10 máy giặt, 10 máy lạnh; tồn ban đầu ghi qua `inventory_movements`; chạy lại không cộng tồn)
+5. `migrations/012_decision_tools.sql` (sau review; HOME/FIT/TCO/LIFE/CARE, cần cho seed 010)
+6. `migrations/013_checkout_runtime.sql` (cart version và voucher redemption ledger)
+7. `migrations/014_vnpay_runtime.sql` (VNPay expiry and callback fields; cần cho seed đơn/thanh toán)
+8. `migrations/015_return_refund_reporting.sql` (quy trình duyệt trả hàng, ledger hoàn tiền mô phỏng và audit history; cần cho seed đầy đủ)
+9. `migrations/016_care_rule_supplies.sql` (sau 012; liên kết quy tắc bảo trì với SKU vật tư)
+10. `seeds/001_auth_demo_users.sql`, rồi `seeds/003_catalog_appliances.sql` đến `seeds/010_decision_tools.sql` (dữ liệu phát triển; bỏ qua `002_demo_data.sql` trừ khi cần dữ liệu cũ)
 
 Sau khi nhóm review schema HOME/FIT/TCO/LIFE/CARE, áp **một lần** `migrations/012_decision_tools.sql` lên database đã có các bảng `users`, `categories`, `products`, `product_variants`, `orders`, `order_items`. Migration thêm `room_profiles`, `fit_rules`, `care_rules`, `owned_devices`, `care_tasks`, `decision_events`; không sửa baseline hoặc dữ liệu cũ. Endpoint TCO trong branch `users/le-tan-vi` cần bảng `decision_events`; nếu migration chưa áp, API trả lỗi dịch vụ dữ liệu chưa sẵn sàng. Trạng thái migration phải xác minh riêng trên từng database; lần kiểm tra local ngày 06/11/2026 chưa xác nhận migration 012. Xem [contract công cụ lựa chọn](../../docs/api/DECISION-TOOLS.md) và [định nghĩa dashboard cần TV2/TV3 duyệt](../../docs/api/DASHBOARD-METRICS.md). MySQL DDL có implicit commit; backup/review trước khi áp, không chạy lại nếu đã tạo bảng.
 
@@ -21,7 +23,7 @@ Sau khi review và áp 012, STT 24 cần áp tiếp `migrations/016_care_rule_su
 
 Ví dụ với Compose: `docker compose exec -T db sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < database/schema_database.sql`, lặp lại theo thứ tự trên. Hai file đánh số 008 độc lập nhau; migration mới đánh số từ 012.
 
-`migrations/seeds/001_auth_demo_users.sql` tạo 4 tài khoản phát triển (`customer@`, `admin@`, `sales@`, `warehouse@example.test`, mật khẩu `Demo@1234567890!`). Chỉ dùng cho database phát triển.
+`seeds/001_auth_demo_users.sql` tạo 4 tài khoản phát triển (`customer@`, `admin@`, `sales@`, `warehouse@example.test`, mật khẩu `Demo@1234567890!`). Chỉ dùng cho database phát triển.
 
 ## Tạo database HomeCare mới trên Windows
 
@@ -44,12 +46,13 @@ Vẫn dùng tài khoản quản trị để áp schema. Trong Workbench chọn `
 4. `E:\DoAnWeb\server\db\migrations\008_order_runtime.sql`
 5. `E:\DoAnWeb\server\db\migrations\010_auth_profile.sql`
 6. `E:\DoAnWeb\server\db\migrations\011_auth_catalog_completion.sql`
-7. `E:\DoAnWeb\server\db\migrations\013_checkout_runtime.sql`
-8. `E:\DoAnWeb\server\db\migrations\014_vnpay_runtime.sql` (review/backup first; required before enabling VNPay)
-9. `E:\DoAnWeb\server\db\migrations\015_return_refund_reporting.sql` (review/backup first; required before enabling returns/refund CSV)
-10. `E:\DoAnWeb\server\db\migrations\012_decision_tools.sql` (only after review/backup; creates HOME/FIT/TCO/LIFE/CARE tables)
+7. `E:\DoAnWeb\server\db\migrations\012_decision_tools.sql` (only after review/backup; creates HOME/FIT/TCO/LIFE/CARE tables)
+8. `E:\DoAnWeb\server\db\migrations\013_checkout_runtime.sql`
+9. `E:\DoAnWeb\server\db\migrations\014_vnpay_runtime.sql` (review/backup first; required before enabling VNPay)
+10. `E:\DoAnWeb\server\db\migrations\015_return_refund_reporting.sql` (review/backup first; required before enabling returns/refund CSV)
 11. `E:\DoAnWeb\server\db\migrations\016_care_rule_supplies.sql` (only after 012; enables SKU links for maintenance rules)
-12. `E:\DoAnWeb\server\db\migrations\seeds\002_demo_data.sql` and `003_catalog_appliances.sql` (only if the selected development database has no catalog products; both target `homecare_local`)
+12. `E:\DoAnWeb\server\db\seeds\001_auth_demo_users.sql` (optional accounts for development)
+13. `E:\DoAnWeb\server\db\seeds\003_catalog_appliances.sql` through `010_decision_tools.sql` (development dataset; skip `002_demo_data.sql` unless legacy data is specifically needed)
 
 Không cần seed để đăng ký tài khoản CUSTOMER thật tại `/register`. Seed là tùy chọn chỉ cho DB phát triển riêng (thứ tự ở đầu tài liệu), không đưa tài khoản/mật khẩu seed lên production. DB mới chưa có đơn sẽ hiển thị empty state, không tự sinh đơn mẫu.
 
