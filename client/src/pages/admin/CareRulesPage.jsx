@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pencil, Plus, RefreshCw, Save, X } from 'lucide-react';
 import { PageHead } from '../../components/admin/ui.jsx';
 import { categories, listProducts } from '../../services/catalog-service.js';
@@ -14,6 +14,7 @@ export default function CareRulesPage() {
   const [categoryOptions, setCategoryOptions] = useState([]);
   const [productOptions, setProductOptions] = useState([]);
   const [supplies, setSupplies] = useState([]);
+  const [allSupplies, setAllSupplies] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState('');
   const [supplySearch, setSupplySearch] = useState('');
@@ -21,6 +22,7 @@ export default function CareRulesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const supplySearchSequence = useRef(0);
 
   const loadPage = useCallback(async () => {
     setLoading(true);
@@ -32,7 +34,9 @@ export default function CareRulesPage() {
       setRules(ruleResult.items || []);
       setCategoryOptions(categoryRows.filter(row => Number(row.is_active) !== 0).map(row => ({ id: String(row.id), name: row.name })));
       setProductOptions(productRows.map(row => ({ id: String(row.id), name: row.name, categoryName: row.category_name })));
-      setSupplies(supplyResult.items || []);
+      const supplyItems = supplyResult.items || [];
+      setAllSupplies(supplyItems);
+      setSupplies(supplyItems);
     } catch (failure) {
       setError(failure.message || 'Chưa thể tải quy tắc bảo trì. Kiểm tra migration và API rồi thử lại.');
     } finally { setLoading(false); }
@@ -40,12 +44,19 @@ export default function CareRulesPage() {
 
   useEffect(() => { document.title = 'Chu kỳ bảo trì · HomeCare'; loadPage(); }, [loadPage]);
   useEffect(() => {
-    if (!supplySearch.trim()) return;
+    const sequence = ++supplySearchSequence.current;
+    const query = supplySearch.trim();
+    if (!query) {
+      setSupplies(allSupplies);
+      return;
+    }
     const timer = setTimeout(() => {
-      careService.listSupplyOptions(supplySearch.trim()).then(result => setSupplies(result.items || [])).catch(failure => setError(failure.message || 'Không thể tìm SKU vật tư.'));
+      careService.listSupplyOptions(query)
+        .then(result => { if (sequence === supplySearchSequence.current) setSupplies(result.items || []); })
+        .catch(failure => { if (sequence === supplySearchSequence.current) setError(failure.message || 'Không thể tìm SKU vật tư.'); });
     }, 250);
     return () => clearTimeout(timer);
-  }, [supplySearch]);
+  }, [supplySearch, allSupplies]);
 
   function updateField(name, value) { setForm(current => ({ ...current, [name]: value })); }
 

@@ -20,6 +20,7 @@ final class ChatbotService
             if (!is_string($query['categoryId']) && !is_int($query['categoryId'])) throw new ApiException('Danh mục không hợp lệ.', 422);
             if (preg_match('/^[1-9][0-9]{0,19}$/D', (string) $query['categoryId']) !== 1) throw new ApiException('Danh mục không hợp lệ.', 422);
             $categoryId = (string) $query['categoryId'];
+            if (!$this->model->activeCategoryExists($categoryId)) throw new ApiException('Danh mục không tồn tại hoặc đã ngừng hoạt động.', 422);
         }
         if ($search === '' && $categoryId === null) throw new ApiException('Nhập tên sản phẩm, SKU hoặc chọn danh mục để tìm.', 422);
         $rawLimit = $query['limit'] ?? 8;

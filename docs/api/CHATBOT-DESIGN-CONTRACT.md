@@ -61,7 +61,9 @@ Ví dụ response:
 }
 ```
 
-200 trả kết quả (danh sách rỗng nếu không khớp); 422 từ khóa/limit/category sai hoặc thiếu từ khóa và category; 503 khi MySQL/schema chưa sẵn sàng. Endpoint không cần đăng nhập và không nhận giá/tồn do client cung cấp. Giá/tồn có thể thay đổi sau thời điểm phản hồi. `/catalog/products/{id}` tải chi tiết và SKU bằng catalog API, không tạo thao tác mua giả.
+200 trả kết quả (danh sách rỗng nếu không khớp); 422 nếu từ khóa/limit sai, thiếu từ khóa lẫn category, hoặc category không tồn tại/ngừng hoạt động; 503 khi MySQL/schema chưa sẵn sàng. Endpoint không cần đăng nhập và không nhận giá/tồn do client cung cấp. Giá/tồn có thể thay đổi sau thời điểm phản hồi. `/catalog/products/{id}` tải chi tiết và SKU bằng catalog API, không tạo thao tác mua giả.
+
+Các ca hồi quy của endpoint tra cứu gồm: ký tự `%`/`_` được tìm như ký tự thường; SKU, sản phẩm, thương hiệu và danh mục đã vô hiệu hóa không xuất hiện; giới hạn từ khóa và số kết quả; category ID không hợp lệ; giá/tồn được đọc từ MySQL. MySQL integration suite dùng một database local cô lập mới, không kết nối DB đang chạy của người dùng.
 
 Các endpoint chatbot tổng quát và quản trị FAQ phía dưới vẫn là **đề xuất, chưa triển khai**.
 

@@ -6,6 +6,14 @@ final class ChatbotModel
 {
     public function __construct(private PDO $pdo) {}
 
+    // Validate that a category filter still refers to a public, active catalog category.
+    public function activeCategoryExists(string $categoryId): bool
+    {
+        $statement = $this->pdo->prepare('SELECT 1 FROM categories WHERE id = ? AND is_active = 1 AND is_deleted = 0');
+        $statement->execute([$categoryId]);
+        return $statement->fetchColumn() !== false;
+    }
+
     public function searchCatalog(string $query, ?string $categoryId, int $limit): array
     {
         $sql = "SELECT p.id AS product_id, p.name AS product_name, p.product_code, p.slug, p.warranty_months,
