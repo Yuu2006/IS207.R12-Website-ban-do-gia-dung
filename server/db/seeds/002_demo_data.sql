@@ -1,4 +1,3 @@
-USE homecare_local;
 
 -- Danh muc
 INSERT INTO categories (name, slug)
