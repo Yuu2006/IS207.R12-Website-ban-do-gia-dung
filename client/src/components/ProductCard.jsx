@@ -45,19 +45,27 @@ export default function ProductCard({
         </button>
 
         {/* RATING */}
-        <div className="flex items-center gap-1 mt-2">
-          <Star
-            size={13}
-            className="fill-[#F59E0B] text-[#F59E0B]"
-          />
+        <div className="flex items-center gap-1 mt-2 min-h-[18px]">
+          {product.rating != null ? (
+            <>
+              <Star
+                size={13}
+                className="fill-[#F59E0B] text-[#F59E0B]"
+              />
 
-          <span className="text-xs font-medium text-[#1F2937]">
-            {product.rating}
-          </span>
+              <span className="text-xs font-medium text-[#1F2937]">
+                {product.rating}
+              </span>
 
-          <span className="text-xs text-[#94A3B8]">
-            ({product.reviews})
-          </span>
+              <span className="text-xs text-[#94A3B8]">
+                ({product.reviews})
+              </span>
+            </>
+          ) : (
+            <span className="text-xs text-[#94A3B8]">
+              Chưa có đánh giá
+            </span>
+          )}
         </div>
 
         {/* PRICE + CART */}
