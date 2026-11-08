@@ -25,4 +25,10 @@ final class CartController
     {
         return apiSuccess($this->service->updateItem($request['principal'], $request['variantId'], $request['input'], $request['idempotencyKey']));
     }
+
+    // Remove one SKU line from the authenticated customer's cart.
+    public function removeItem(array $request): array
+    {
+        return apiSuccess($this->service->removeItem($request['principal'], $request['variantId'], $request['input'], $request['idempotencyKey']));
+    }
 }

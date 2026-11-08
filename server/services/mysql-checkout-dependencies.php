@@ -80,6 +80,26 @@ final class MysqlCheckoutDependencies implements CheckoutDependencies
         return $runtime->cartSnapshot((string) $principal['id']);
     }
 
+    // Soft-delete one cart line under the cart lock; removal never changes inventory.
+    public function removeCartItem(\PDO $pdo, array $principal, string $variantId, array $input): array
+    {
+        if (!$pdo->inTransaction()) throw new \LogicException('Cart writes require the idempotency transaction.');
+        $runtime = new CheckoutRuntimeModel($pdo);
+        $cart = $runtime->ensureLockedCart((string) $principal['id']);
+        $cartId = (string) $cart['id'];
+        $cartVersion = (int) $cart['cart_version'];
+        if ($cartVersion !== $input['expectedCartVersion']) throw new ApiException(409, 'CART_VERSION_CONFLICT', 'Giỏ hàng đã thay đổi. Hãy tải lại trước khi xóa sản phẩm.');
+
+        $lineExists = false;
+        foreach ($runtime->cartLines($cartId, true) as $line) {
+            if ((string) $line['variant_id'] === $variantId) { $lineExists = true; break; }
+        }
+        if (!$lineExists) throw new ApiException(404, 'CART_ITEM_NOT_FOUND', 'Sản phẩm không còn trong giỏ hàng.');
+        $runtime->removeCartItem($cartId, $variantId);
+        $runtime->incrementCartVersion($cartId, $cartVersion);
+        return $runtime->cartSnapshot((string) $principal['id']);
+    }
+
     // Calculate whole-VND subtotal, voucher, shipping policy and address snapshot from database values.
     private function buildQuote(CheckoutRuntimeModel $model, array $principal, array $input, bool $lock): array
     {

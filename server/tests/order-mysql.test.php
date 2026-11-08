@@ -61,7 +61,13 @@ function sql(string $query, array $values = []): mixed {
     $statement->execute($values);
     return $statement->fetchColumn();
 }
-function ensure(bool $value, string $message = 'Assertion failed'): void { if (!$value) throw new RuntimeException($message); }
+function ensure(bool $value, string $message = 'Assertion failed'): void
+{
+    if ($value) return;
+    $caller = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 1)[0] ?? [];
+    $line = isset($caller['line']) ? ' at line ' . $caller['line'] : '';
+    throw new RuntimeException($message . $line);
+}
 function errorCode(callable $operation, string $code): void {
     try { $operation(); } catch (ApiException $error) { ensure($error->errorCode === $code, 'Expected ' . $code . ', got ' . $error->errorCode); return; }
     throw new RuntimeException('Expected error ' . $code);
@@ -221,7 +227,8 @@ check('cart add merges SKU once, replays idempotently, rejects stale version and
     $input = ['variantId' => '1', 'quantity' => 1, 'expectedCartVersion' => $initial['cartVersion']];
     $added = $cartService->addItem($principal, $input, 'cart-add-runtime-key-0001');
     $replay = $cartService->addItem($principal, $input, 'cart-add-runtime-key-0001');
-    ensure($added === $replay && $added['cartVersion'] === $initial['cartVersion'] + 1);
+    ensure($added == $replay, 'Add replay must preserve the same JSON values.');
+    ensure($added['cartVersion'] === $initial['cartVersion'] + 1, 'Add must increment the cart version once.');
     ensure(count($added['items']) === 1 && $added['items'][0]['quantity'] === 1);
 
     $merged = $cartService->addItem($principal, ['variantId' => '1', 'quantity' => 2, 'expectedCartVersion' => $added['cartVersion']], 'cart-add-runtime-key-0002');
@@ -230,6 +237,31 @@ check('cart add merges SKU once, replays idempotently, rejects stale version and
     errorCode(fn () => $cartService->addItem($principal, ['variantId' => '2', 'quantity' => 2, 'expectedCartVersion' => $merged['cartVersion']], 'cart-add-runtime-key-stock'), 'OUT_OF_STOCK');
     ensure((int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === $stockBefore, 'Adding cart items must not decrement stock.');
     ensure($cartService->getCart($principal) === $merged, 'Rejected mutations changed the cart.');
+});
+check('cart removal is idempotent, versioned, soft-deleted, and does not change stock', function () use ($cartService) {
+    $principal = actor(9);
+    $before = $cartService->getCart($principal);
+    $stockBefore = (int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1');
+    $input = ['expectedCartVersion' => $before['cartVersion']];
+    $removed = $cartService->removeItem($principal, '1', $input, 'cart-remove-runtime-key-01');
+    $replay = $cartService->removeItem($principal, '1', $input, 'cart-remove-runtime-key-01');
+    ensure($removed == $replay, 'Remove replay must preserve the same JSON values.');
+    ensure($removed['items'] === [], 'Removed item must be absent from the active cart snapshot.');
+    ensure($removed['cartVersion'] === $before['cartVersion'] + 1);
+    ensure((int) sql('SELECT is_deleted FROM cart_items WHERE cart_id = (SELECT id FROM carts WHERE user_id = 9) AND variant_id = 1') === 1);
+    ensure((int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === $stockBefore);
+    errorCode(fn () => $cartService->removeItem($principal, '1', $input, 'cart-remove-stale-version-key'), 'CART_VERSION_CONFLICT');
+});
+check('cart snapshot exposes inactive SKU as removable without a purchase price', function () use ($cartService) {
+    $principal = actor(9);
+    $cart = $cartService->getCart($principal);
+    $added = $cartService->addItem($principal, ['variantId' => '1', 'quantity' => 1, 'expectedCartVersion' => $cart['cartVersion']], 'cart-inactive-add-runtime-key');
+    sql('UPDATE product_variants SET is_active = 0 WHERE id = 1');
+    $unavailable = $cartService->getCart($principal);
+    ensure(count($unavailable['items']) === 1 && $unavailable['items'][0]['available'] === false);
+    ensure($unavailable['items'][0]['unitPrice'] === 0 && $unavailable['items'][0]['availableQuantity'] === 0);
+    sql('UPDATE product_variants SET is_active = 1 WHERE id = 1');
+    $cartService->removeItem($principal, '1', ['expectedCartVersion' => $unavailable['cartVersion']], 'cart-inactive-remove-runtime-key');
 });
 $input = cart();
 $quote = $checkout->quoteCheckout(actor(), $input);

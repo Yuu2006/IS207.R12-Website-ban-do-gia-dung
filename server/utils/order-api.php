@@ -194,7 +194,7 @@ function handleOrderApi(
                     $pathValue = rawurldecode($captures[1]);
                     if ($route['schema'] === 'payment-attempt') $paymentCode = $pathValue;
                     elseif (str_starts_with($route['schema'], 'return-')) $returnId = $pathValue;
-                    elseif ($route['schema'] === 'cart-update') $variantId = $pathValue;
+                    elseif (in_array($route['schema'], ['cart-update', 'cart-remove'], true)) $variantId = $pathValue;
                     else $orderId = $pathValue;
                 }
                 break;
@@ -238,6 +238,7 @@ function handleOrderApi(
                 'create' => validateCheckoutInput($body, true),
                 'cart-add' => validateCartAdd($body),
                 'cart-update' => validateCartUpdate($body),
+                'cart-remove' => validateCartRemove($body),
                 'return-triage', 'return-decision', 'return-receive' => validateReturnMutation($body, $matched['schema']),
                 default => validateOrderMutation($body, $matched['schema']),
             };

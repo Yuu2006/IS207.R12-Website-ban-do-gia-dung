@@ -141,6 +141,11 @@
 .oc-cart-quantity button:disabled { cursor: not-allowed; opacity: .4; }
 .oc-cart-quantity span { min-width: 30px; color: var(--oc-text); text-align: center; font-size: 12px; font-weight: 600; }
 .oc-cart-availability { color: var(--oc-muted); font-size: 10px; }
+.oc-cart-remove { display: inline-flex; align-items: center; gap: 4px; color: #667085; font-size: 11px; padding: 5px 2px; }
+.oc-cart-remove:hover:not(:disabled) { color: #b42318; }
+.oc-cart-remove:disabled { cursor: not-allowed; opacity: .5; }
+.oc-cart-line-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 8px; }
+.oc-cart-unavailable { color: #b42318; font-size: 11px; }
 .oc-cart-retry { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 12px; border: 1px solid #fecdca; border-radius: 8px; background: #fef3f2; color: #b42318; font-size: 13px; }
 .oc-cart-retry p { margin: 0; }
 .oc-voucher { margin: 20px 0; }

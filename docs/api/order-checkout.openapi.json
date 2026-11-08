@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "HomeCare — Task 3 checkout & orders",
-    "version": "1.8.0",
-    "description": "Updated 2026-11-06: public product pages use live catalog/SKU data; signed-in customers can add or merge SKU items with cart-version checks and idempotency. Product detail supports add-to-cart, buy-now and same-category comparison. Checkout continues to calculate prices, voucher, shipping and totals on the server. See docs/plan/TASK-3-ORDER-UI.md."
+    "version": "1.9.0",
+    "description": "Updated 2026-11-08: cart snapshots expose inactive SKU lines for recovery; customers can remove a line with version and idempotency checks. See docs/plan/TASK-3-ORDER-UI.md."
   },
   "servers": [
     {
@@ -319,7 +319,6 @@
                         "variantName": "Bạc",
                         "unitPrice": 8990000,
                         "quantity": 1,
-                        "availableQuantity": 12,
                         "discount": 0,
                         "lineTotal": 8990000,
                         "warrantyMonths": 24,
@@ -901,6 +900,8 @@
                         "variantName": "Bạc",
                         "unitPrice": 8990000,
                         "quantity": 1,
+                        "available": true,
+                        "availableQuantity": 12,
                         "discount": 0,
                         "lineTotal": 8990000,
                         "warrantyMonths": 24,
@@ -2257,6 +2258,8 @@
                         "variantName": "Bạc",
                         "unitPrice": 8990000,
                         "quantity": 1,
+                        "available": true,
+                        "availableQuantity": 12,
                         "discount": 0,
                         "lineTotal": 8990000,
                         "warrantyMonths": 24,
@@ -2836,6 +2839,8 @@
                         "variantName": "Bạc",
                         "unitPrice": 8990000,
                         "quantity": 1,
+                        "available": true,
+                        "availableQuantity": 12,
                         "discount": 0,
                         "lineTotal": 8990000,
                         "warrantyMonths": 24,
@@ -2978,7 +2983,7 @@
                   "message": "Success.",
                   "data": {
                     "cartVersion": 4,
-                    "items": [{"skuId": "1", "skuCode": "SS-RT38-382", "productName": "Samsung refrigerator", "variantName": "Silver", "unitPrice": 8990000, "quantity": 2, "availableQuantity": 12, "discount": 0, "lineTotal": 17980000, "warrantyMonths": 24, "imageUrl": null}]
+                    "items": [{"skuId": "1", "skuCode": "SS-RT38-382", "productName": "Samsung refrigerator", "variantName": "Silver", "unitPrice": 8990000, "quantity": 2, "available": true, "availableQuantity": 12, "discount": 0, "lineTotal": 17980000, "warrantyMonths": 24, "imageUrl": null}]
                   }
                 }
               }
@@ -3034,7 +3039,7 @@
     },
     "/cart/items/{variantId}": {
       "patch": {
-        "operationId": "updateCartItem",
+        "operationId": "updateItem",
         "summary": "Set the authenticated customer's quantity for one SKU; the server validates ownership, cart version, SKU status and current stock, then returns a fresh cart snapshot.",
         "x-roles": ["CUSTOMER"],
         "security": [{"sessionCookie": []}],
@@ -3055,14 +3060,59 @@
         "responses": {
           "200": {
             "description": "Quantity updated; returns the current cart and available quantity for each SKU.",
-            "content": {"application/json": {"schema": {"type": "object", "required": ["success", "message", "data"], "properties": {"success": {"type": "boolean", "enum": [true]}, "message": {"type": "string"}, "data": {"$ref": "#/components/schemas/Cart"}}}}}
+            "content": {"application/json": {"schema": {"type": "object", "required": ["success", "message", "data"], "properties": {"success": {"type": "boolean", "enum": [true]}, "message": {"type": "string"}, "data": {"$ref": "#/components/schemas/Cart"}}}, "example": {"success": true, "message": "Cart updated.", "data": {"cartVersion": 5, "items": []}}}}
           },
-          "401": {"description": "Authentication required.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
-          "403": {"description": "Role or CSRF check failed.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "401": {"description": "Authentication required.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}, "example": {"success": false, "message": "Authentication required.", "errors": {"code": "AUTH_REQUIRED", "fields": {}}}}}},
+          "403": {"description": "Role or CSRF check failed.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}, "example": {"success": false, "message": "Access denied or invalid CSRF token.", "errors": {"code": "FORBIDDEN", "fields": {}}}}}},
           "404": {"description": "The SKU is not in the customer's cart.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}, "example": {"success": false, "message": "Item not found.", "errors": {"code": "CART_ITEM_NOT_FOUND", "fields": {}}}}}},
           "409": {"description": "Stale cart, unavailable SKU, or requested quantity exceeds current stock.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}, "example": {"success": false, "message": "Cart changed or stock is insufficient.", "errors": {"code": "CART_VERSION_CONFLICT", "fields": {}}}}}},
-          "422": {"description": "Invalid quantity or cart version.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
-          "503": {"description": "Database or required order schema is unavailable.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+          "422": {"description": "Invalid quantity or cart version.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}, "example": {"success": false, "message": "Invalid cart input.", "errors": {"code": "INVALID_INPUT", "fields": {}}}}}},
+          "503": {"description": "Database or required order schema is unavailable.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}, "example": {"success": false, "message": "Service unavailable.", "errors": {"code": "SERVICE_UNAVAILABLE", "fields": {}}}}}}
+        }
+      },
+      "delete": {
+        "operationId": "removeItem",
+        "summary": "Remove one SKU from the authenticated customer's cart, including an inactive SKU; soft-delete the line, validate cartVersion and replay idempotently.",
+        "x-roles": ["CUSTOMER"],
+        "security": [{"sessionCookie": []}],
+        "parameters": [
+          {"name": "variantId", "in": "path", "required": true, "schema": {"type": "string", "pattern": "^[1-9][0-9]{0,19}$", "maxLength": 20}},
+          {"name": "X-CSRF-Token", "in": "header", "required": true, "schema": {"type": "string"}},
+          {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 16, "maxLength": 128}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/CartRemoveInput"},
+              "example": {"expectedCartVersion": 4}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cart line soft-deleted; returns the updated cart snapshot.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": {"type": "boolean", "enum": [true]},
+                    "message": {"type": "string"},
+                    "data": {"$ref": "#/components/schemas/Cart"}
+                  }
+                },
+                "example": {"success": true, "message": "Cart line removed.", "data": {"cartVersion": 5, "items": []}}
+              }
+            }
+          },
+          "401": {"description": "Authentication required.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}, "example": {"success": false, "message": "Authentication required.", "errors": {"code": "AUTH_REQUIRED", "fields": {}}}}}},
+          "403": {"description": "Role or CSRF check failed.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}, "example": {"success": false, "message": "Access denied or invalid CSRF token.", "errors": {"code": "FORBIDDEN", "fields": {}}}}}},
+          "404": {"description": "The SKU is not in the customer's cart.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}, "example": {"success": false, "message": "Item not found.", "errors": {"code": "CART_ITEM_NOT_FOUND", "fields": {}}}}}},
+          "409": {"description": "The cart version is stale.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}, "example": {"success": false, "message": "Cart changed; reload and try again.", "errors": {"code": "CART_VERSION_CONFLICT", "fields": {}}}}}},
+          "422": {"description": "Invalid cart version or idempotency key.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}, "example": {"success": false, "message": "Invalid cart input.", "errors": {"code": "INVALID_INPUT", "fields": {}}}}}},
+          "503": {"description": "Database or required order schema is unavailable.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}, "example": {"success": false, "message": "Service unavailable.", "errors": {"code": "SERVICE_UNAVAILABLE", "fields": {}}}}}}
         }
       }
     },
@@ -5242,7 +5292,7 @@
       "CartLine": {
         "allOf": [
           {"$ref": "#/components/schemas/Line"},
-          {"type": "object", "required": ["availableQuantity"], "properties": {"availableQuantity": {"type": "integer", "minimum": 0, "description": "Current sellable stock for this SKU; informational only, server rechecks every update and checkout."}}}
+          {"type": "object", "properties": {"available": {"type": "boolean", "description": "False when this catalog SKU/product has been deactivated; checkout cannot purchase it, but CUSTOMER can remove it."}, "availableQuantity": {"type": "integer", "minimum": 0, "description": "Current sellable stock for this SKU; informational only, server rechecks every update and checkout."}}}
         ]
       },
       "AddressList": {
@@ -5327,6 +5377,14 @@
         "required": ["quantity", "expectedCartVersion"],
         "properties": {
           "quantity": {"type": "integer", "minimum": 1, "maximum": 4294967295, "description": "Absolute desired quantity for the SKU path parameter."},
+          "expectedCartVersion": {"type": "integer", "minimum": 1, "description": "Version returned by GET /cart or the last cart mutation."}
+        }
+      },
+      "CartRemoveInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["expectedCartVersion"],
+        "properties": {
           "expectedCartVersion": {"type": "integer", "minimum": 1, "description": "Version returned by GET /cart or the last cart mutation."}
         }
       },
@@ -5576,7 +5634,7 @@
     "phpRoutes": "Customer order list/detail/timeline, checkout quote/create for COD and VNPay, signed public IPN, owner-scoped payment return lookup, scheduled VNPay expiry, SALES state transitions, customer return request, SALES triage, ADMIN decision, WAREHOUSE receipt/simulated refund, and ADMIN revenue CSV; role/ownership/CSRF are enforced server-side.",
     "storage": "ORDER_STORAGE_MODE=mysql requires baseline + migrations 008_order_runtime.sql, 013_checkout_runtime.sql, 014_vnpay_runtime.sql and 015_return_refund_reporting.sql. Order/cart/stock/voucher/payment/return/refund writes share PDO transactions; VNPay expires after 15 minutes and expiry releases reservation once.",
     "authentication": "Tuấn Vũ cấp server session user{id,role,fullName}, expiresAt integer Unix và csrfToken. DB kiểm tra ACTIVE/role hiện tại; không nhận principal từ client.",
-    "dependencies": "Public home/list/detail read active catalog and real product_variants.id values. CUSTOMER POST /cart/items merges a SKU under cart/SKU locks, validates stock and cartVersion, increments cartVersion once and is idempotent; cart add does not reserve inventory. PATCH /cart/items/{variantId} sets a cart quantity after server-side ownership, version, SKU and stock checks. Checkout/reorder uses owned addresses, carts/cart_items, product_variants, products, vouchers and voucher_redemptions. Cart removal remains outside this endpoint. Browser checkout E2E still requires a signed-in customer, active SKU/stock, owned address and environment-level verification. Device/care completion bridge remains owned by Dinh Tung.",
+    "dependencies": "Public home/list/detail read active catalog and real product_variants.id values. CUSTOMER POST /cart/items merges a SKU under cart/SKU locks, validates stock and cartVersion, increments cartVersion once and is idempotent; cart add does not reserve inventory. PATCH /cart/items/{variantId} sets a cart quantity after server-side ownership, version, SKU and stock checks. DELETE /cart/items/{variantId} soft-deletes one owned line even if the SKU is inactive, with cartVersion and idempotency checks; GET /cart marks inactive lines unavailable so checkout can guide removal. Checkout/reorder uses owned addresses, carts/cart_items, product_variants, products, vouchers and voucher_redemptions. Browser checkout E2E still requires a signed-in customer, active SKU/stock, owned address and environment-level verification. Device/care completion bridge remains owned by Dinh Tung.",
     "idempotency": "Khóa actor+operation+key; hash payload và JSON result trong cùng transaction. Cùng payload replay, khác payload 409; rollback không lưu success. Return triage/decision/receipt và refund ledger được ghi transactionally, replay không tạo refund thứ hai. Retry deadlock/lock timeout tối đa 3 lần cùng key."
   },
   "x-max-body-bytes": 16384

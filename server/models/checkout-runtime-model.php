@@ -42,6 +42,14 @@ final class CheckoutRuntimeModel
         $statement->execute([$cartId, $variantId, $quantity]);
     }
 
+    // Preserve cart history while removing the current owned cart line.
+    public function removeCartItem(string $cartId, string $variantId): void
+    {
+        $statement = $this->pdo->prepare('UPDATE cart_items SET is_deleted = 1 WHERE cart_id = ? AND variant_id = ? AND is_deleted = 0');
+        $statement->execute([$cartId, $variantId]);
+        if ($statement->rowCount() !== 1) throw new ApiException(404, 'CART_ITEM_NOT_FOUND', 'Sản phẩm không còn trong giỏ hàng.');
+    }
+
     // Advance the cart version once after every item in a reorder was merged successfully.
     public function incrementCartVersion(string $cartId, int $expectedVersion): void
     {
@@ -114,12 +122,58 @@ final class CheckoutRuntimeModel
         $cart = $this->cart($customerId);
         if ($cart === null) return ['cartVersion' => 1, 'items' => []];
         $lines = $this->cartLines((string) $cart['id']);
-        $variants = $this->variants($lines);
-        if (count($variants) !== count($lines)) throw new ApiException(409, 'CART_ITEM_UNAVAILABLE', 'Một sản phẩm trong giỏ không còn được bán. Hãy cập nhật giỏ hàng.');
-        $items = $this->mapItems($lines, $variants, false);
-        foreach ($items as &$item) $item['availableQuantity'] = (int) $variants[$item['skuId']]['stock_quantity'];
-        unset($item);
+        $variants = $this->cartSnapshotVariants($lines);
+        if (count($variants) !== count($lines)) throw new ApiException(409, 'CART_DATA_INCOMPATIBLE', 'Một dòng giỏ hàng không còn liên kết được với SKU.');
+        $items = [];
+        foreach ($lines as $line) {
+            $id = (string) $line['variant_id'];
+            $variant = $variants[$id];
+            $available = (bool) $variant['variant_active'] && !(bool) $variant['variant_deleted']
+                && (bool) $variant['product_active'] && !(bool) $variant['product_deleted'];
+            if ($available) {
+                $item = $this->mapItems([$line], [$id => $variant], false)[0];
+                $item['availableQuantity'] = (int) $variant['stock_quantity'];
+            } else {
+                $quantity = (int) $line['quantity'];
+                if ($quantity < 1 || $quantity > 4294967295) throw new ApiException(409, 'CART_DATA_INCOMPATIBLE', 'Số lượng trong giỏ không hợp lệ.');
+                $item = [
+                    'skuId' => $id,
+                    'skuCode' => $variant['sku'],
+                    'productName' => $variant['product_name'],
+                    'variantName' => $variant['variant_name'],
+                    'unitPrice' => 0,
+                    'quantity' => $quantity,
+                    'warrantyMonths' => (int) $variant['warranty_months'],
+                    'imageUrl' => $variant['image_url'] ?? '',
+                    'availableQuantity' => 0,
+                ];
+            }
+            $item['available'] = $available;
+            $items[] = $item;
+        }
         return ['cartVersion' => (int) $cart['cart_version'], 'items' => $items];
+    }
+
+    // Include inactive catalog rows only for cart recovery; checkout still uses active variants().
+    private function cartSnapshotVariants(array $lines): array
+    {
+        $ids = array_values(array_unique(array_map(static fn ($line) => (string) $line['variant_id'], $lines)));
+        if ($ids === []) return [];
+        sort($ids, SORT_NUMERIC);
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $sql = "SELECT v.id, v.sku, v.variant_name, v.price, v.sale_price, v.sale_starts_at, v.sale_ends_at, v.stock_quantity,
+                       v.is_active AS variant_active, v.is_deleted AS variant_deleted,
+                       p.name AS product_name, p.warranty_months, p.is_active AS product_active, p.is_deleted AS product_deleted,
+                       (SELECT pi.image_url FROM product_images pi WHERE pi.product_id = p.id AND pi.is_deleted = 0 ORDER BY pi.is_primary DESC, pi.sort_order, pi.id LIMIT 1) AS image_url
+                FROM product_variants v
+                JOIN products p ON p.id = v.product_id
+                WHERE v.id IN ({$placeholders})
+                ORDER BY v.id";
+        $statement = $this->pdo->prepare($sql);
+        $statement->execute($ids);
+        $result = [];
+        foreach ($statement->fetchAll(\PDO::FETCH_ASSOC) as $row) $result[(string) $row['id']] = $row;
+        return $result;
     }
 
     // Atomically decrement one available SKU and append its immutable stock movement.
