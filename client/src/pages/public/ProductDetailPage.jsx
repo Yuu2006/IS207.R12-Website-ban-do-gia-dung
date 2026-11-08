@@ -12,38 +12,13 @@ import {
   ArrowLeftRight,
 } from "lucide-react";
 
-import { products, formatPrice } from "../../data";
-
-const reviews = [
-  {
-    name: "Nguyễn Thị Hoa",
-    rating: 5,
-    date: "10/11/2024",
-    text: "Sản phẩm tốt, đúng như mô tả. Giao hàng nhanh, đóng gói cẩn thận. Kỹ thuật viên đến lắp đặt rất chuyên nghiệp.",
-    verified: true,
-  },
-  {
-    name: "Phạm Minh Khoa",
-    rating: 4,
-    date: "05/11/2024",
-    text: "Máy chạy êm, tiết kiệm điện. Dung tích phù hợp với gia đình 4 người. Hài lòng với sản phẩm này.",
-    verified: true,
-  },
-  {
-    name: "Lê Thị Thu",
-    rating: 5,
-    date: "28/10/2024",
-    text: "Thiết kế đẹp, tính năng hiện đại. Đã dùng 2 tuần thấy rất ổn định. Giá tốt so với thị trường.",
-    verified: false,
-  },
-];
+import { formatPrice } from "../../data";
+import { useProductDetail } from "../../hooks/use-storefront";
 
 export default function ProductDetailPage() {
   const { id } = useParams();
 
-  const product = products.find(
-    (item) => String(item.id) === String(id)
-  );
+  const { data: product, error, loading } = useProductDetail(id);
 
   const [selectedImg, setSelectedImg] = useState(0);
   const [qty, setQty] = useState(1);
@@ -54,7 +29,7 @@ export default function ProductDetailPage() {
       <main className="min-h-screen bg-[#F7FAFC] px-4 py-16">
         <div className="mx-auto max-w-7xl text-center">
           <h1 className="text-2xl font-bold text-[#1F2937]">
-            Không tìm thấy sản phẩm
+            {loading ? "Đang tải sản phẩm..." : error?.status === 404 ? "Không tìm thấy sản phẩm" : error?.message}
           </h1>
 
           <Link
@@ -68,10 +43,7 @@ export default function ProductDetailPage() {
     );
   }
 
-  const images =
-    product.images?.length > 0
-      ? product.images
-      : [product.image];
+  const images = product.images;
   const comparisonUrl = `/compare?${new URLSearchParams({ product: String(product.id), name: product.name, category: product.category })}`;
 
   const addToCart = () => {
@@ -150,27 +122,35 @@ export default function ProductDetailPage() {
 
             {/* RATING */}
             <div className="mb-4 flex flex-wrap items-center gap-3">
-              <div className="flex">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Star
-                    key={star}
-                    size={14}
-                    className={
-                      star <= Math.floor(product.rating)
-                        ? "fill-[#F59E0B] text-[#F59E0B]"
-                        : "fill-gray-200 text-gray-200"
-                    }
-                  />
-                ))}
-              </div>
+              {product.rating != null ? (
+                <>
+                  <div className="flex">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={star}
+                        size={14}
+                        className={
+                          star <= Math.floor(product.rating)
+                            ? "fill-[#F59E0B] text-[#F59E0B]"
+                            : "fill-gray-200 text-gray-200"
+                        }
+                      />
+                    ))}
+                  </div>
 
-              <span className="text-sm font-semibold">
-                {product.rating}
-              </span>
+                  <span className="text-sm font-semibold">
+                    {product.rating}
+                  </span>
 
-              <span className="text-sm text-[#64748B]">
-                ({product.reviewCount} đánh giá)
-              </span>
+                  <span className="text-sm text-[#64748B]">
+                    ({product.reviewCount} đánh giá)
+                  </span>
+                </>
+              ) : (
+                <span className="text-sm text-[#64748B]">
+                  Chưa có đánh giá
+                </span>
+              )}
 
               <span
                 className={`rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -437,128 +417,8 @@ export default function ProductDetailPage() {
 
             {/* REVIEWS */}
             {tab === "reviews" && (
-              <div>
-                {/* SUMMARY */}
-                <div className="mb-6 flex gap-8 rounded-2xl bg-[#F7FAFC] p-4">
-                  <div className="text-center">
-                    <div
-                      className="text-4xl font-bold text-[#176B87]"
-                      style={{
-                        fontFamily:
-                          "'Be Vietnam Pro', sans-serif",
-                      }}
-                    >
-                      {product.rating}
-                    </div>
-
-                    <div className="my-1 flex justify-center">
-                      {[1, 2, 3, 4, 5].map(
-                        (star) => (
-                          <Star
-                            key={star}
-                            size={14}
-                            className="fill-[#F59E0B] text-[#F59E0B]"
-                          />
-                        )
-                      )}
-                    </div>
-
-                    <div className="text-xs text-[#64748B]">
-                      {product.reviewCount} đánh giá
-                    </div>
-                  </div>
-
-                  <div className="flex-1 space-y-1.5">
-                    {[5, 4, 3, 2, 1].map(
-                      (star) => {
-                        const percentage =
-                          star === 5
-                            ? 70
-                            : star === 4
-                              ? 20
-                              : 6;
-
-                        return (
-                          <div
-                            key={star}
-                            className="flex items-center gap-2"
-                          >
-                            <span className="w-4 text-xs">
-                              {star}★
-                            </span>
-
-                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-200">
-                              <div
-                                className="h-full rounded-full bg-[#F59E0B]"
-                                style={{
-                                  width: `${percentage}%`,
-                                }}
-                              />
-                            </div>
-
-                            <span className="w-8 text-xs text-[#64748B]">
-                              {percentage}%
-                            </span>
-                          </div>
-                        );
-                      }
-                    )}
-                  </div>
-                </div>
-
-                {/* REVIEW LIST */}
-                <div className="space-y-4">
-                  {reviews.map((review, index) => (
-                    <div
-                      key={index}
-                      className="border-b border-[#E2E8F0] pb-4 last:border-0"
-                    >
-                      <div className="mb-2 flex items-start justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#176B87] text-xs font-bold text-white">
-                            {review.name[0]}
-                          </div>
-
-                          <div>
-                            <div className="text-sm font-medium text-[#1F2937]">
-                              {review.name}
-                            </div>
-
-                            {review.verified && (
-                              <div className="text-xs text-[#22C55E]">
-                                ✓ Đã mua hàng
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <span className="text-xs text-[#64748B]">
-                          {review.date}
-                        </span>
-                      </div>
-
-                      <div className="mb-1 flex">
-                        {[1, 2, 3, 4, 5].map(
-                          (star) => (
-                            <Star
-                              key={star}
-                              size={12}
-                              className={
-                                star <= review.rating
-                                  ? "fill-[#F59E0B] text-[#F59E0B]"
-                                  : "fill-gray-200 text-gray-200"
-                              }
-                            />
-                          )
-                        )}
-                      </div>
-
-                      <p className="text-sm leading-relaxed text-[#64748B]">
-                        {review.text}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+              <div className="py-8 text-center text-sm text-[#64748B]">
+                Chưa có đánh giá cho sản phẩm này.
               </div>
             )}
           </div>
