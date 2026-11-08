@@ -12,27 +12,7 @@ Compose chỉ mount `server/db` và MySQL không tự chạy file trong thư m�
 4. `migrations/010_auth_profile.sql` (auth/hồ sơ — Tuấn Vũ: unique phone, ngày sinh, khóa đăng nhập tạm), rồi `migrations/011_auth_catalog_completion.sql` (thứ tự danh mục/banner, mô tả thương hiệu, bảng `auth_login_attempts`)
 5. `seeds/001_auth_demo_users.sql`, `seeds/002_demo_data.sql`, `seeds/003_catalog_appliances.sql` (30 sản phẩm mô phỏng: 10 tủ lạnh, 10 máy giặt, 10 máy lạnh; tồn ban đầu ghi qua `inventory_movements`; chạy lại không cộng tồn)
 
-### Bộ dataset đầy đủ (seeds 004–010, 06/11/2026)
-
-Nạp sau `003`, theo thứ tự (cần migration 008_order_runtime, 010, 011; riêng `010` cần thêm 012):
-
-| Seed | Nội dung |
-| --- | --- |
-| `004_catalog_real_brands` | 8 thương hiệu thật (Samsung, LG, Panasonic, Toshiba, Daikin, Casper, Electrolux, Aqua) + 30 sản phẩm `TL/MG/ML-011..020`, 34 SKU, thuộc tính đủ, phiếu nhập kho (có SKU tồn thấp / hết hàng / khuyến mãi) |
-| `005_catalog_media` | `product_images` (3 ảnh/sản phẩm cho cả 60 sản phẩm), 5 banner, logo hãng, `sort_order` danh mục |
-| `006_customers_addresses` | 7 khách demo mới (cùng mật khẩu `Demo@1234567890!`) + địa chỉ |
-| `007_vouchers` | 8 voucher: đang chạy, hết lượt, hết hạn, chưa bắt đầu, đã tắt |
-| `008_orders_payments` | 48 đơn ~90 ngày: đủ 7 trạng thái, COD/VNPAY (PAID/PENDING/FAILED/REFUNDED), vận chuyển, 3 yêu cầu trả hàng, biến động kho `export`/`release`, giỏ hàng |
-| `009_reviews_audit` | đánh giá cho dòng hàng của đơn COMPLETED, audit log |
-| `010_decision_tools` | phòng, `fit_rules`/`care_rules`, `owned_devices` + `care_tasks` từ đơn COMPLETED, `decision_events` |
-
-`004`–`009` là **file sinh tự động**: sửa dữ liệu nguồn ở `scripts/seed-data/dataset.mjs` rồi chạy `node scripts/generate-seed-data.mjs` (PRNG cố định, cùng đầu vào cho cùng đầu ra; thời gian tính từ lúc nạp bằng `UTC_TIMESTAMP()`). Script cũng ghi ảnh PNG placeholder vào `server/uploads/{products,banners,brands}/` — thư mục này bị `.gitignore`, nên **mỗi máy phải chạy script một lần** để có ảnh. `010` viết tay.
-
-Giả định chưa được nhóm chốt (đổi ở dataset/seed khi có quyết định): `vouchers.discount_type` = `PERCENT`|`FIXED`; phí vận chuyển 0₫ (như fixture mock, ngưỡng 500.000₫); `movement_type` hoàn kho khi hủy = `release`; trạng thái yêu cầu trả hàng `REQUESTED`/`APPROVED`; `packing_status` = `WAITING`/`PACKED`; khóa `fit_rules` (`left_key`/`right_key`) dùng tên cột `room_profiles` và `attribute_key` catalog. Không có hoàn tiền một phần (schema chưa có cột số tiền hoàn). Chưa seed: thông báo, wishlist, FAQ chatbot (chưa có bảng), REV-03. Seed 002 (danh mục bếp cũ) lệch phạm vi — bỏ qua khi dựng DB mới. Hãng ở `004` là thật nhưng model/giá/thông số là mô phỏng.
-
-Chưa chạy thử trên MySQL (máy phát triển không có Docker/MySQL lúc sinh); cần nạp trên DB sạch rồi nạp lần hai để xác nhận chạy lại an toàn.
-
-Sau khi nhóm review schema HOME/FIT/TCO/LIFE/CARE, áp **một lần** `migrations/012_decision_tools.sql` lên database đã có các bảng `users`, `categories`, `products`, `product_variants`, `orders`, `order_items`. Migration thêm `room_profiles`, `fit_rules`, `care_rules`, `owned_devices`, `care_tasks`, `decision_events`; không sửa baseline hoặc dữ liệu cũ. Đây là schema đề xuất, chưa có API production và chưa được áp vào database chung. Xem [contract công cụ lựa chọn](../../docs/api/DECISION-TOOLS.md) và [định nghĩa dashboard cần TV2/TV3 duyệt](../../docs/api/DASHBOARD-METRICS.md). MySQL DDL có implicit commit; backup/review trước khi áp, không chạy lại nếu đã tạo bảng.
+Sau khi nhóm review schema HOME/FIT/TCO/LIFE/CARE, áp **một lần** `migrations/012_decision_tools.sql` lên database đã có các bảng `users`, `categories`, `products`, `product_variants`, `orders`, `order_items`. Migration thêm `room_profiles`, `fit_rules`, `care_rules`, `owned_devices`, `care_tasks`, `decision_events`; không sửa baseline hoặc dữ liệu cũ. Sau 012, áp **một lần** `migrations/013_fit_rule_versions.sql` để bật CRUD rule quản trị và snapshot/audit theo version. Không áp 013 trước 012. Không migration nào trong hai file được tự chạy trên database chung; backup/review trước khi áp. Xem [contract công cụ lựa chọn](../../docs/api/DECISION-TOOLS.md) và [định nghĩa dashboard cần TV2/TV3 duyệt](../../docs/api/DASHBOARD-METRICS.md). MySQL DDL có implicit commit; không chạy lại nếu đã tạo bảng.
 
 Ví dụ với Compose: `docker compose exec -T db sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < database/schema_database.sql`, lặp lại theo thứ tự trên. Hai file đánh số 008 độc lập nhau; migration mới đánh số từ 012.
 
