@@ -20,6 +20,7 @@ export default function ChatbotWidget() {
   const launcherRef = useRef(null);
   const historyRef = useRef(null);
   const nextId = useRef(1);
+  const searchInFlight = useRef(false);
 
   useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
   useEffect(() => { if (open && historyRef.current) historyRef.current.scrollTop = historyRef.current.scrollHeight; }, [messages, loading, open]);
@@ -31,7 +32,8 @@ export default function ChatbotWidget() {
 
   async function search(query) {
     const value = query.trim();
-    if (!value || loading) return;
+    if (!value || searchInFlight.current) return;
+    searchInFlight.current = true;
     setLoading(true);
     setDraft('');
     setMessages(current => [...current.slice(-24), { id: nextId.current++, role: 'user', text: value }]);
@@ -45,7 +47,7 @@ export default function ChatbotWidget() {
       }]);
     } catch (failure) {
       setMessages(current => [...current.slice(-24), { id: nextId.current++, role: 'assistant', text: failure.message || 'Chưa thể tra cứu catalog. Vui lòng thử lại.', isError: true }]);
-    } finally { setLoading(false); }
+    } finally { searchInFlight.current = false; setLoading(false); }
   }
 
   function submit(event) { event.preventDefault(); search(draft); }

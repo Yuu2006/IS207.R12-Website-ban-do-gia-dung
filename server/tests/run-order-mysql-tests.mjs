@@ -13,6 +13,7 @@ const mysqld = process.env.MYSQLD_BIN || 'mysqld';
 const phpArgs = process.env.PHP_EXTENSION_DIR ? ['-n', '-d', `extension_dir=${process.env.PHP_EXTENSION_DIR}`, '-d', 'extension=php_pdo_mysql.dll'] : [];
 const suite = fileURLToPath(new URL('./order-mysql.test.php', import.meta.url));
 const tcoSuite = fileURLToPath(new URL('./tco-mysql.test.php', import.meta.url));
+const careSuite = fileURLToPath(new URL('./care-mysql.test.php', import.meta.url));
 const tempParent = await realpath(tmpdir());
 const root = await mkdtemp(join(tempParent, 'homecare-order-mysql-'));
 const portProbe = createServer();
@@ -32,6 +33,7 @@ const run = (binary, args, allowedFailure = false) => new Promise((resolve, reje
 });
 const call = (...args) => run(php, [...phpArgs, suite, ...args]);
 const callTco = (...args) => run(php, [...phpArgs, tcoSuite, ...args]);
+const callCare = (...args) => run(php, [...phpArgs, careSuite, ...args]);
 let server;
 let log = '';
 try {
@@ -51,8 +53,10 @@ try {
   if (!ready) throw new Error(`MySQL did not become ready: ${log}`);
   console.log((await call('init')).output.trim());
   console.log((await callTco('init')).output.trim());
+  console.log((await callCare('init')).output.trim());
   console.log((await call('test')).output.trim());
   console.log((await callTco('test')).output.trim());
+  console.log((await callCare('test')).output.trim());
   // Two independent PHP/PDO processes contend for the same last SKU.
   const prepared = JSON.parse((await call('prepare-race')).output);
   const checkoutRace = await Promise.all(prepared.map(input => call('runtime-checkout-worker', JSON.stringify(input))));
@@ -82,7 +86,13 @@ try {
   if (!duplicateResults.every(result => result.ok)) throw new Error(`Concurrent duplicate checkout failed: ${JSON.stringify(duplicateResults)}`);
   assert.deepEqual(duplicateResults[0], duplicateResults[1], 'Concurrent duplicate checkout must replay one identical response.');
   console.log((await call('verify-idempotency-race', JSON.stringify(duplicateInput))).output.trim());
-  console.log('PASS: isolated MySQL integration and five two-process races.');
+  // Two authenticated customer requests complete the same maintenance cycle concurrently.
+  const careTask = JSON.parse((await callCare('prepare-race')).output);
+  const careRace = await Promise.all([callCare('care-complete-worker', JSON.stringify(careTask)), callCare('care-complete-worker', JSON.stringify(careTask))]);
+  const careOutcomes = careRace.map(result => JSON.parse(result.output));
+  if (!careOutcomes.every(result => result.ok)) throw new Error(`Care completion race failed: ${JSON.stringify(careOutcomes)}`);
+  console.log((await callCare('verify-race', JSON.stringify(careTask))).output.trim());
+  console.log('PASS: isolated MySQL integration and six two-process races.');
 } finally {
   if (server?.pid && server.exitCode === null) {
     const stopped = once(server, 'exit');

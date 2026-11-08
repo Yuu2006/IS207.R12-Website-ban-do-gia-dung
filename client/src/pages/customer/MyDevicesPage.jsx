@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Archive, CalendarClock, Check, ChevronDown, ChevronLeft, ChevronRight, Package, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import AnimatedTabs from '../../components/common/AnimatedTabs.jsx';
@@ -18,7 +18,7 @@ const tomorrowVietnam = () => {
   return new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day) + 1)).toISOString().slice(0, 10);
 };
 
-function TaskCard({ task, onComplete, onPostpone, busy }) {
+function TaskCard({ task, onComplete, onPostpone, busy, canModify = true }) {
   const [showPostpone, setShowPostpone] = useState(false);
   const [newDueDate, setNewDueDate] = useState('');
   const [reason, setReason] = useState('');
@@ -45,7 +45,7 @@ function TaskCard({ task, onComplete, onPostpone, busy }) {
         <span className={supply.available ? 'care-supply__stock' : 'care-supply__stock care-supply__stock--empty'}>{supply.available ? `Còn ${supply.stockQuantity}` : 'Tạm hết'}<span aria-hidden="true"> →</span></span>
       </Link>)}</div>}
     </div>
-    {task.status !== 'COMPLETED' && <div className="care-task__actions">
+    {canModify && task.status !== 'COMPLETED' && <div className="care-task__actions">
       <button type="button" className="care-button" disabled={busy} onClick={() => onComplete(task.id)}><Check size={16} aria-hidden="true" /> Hoàn thành</button>
       <button type="button" className="care-button care-button--quiet" disabled={busy} onClick={() => setShowPostpone(value => !value)}><ChevronDown size={16} aria-hidden="true" /> Hoãn lịch</button>
     </div>}
@@ -60,6 +60,7 @@ function TaskCard({ task, onComplete, onPostpone, busy }) {
 function DeviceCard({ device, onComplete, onPostpone, onArchive, busyTaskId, busyDeviceId, onSerialSave }) {
   const [serial, setSerial] = useState(device.serialNumber || '');
   const [serialDirty, setSerialDirty] = useState(false);
+  const canModify = device.status === 'ACTIVE';
   return <article className="care-device hc-card">
     <div className="care-device__top">
       <div className="care-device__image">{device.imageUrl ? <img src={device.imageUrl} alt="" /> : <Package size={28} aria-hidden="true" />}</div>
@@ -70,12 +71,13 @@ function DeviceCard({ device, onComplete, onPostpone, onArchive, busyTaskId, bus
       <div><ShieldCheck size={17} aria-hidden="true" /><span>Bảo hành<strong>{device.warrantyMonths ? `${device.warrantyMonths} tháng` : 'Chưa có thời hạn'}</strong><small>{device.warrantyStartConfirmed ? `Bắt đầu ${dateLabel(device.warrantyStartDate)}` : 'Ngày bắt đầu chưa được xác nhận'}</small></span></div>
       <div><CalendarClock size={17} aria-hidden="true" /><span>Hoàn tất đơn<strong>{dateLabel(device.completedAt)}</strong><small>Ngày mua: {dateLabel(device.purchasedAt)}</small></span></div>
     </div>
+    {!canModify && <p className="care-empty-inline">Thiết bị đang lưu trữ. Khôi phục thiết bị để cập nhật serial hoặc lịch bảo trì.</p>}
     <form className="care-serial" onSubmit={async event => { event.preventDefault(); if (await onSerialSave(device.id, serial)) setSerialDirty(false); }}>
-      <div className="hc-field"><label htmlFor={`serial-${device.id}`}>Số serial (tùy chọn)</label><input id={`serial-${device.id}`} value={serial} onChange={event => { setSerial(event.target.value); setSerialDirty(true); }} maxLength={100} placeholder="Nhập số serial trên thiết bị" /></div>
-      {serialDirty && <button type="submit" className="care-button care-button--quiet" disabled={busyDeviceId === device.id}>Lưu serial</button>}
+      <div className="hc-field"><label htmlFor={`serial-${device.id}`}>Số serial (tùy chọn)</label><input id={`serial-${device.id}`} value={serial} onChange={event => { setSerial(event.target.value); setSerialDirty(true); }} maxLength={100} placeholder="Nhập số serial trên thiết bị" disabled={!canModify} /></div>
+      {canModify && serialDirty && <button type="submit" className="care-button care-button--quiet" disabled={busyDeviceId === device.id}>Lưu serial</button>}
     </form>
     <div className="care-schedule"><div className="care-schedule__heading"><h3>Lịch bảo trì</h3><span>{device.careTasks.length} chu kỳ</span></div>
-      {device.careTasks.length ? <div className="care-task-list">{device.careTasks.map(task => <TaskCard key={task.id} task={task} onComplete={onComplete} onPostpone={onPostpone} busy={busyTaskId === task.id} />)}</div>
+      {device.careTasks.length ? <div className="care-task-list">{device.careTasks.map(task => <TaskCard key={task.id} task={task} onComplete={onComplete} onPostpone={onPostpone} busy={busyTaskId === task.id} canModify={canModify} />)}</div>
         : <p className="care-empty-inline">Chưa có chu kỳ bảo trì được cấu hình cho thiết bị này.</p>}
     </div>
   </article>;
@@ -91,43 +93,56 @@ export default function MyDevicesPage() {
   const [notice, setNotice] = useState('');
   const [busyTaskId, setBusyTaskId] = useState('');
   const [busyDeviceId, setBusyDeviceId] = useState('');
+  const loadSequence = useRef(0);
+  const taskActionInFlight = useRef(false);
+  const deviceActionsInFlight = useRef(new Set());
 
   const loadDevices = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     setLoading(true);
     setError('');
     try {
       const result = await careService.listDevices({ status, page, pageSize: 20 });
+      if (sequence !== loadSequence.current) return;
       if (result.pagination?.totalPages > 0 && page > result.pagination.totalPages) { setPage(result.pagination.totalPages); return; }
       setDevices(result.items || []);
       setPagination(result.pagination || { page, pageSize: 20, totalItems: 0, totalPages: 0 });
     } catch (failure) {
-      setError(failure.message || 'Chưa thể tải thiết bị. Hãy thử lại.');
-    } finally { setLoading(false); }
+      if (sequence === loadSequence.current) setError(failure.message || 'Chưa thể tải thiết bị. Hãy thử lại.');
+    } finally { if (sequence === loadSequence.current) setLoading(false); }
   }, [status, page]);
 
-  useEffect(() => { document.title = 'Thiết bị của tôi · HomeCare'; loadDevices(); }, [loadDevices]);
+  useEffect(() => {
+    document.title = 'Thiết bị của tôi · HomeCare';
+    loadDevices();
+    return () => { loadSequence.current += 1; };
+  }, [loadDevices]);
 
   async function runTaskAction(taskId, action) {
-    if (busyTaskId) return;
+    if (taskActionInFlight.current) return;
+    taskActionInFlight.current = true;
     setBusyTaskId(taskId); setError(''); setNotice('');
     try { await action(); await loadDevices(); setNotice('Lịch bảo trì đã được cập nhật.'); return true; }
     catch (failure) { setError(failure.message || 'Chưa thể cập nhật lịch.'); return false; }
-    finally { setBusyTaskId(''); }
+    finally { taskActionInFlight.current = false; setBusyTaskId(''); }
   }
 
   async function archiveDevice(deviceId) {
-    if (busyDeviceId) return;
+    if (deviceActionsInFlight.current.has(deviceId)) return;
+    deviceActionsInFlight.current.add(deviceId);
     setBusyDeviceId(deviceId); setError(''); setNotice('');
     try { await careService.updateDevice(deviceId, { status: status === 'ACTIVE' ? 'ARCHIVED' : 'ACTIVE' }); await loadDevices(); setNotice(status === 'ACTIVE' ? 'Thiết bị đã được lưu trữ.' : 'Thiết bị đã được khôi phục.'); }
     catch (failure) { setError(failure.message || 'Chưa thể cập nhật thiết bị.'); }
-    finally { setBusyDeviceId(''); }
+    finally { deviceActionsInFlight.current.delete(deviceId); setBusyDeviceId(''); }
   }
 
   async function saveSerial(deviceId, serialNumber) {
+    if (deviceActionsInFlight.current.has(deviceId)) return false;
+    deviceActionsInFlight.current.add(deviceId);
     setBusyDeviceId(deviceId); setError(''); setNotice('');
     try { await careService.updateDevice(deviceId, { serialNumber }); await loadDevices(); setNotice('Số serial đã được lưu.'); return true; }
     catch (failure) { setError(failure.message || 'Chưa thể lưu số serial.'); return false; }
-    finally { setBusyDeviceId(''); }
+    finally { deviceActionsInFlight.current.delete(deviceId); setBusyDeviceId(''); }
   }
 
   return <section className="dt-page care-page">

@@ -191,3 +191,5 @@ Tại thời điểm tạo thiết bị, chỉ quy tắc `ACTIVE` được đưa
 ## 7. Ranh giới triển khai hiện tại
 
 CRUD phòng và FitCheck evaluator chưa được triển khai. STT 24 cần migrations 012 và 016 đã review/áp dụng; code không tự chạy DDL. Quy tắc bảo hành bắt đầu ngày nào vẫn chờ nhóm thống nhất nên API không tự đặt ngày. Trước khi merge cần người khác review bridge/migration và xác nhận chu kỳ bảo trì với chủ catalog/nghiệp vụ.
+
+Regression suite STT 24 nằm trong `server/tests/care-mysql.test.php` và được gọi bởi `server/tests/run-order-mysql-tests.mjs`. Suite kiểm tra giao dịch hoàn tất đơn → thiết bị/lịch, số lượng theo từng chiếc, snapshot, ưu tiên rule sản phẩm, rule ngừng áp dụng, quyền sở hữu/role, hoãn và hoàn tất chu kỳ, retry, lưu trữ, SKU vật tư hết tồn, chatbot lọc catalog đang hoạt động và gửi đồng thời cùng một tác vụ. Runner chỉ tạo database MySQL tạm trên loopback; nếu môi trường không có `mysqld`, cần chạy tại môi trường dev có MySQL cục bộ trước khi xác nhận kết quả tích hợp.
