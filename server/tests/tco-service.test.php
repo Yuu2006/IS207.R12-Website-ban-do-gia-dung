@@ -62,6 +62,44 @@ tcoEnsure($washerResult['maintenance'] === '150000.00', 'Annual maintenance must
 tcoEnsure($washerResult['total'] === '10927000.00', 'The total must sum every component in cents.');
 tcoEnsure($washerResult['missingInputs'] === [], 'A complete request and catalog fixture must produce no missing inputs.');
 
+$oneYear = TcoCalculator::calculate($washer, TcoCalculator::validateRequest(tcoRequest(['years' => 1])));
+$fiveYears = TcoCalculator::calculate($washer, TcoCalculator::validateRequest(tcoRequest(['years' => 5])));
+tcoEnsure($oneYear['total'] === '4309000.00', 'The one-year scenario must scale recurring costs once.');
+tcoEnsure($fiveYears['total'] === '17545000.00', 'The five-year scenario must scale recurring costs five times.');
+
+$metricProduct = $washer;
+$metricProduct['product_power_watts'] = '2250.0000';
+$metricProduct['attributes'] = ['power_watts' => '2.2500', 'water_liters_cycle' => '0.0810'];
+$metricProduct['attribute_units'] = ['power_watts' => 'kW', 'water_liters_cycle' => 'm³/chu trình'];
+$metricResult = TcoCalculator::calculate($metricProduct, $normalized);
+tcoEnsure($metricResult['electricity'] === $washerResult['electricity'], 'Catalog kW must normalize to the same watt calculation.');
+tcoEnsure($metricResult['water'] === $washerResult['water'], 'Catalog m³ per cycle must normalize to the same liter calculation.');
+tcoEnsure($metricResult['total'] === $washerResult['total'], 'Equivalent W/kW and L/m³ catalog values must produce identical TCO.');
+
+$unsupportedUnitProduct = $metricProduct;
+$unsupportedUnitProduct['attribute_units']['power_watts'] = 'hp';
+$unsupportedUnitResult = TcoCalculator::calculate($unsupportedUnitProduct, $normalized);
+tcoEnsure($unsupportedUnitResult['electricity'] === null && $unsupportedUnitResult['total'] === null, 'Unsupported power units must not be silently treated as W.');
+
+$unsupportedWaterUnitProduct = $metricProduct;
+$unsupportedWaterUnitProduct['attribute_units']['water_liters_cycle'] = 'gallon';
+$unsupportedWaterUnitResult = TcoCalculator::calculate($unsupportedWaterUnitProduct, $normalized);
+tcoEnsure($unsupportedWaterUnitResult['water'] === null && $unsupportedWaterUnitResult['total'] === null, 'Unsupported water units must not be silently treated as liters.');
+
+$zeroUseRequest = TcoCalculator::validateRequest(tcoRequest(['usesPerWeek' => 0, 'hoursPerUse' => null]));
+$zeroUseResult = TcoCalculator::calculate($washer, $zeroUseRequest);
+tcoEnsure($zeroUseResult['electricity'] === '0.00' && $zeroUseResult['water'] === '0.00', 'Zero weekly use must yield zero usage-based utility costs without requiring hours.');
+$zeroUseWithoutSpecs = $washer;
+$zeroUseWithoutSpecs['attributes'] = [];
+$zeroUseWithoutSpecs['defined_attributes'] = [];
+$zeroUseWithoutSpecs['product_power_watts'] = null;
+$zeroUseWithoutSpecsResult = TcoCalculator::calculate($zeroUseWithoutSpecs, $zeroUseRequest);
+tcoEnsure($zeroUseWithoutSpecsResult['electricity'] === '0.00' && $zeroUseWithoutSpecsResult['water'] === '0.00', 'Zero weekly use must remain calculable when usage-based catalog specs are absent.');
+
+$zeroHoursRequest = TcoCalculator::validateRequest(tcoRequest(['hoursPerUse' => '0']));
+$zeroHoursResult = TcoCalculator::calculate($washer, $zeroHoursRequest);
+tcoEnsure($zeroHoursResult['electricity'] === null && $zeroHoursResult['total'] === null, 'Zero hours with nonzero weekly use must not be reported as a complete estimate.');
+
 $fridge = $washer;
 $fridge['category_slug'] = 'tu-lanh';
 $fridge['attributes'] = ['energy_kwh_year' => '460.0000'];
@@ -69,6 +107,8 @@ $fridge['defined_attributes'] = ['energy_kwh_year' => true];
 $fridgeResult = TcoCalculator::calculate($fridge, $normalized);
 tcoEnsure($fridgeResult['electricity'] === '4140000.00', 'Annual kWh must not be multiplied by the weekly use count.');
 tcoEnsure($fridgeResult['water'] === '0.00', 'Known refrigerator category water cost must be explicit zero.');
+$fridgeZeroUse = TcoCalculator::calculate($fridge, $zeroUseRequest);
+tcoEnsure($fridgeZeroUse['electricity'] === $fridgeResult['electricity'], 'Annual kWh must remain independent of the weekly use count, including zero.');
 
 $missingCosts = $normalized;
 $missingCosts['annualCostsByProduct'][20]['maintenanceVndPerYear'] = null;

@@ -104,6 +104,23 @@ $otherCategory['requestKey'] = '2879f657-fbab-4ce8-8b34-3dc909596d12';
 tcoDbRejected(fn () => $service->calculate($otherCategory, ['id' => '1', 'role' => 'CUSTOMER']), 422);
 tcoDbEnsure((int) $pdo->query("SELECT COUNT(*) FROM decision_events WHERE request_key = '2879f657-fbab-4ce8-8b34-3dc909596d12'")->fetchColumn() === 0, 'Invalid comparison must not record a successful event.');
 
+$pdo->exec("UPDATE product_attributes SET unit = 'kW' WHERE category_id = 1 AND attribute_key = 'power_watts'");
+$pdo->exec("UPDATE product_attributes SET unit = 'm³/chu trình' WHERE category_id = 1 AND attribute_key = 'water_liters_cycle'");
+$pdo->exec("UPDATE product_attribute_values pav
+    INNER JOIN product_attributes pa ON pa.id = pav.attribute_id
+    SET pav.value_number = CASE pav.product_id WHEN 20 THEN 2.25 WHEN 21 THEN 1.5 END
+    WHERE pa.category_id = 1 AND pa.attribute_key = 'power_watts' AND pav.product_id IN (20, 21)");
+$pdo->exec("UPDATE product_attribute_values pav
+    INNER JOIN product_attributes pa ON pa.id = pav.attribute_id
+    SET pav.value_number = CASE pav.product_id WHEN 20 THEN 0.081 WHEN 21 THEN 0.065 END
+    WHERE pa.category_id = 1 AND pa.attribute_key = 'water_liters_cycle' AND pav.product_id IN (20, 21)");
+$normalizedUnitsRequest = $request;
+$normalizedUnitsRequest['requestKey'] = 'b45a8343-f69a-4c12-b523-4f33e7f351e9';
+$normalizedUnitsResult = $service->calculate($normalizedUnitsRequest, ['id' => '1', 'role' => 'CUSTOMER']);
+tcoDbEnsure($normalizedUnitsResult['products'][0]['electricity'] === '7897500.00', 'A catalog power value in kW must normalize to the same cost as W.');
+tcoDbEnsure($normalizedUnitsResult['products'][0]['water'] === '1579500.00', 'A catalog water value in m³ per cycle must normalize to the same cost as liters.');
+tcoDbEnsure($normalizedUnitsResult['products'][0]['total'] === '10827000.00', 'Normalized catalog units must preserve the expected TCO total.');
+
 $foreignReplay = $request;
 $foreignReplay['requestKey'] = $request['requestKey'];
 tcoDbRejected(fn () => $service->calculate($foreignReplay, ['id' => '2', 'role' => 'CUSTOMER']), 409);

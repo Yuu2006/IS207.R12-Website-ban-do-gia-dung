@@ -52,7 +52,7 @@ final class TcoModel
         }
 
         $attributeStatement = $this->pdo->prepare(
-            "SELECT pa.attribute_key, pav.value_number
+            "SELECT pa.attribute_key, pa.unit AS attribute_unit, pav.value_number
             FROM product_attributes pa
             LEFT JOIN product_attribute_values pav
                 ON pav.attribute_id = pa.id AND pav.product_id = :product_id
@@ -65,11 +65,13 @@ final class TcoModel
         ]);
 
         $product['attributes'] = [];
+        $product['attribute_units'] = [];
         $product['defined_attributes'] = [];
         foreach ($attributeStatement->fetchAll(PDO::FETCH_ASSOC) as $attribute) {
             $key = $attribute['attribute_key'];
             $product['defined_attributes'][$key] = true;
             $product['attributes'][$key] = $attribute['value_number'];
+            $product['attribute_units'][$key] = $attribute['attribute_unit'];
         }
 
         return $product;
