@@ -5,6 +5,7 @@ import OrderApiState from '../../components/order/OrderApiState.jsx';
 import { useOrderService } from '../../context/OrderServiceContext.jsx';
 import { useOrderAction, useOrderQuery } from '../../hooks/use-order-api.js';
 import { useCustomerAuth } from '../../context/CustomerAuthContext.jsx';
+import { paymentMethods } from '../../services/payment-service.js';
 
 // Nhận địa chỉ/giỏ/quote từ service; chỉ submit ID/version, không gửi giá/tồn từ JSX.
 export default function Checkout({ initialCart }) {
@@ -17,6 +18,7 @@ export default function Checkout({ initialCart }) {
   const [voucher, setVoucher] = useState('');
   const [appliedVoucher, setAppliedVoucher] = useState(null);
   const action = useOrderAction({ onUnauthorized: () => refreshSession().catch(() => {}) });
+  const methods = useOrderQuery(signal => paymentMethods({ signal }), [service], { enabled: service.mode === 'http', initialData: service.mode !== 'http' ? { COD: true, VNPAY: false, BANK_TRANSFER: false } : null });
   const context = useOrderQuery(async signal => {
     const [cart, addresses] = await Promise.all([service.getCart({ signal }), service.getAddresses({ signal })]);
     return { cart, addresses };
@@ -47,7 +49,7 @@ export default function Checkout({ initialCart }) {
           {addresses.filter(address => address.id === selectedAddressId).map(address => <div key={address.id}><strong>{address.recipientName}</strong><p>{address.phone}</p><p>{address.addressLine}</p></div>)}</>}
         <label className="oc-field">Ghi chú giao hàng <span className="oc-muted">(không bắt buộc)</span><textarea rows={2} value={note} maxLength={500} disabled={locked} onChange={event => setNote(event.target.value)} placeholder="Ví dụ: Gọi trước khi giao…" /></label>
         <div className="oc-info"><Icon name="truck" /><div><strong>Giao hàng tiêu chuẩn</strong><span>Phí giao hàng được tính trong thông tin thanh toán.</span></div></div>
-      </section><section className="oc-card oc-form-section"><h2><span className="oc-section-icon"><Icon name="card" /></span>Phương thức thanh toán</h2><fieldset className="oc-payment-options" disabled={locked}><legend className="oc-sr-only">Chọn phương thức thanh toán</legend>{[['COD', 'Thanh toán khi nhận hàng', 'Thanh toán khi nhận sản phẩm.'], ['VNPAY', 'VNPay', 'Thanh toán trực tuyến qua VNPay.']].map(([value, title, text]) => <label key={value} className={`oc-payment-option ${method === value ? 'is-selected' : ''}`}><input type="radio" name="payment" checked={method === value} onChange={() => setMethod(value)} /><Icon name={value === 'COD' ? 'box' : 'card'} /><span><strong>{title}</strong><small>{text}</small></span></label>)}</fieldset></section></div>
+      </section><section className="oc-card oc-form-section"><h2><span className="oc-section-icon"><Icon name="card" /></span>Phương thức thanh toán</h2><fieldset className="oc-payment-options" disabled={locked}><legend className="oc-sr-only">Chọn phương thức thanh toán</legend>{[['COD', 'Thanh toán khi nhận hàng', 'Thanh toán khi nhận sản phẩm.'], ['VNPAY', 'VNPay Sandbox', 'Thanh toán trực tuyến qua VNPay Sandbox.'], ['BANK_TRANSFER', 'Chuyển khoản ngân hàng / QR', 'Nhân viên xác nhận sau khi kiểm tra tiền vào.']].map(([value, title, text]) => <label key={value} className={`oc-payment-option ${method === value ? 'is-selected' : ''}`}><input type="radio" name="payment" disabled={!methods.data?.[value]} checked={method === value} onChange={() => setMethod(value)} /><Icon name={value === 'COD' ? 'box' : 'card'} /><span><strong>{title}</strong><small>{methods.data?.[value] ? text : "Chưa sẵn sàng"}</small></span></label>)}</fieldset></section></div>
       <aside className="oc-card oc-summary"><h2>Đơn hàng của bạn <span>{cart.items.length} sản phẩm</span></h2><ProductLines items={quote.data?.items ?? cart.items} />
         <div className="oc-voucher"><label htmlFor="voucher">Mã ưu đãi</label><div><input id="voucher" value={voucher} disabled={locked} maxLength={50} onChange={event => setVoucher(event.target.value)} placeholder="Nhập mã ưu đãi" /><button className="oc-button oc-button--outline" type="button" disabled={locked} onClick={() => setAppliedVoucher(voucher.trim().toUpperCase() || null)}>Áp dụng</button></div><small>Mỗi đơn hàng áp dụng một mã ưu đãi.</small></div>
         {quote.loading || quote.error ? <OrderApiState {...quote} retry={quote.reload} /> : quote.data && <Totals {...quote.data.totals} />}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   Star,
   Shield,
@@ -16,6 +16,7 @@ import { formatPrice } from "../../data";
 import { useProductDetail } from "../../hooks/use-storefront";
 
 export default function ProductDetailPage() {
+  const navigate = useNavigate();
   const { id } = useParams();
 
   const { data: product, error, loading } = useProductDetail(id);
@@ -47,11 +48,11 @@ export default function ProductDetailPage() {
   const comparisonUrl = `/compare?${new URLSearchParams({ product: String(product.id), name: product.name, category: product.category })}`;
 
   const addToCart = () => {
-    console.log("Thêm vào giỏ:", product, "Số lượng:", qty);
+    navigate('/cart');
   };
 
   const buyNow = () => {
-    console.log("Mua ngay:", product, "Số lượng:", qty);
+    navigate('/cart');
   };
 
   return (
@@ -282,7 +283,7 @@ export default function ProductDetailPage() {
               >
                 <span className="flex items-center justify-center gap-2">
                   <ShoppingCart size={16} />
-                  Thêm vào giỏ
+                  Chọn phiên bản để mua
                 </span>
               </button>
 

@@ -7,7 +7,7 @@ export const OrderServiceContext = createContext(null);
 
 // Mock chỉ khi Vite dev (chờ adapter giỏ/kho cho checkout thật); production luôn HTTP, kể cả env yêu cầu mock.
 export function OrderServiceProvider({ children }) {
-  const [service] = useState(() => import.meta.env.DEV && import.meta.env.VITE_ORDER_API_MODE !== 'http'
+  const [service] = useState(() => import.meta.env.DEV && import.meta.env.VITE_ORDER_API_MODE === 'mock'
     ? createMockOrderService({ getCustomer: async () => (await getSession())?.user })
     : createOrderService());
   return <OrderServiceContext.Provider value={service}>{children}</OrderServiceContext.Provider>;
