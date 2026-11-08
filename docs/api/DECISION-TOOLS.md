@@ -1,6 +1,6 @@
 # HOME-01 / FIT-01 / TCO-01 / LIFE-01 / CARE-01 — schema và API contract
 
-Trạng thái 06/11/2026: CRUD quy tắc FitCheck cho ADMIN đã có FE/API, cần áp migration `012_decision_tools.sql` rồi `013_fit_rule_versions.sql` trước khi dùng. FitCheck cho khách, room profile, TCO và care vẫn là contract/bản mẫu, chưa có evaluator/API production. Màn hình quản trị lấy field từ catalog, không dùng dữ liệu minh họa. Ba mức kết quả FitCheck được giữ trong contract; thay đổi rule không sửa snapshot phiên bản cũ.
+Trạng thái 08/11/2026: CRUD quy tắc FitCheck cho ADMIN, hồ sơ phòng và FitCheck cho CUSTOMER đã có FE/API, cần áp migration `012_decision_tools.sql` rồi `013_fit_rule_versions.sql` trước khi dùng. TCO và care vẫn là contract/bản mẫu. Màn hình quản trị lấy field từ catalog, không dùng dữ liệu minh họa. Ba mức kết quả FitCheck được giữ trong contract; thay đổi rule không sửa snapshot phiên bản cũ.
 
 ## 1. Quy ước chung
 
@@ -12,7 +12,7 @@ Trạng thái 06/11/2026: CRUD quy tắc FitCheck cho ADMIN đã có FE/API, c�
 
 ## 2. Hồ sơ phòng (`room_profiles`)
 
-`GET /api/room-profiles` (CUSTOMER) trả hồ sơ chưa xóa của phiên hiện tại. `POST /api/room-profiles` tạo; `PATCH /api/room-profiles/{id}` sửa; `DELETE /api/room-profiles/{id}` soft delete. `POST /api/room-profiles/{id}/default` đặt mặc định. Chỉ owner truy cập ID; ID của người khác trả 404 để không lộ sự tồn tại. Xóa default thì chuyển sang hồ sơ khác đã chọn trong cùng transaction hoặc không còn default. Unique generated column trong schema chặn hai default cùng lúc.
+`GET /api/room-profiles` (CUSTOMER) trả hồ sơ chưa xóa của phiên hiện tại. `POST /api/room-profiles` tạo; `PATCH /api/room-profiles/{id}` sửa; `DELETE /api/room-profiles/{id}` soft delete. Endpoint đặt mặc định chưa triển khai; hồ sơ `isDefault` (nếu có) được chọn sẵn khi FitCheck. Chỉ owner truy cập ID; ID của người khác trả 404 để không lộ sự tồn tại. Xóa hồ sơ mặc định thì không còn mặc định. Unique generated column trong schema chặn hai default cùng lúc.
 
 Request tạo/sửa (PATCH cho phép gửi một phần):
 
@@ -35,7 +35,7 @@ Response `data` thêm `id`, `isDefault`, `createdAt`, `updatedAt`. Field không 
 
 ## 3. FitCheck và quy tắc quản trị
 
-`POST /api/fit-checks` (CUSTOMER hoặc khách chưa đăng nhập dùng `roomDraft`) nhận đúng một trong `roomProfileId` hoặc `roomDraft`; `productId` bắt buộc. Chỉ CUSTOMER được dùng `roomProfileId` của mình. `requestKey` UUID chống ghi sự kiện trùng khi retry.
+`POST /api/fit-checks` (CUSTOMER) bắt buộc `productId`, `roomProfileId` của chính khách và `requestKey` UUID chống ghi sự kiện trùng khi retry. `roomDraft` cho khách chưa đăng nhập chưa triển khai và trả 422. Response có thêm `roomProfileId`; mỗi phần tử `checks` có thêm `severity` và `margin`. `actual` là vế trái, `limit` là vế phải của quy tắc, vế chưa biết là `null`.
 
 ```json
 { "productId": 42, "roomProfileId": 7, "requestKey": "0b05aa35-3170-44d3-94cf-e981f31d7d5b" }
@@ -110,4 +110,4 @@ ADMIN dùng `GET/POST/PATCH /api/admin/care-rules` để cấu hình quy tắc t
 
 ## 7. Ranh giới triển khai hiện tại
 
-CRUD rule quản trị đã triển khai nhưng cần áp cả migration 012/013 trên database được duyệt. Chưa có CRUD phòng, rule evaluator, TCO calculator, completion bridge hay care scheduler production. `decision_events` hiện chỉ ghi lượt và mức kết quả, chưa lưu chi tiết từng lần đánh giá; không được coi bảng phiên bản rule là lịch sử kết quả FitCheck của khách. Trước khi nối evaluator cần TV4 xác nhận metadata catalog và kiểm thử quyền, dữ liệu thiếu, biên kích thước, đổi đơn vị và idempotency.
+CRUD rule quản trị, CRUD phòng và rule evaluator đã triển khai nhưng cần áp cả migration 012/013 trên database được duyệt. Chưa có TCO calculator, completion bridge hay care scheduler production. `decision_events` hiện chỉ ghi lượt và mức kết quả, chưa lưu chi tiết từng lần đánh giá; không được coi bảng phiên bản rule là lịch sử kết quả FitCheck của khách. Metadata catalog dùng cho evaluator vẫn chờ TV4 xác nhận trước khi dùng production. Kiểm thử: `php server/tests/room-fit-evaluate.test.php` (biên, thiếu dữ liệu, ghi đè) và `node scripts/room-fit-api.test.mjs` (quyền, ba mức kết quả).
