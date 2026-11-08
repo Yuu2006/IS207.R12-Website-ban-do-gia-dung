@@ -8,7 +8,7 @@ export function isCustomerUser(user) {
 
 // Giới hạn nơi quay lại sau đăng nhập, không nhận URL bên ngoài hay trang nhân viên.
 export function customerReturnPath(path) {
-  return typeof path === 'string' && /^\/(?:orders(?:\/[A-Za-z0-9_-]+)?|checkout)(?:\?[^#\s]*)?(?:#[^\s]*)?$/.test(path)
+  return typeof path === 'string' && /^\/(?:orders(?:\/[A-Za-z0-9_-]+)?|checkout|cart|payment\/result)(?:\?[^#\s]*)?(?:#[^\s]*)?$/.test(path)
     ? path
     : '/orders';
 }

@@ -5,12 +5,13 @@ import {
 } from "lucide-react";
 
 import { formatPrice } from "../data";
+import { useNavigate } from 'react-router-dom';
 
 export default function ProductCard({
   product,
   navigate,
-  onAddToCart,
 }) {
+  const cartNavigate = useNavigate();
   return (
     <div className="group bg-white rounded-2xl border border-[#E2E8F0] overflow-hidden hover:shadow-lg hover:border-[#64CCC5] transition-all">
       {/* IMAGE */}
@@ -78,9 +79,9 @@ export default function ProductCard({
 
           <button
             type="button"
-            onClick={() => onAddToCart(product)}
+            onClick={() => cartNavigate('/cart')}
             className="w-9 h-9 rounded-xl bg-[#176B87] text-white flex items-center justify-center hover:bg-[#0f4f65] transition-colors"
-            title="Thêm vào giỏ hàng"
+            title="Chọn sản phẩm và phiên bản để mua"
           >
             <ShoppingCart size={16} />
           </button>

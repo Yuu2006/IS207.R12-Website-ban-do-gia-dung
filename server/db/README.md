@@ -20,6 +20,8 @@ Ví dụ với Compose: `docker compose exec -T db sh -c 'mysql -u"$MYSQL_USER" 
 
 ## Áp dụng module đơn hàng
 
+Thanh toán/chứng từ mới: sau baseline và `008_order_runtime.sql`, áp một lần `014_payment_ledger.sql` trên DB đã review/backup. Migration thêm version giỏ, giới hạn voucher theo khách, snapshot cửa hàng, metadata/expiry payment, audit payment, chứng từ bất biến và lượt voucher; độc lập với 012/013. Không tự bật `ORDER_STORAGE_MODE=mysql` hoặc tự đặt phí/tài khoản ngân hàng. Xem [hướng dẫn thanh toán](../../docs/api/PAYMENT-LEDGER.md).
+
 1. Team kiểm tra/backup database đích và xác nhận baseline đã được áp dụng. Không import lại baseline vào database đang có bảng/dữ liệu.
 2. Review rồi chạy **một lần** `server/db/migrations/008_order_runtime.sql` trên database đã chọn. Migration chỉ thêm trường snapshot/version/inventory/audit và bảng idempotency/return request; không sửa baseline. MySQL DDL có implicit commit, không giả định rollback DDL.
 3. Đơn cũ mặc định `inventory_state=UNTRACKED`; không tự đặt RESERVED hoặc hoàn kho. Lịch sử cũ thiếu `actor_role` trả 503 ORDER_DATA_INCOMPATIBLE khi lấy detail, không suy diễn role từ tài khoản hiện tại. Cần owner xác minh lịch sử và timezone DATETIME cũ trước khi bật.
