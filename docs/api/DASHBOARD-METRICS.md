@@ -1,6 +1,6 @@
 # DASH-01 / RPT-03 — dashboard contract để TV2/TV3 duyệt
 
-Trạng thái 19/10/2026: **đề xuất, chưa được TV2/TV3 xác nhận và chưa có endpoint**. React preview tại route `/admin/dashboard-preview` (file `client/src/pages/admin/DashboardPreviewPage.jsx`) hiển thị dấu `—`, không tạo số liệu giả. Route `/admin` giữ trang tổng quan `WorkspacePage`. Owner backend báo cáo cần đối chiếu định nghĩa này với trạng thái đơn, thanh toán, trả/hoàn và kho trước khi triển khai.
+Trạng thái 19/10/2026: **đề xuất, chưa được TV2/TV3 xác nhận và chưa có endpoint**. React preview tại `client/src/pages/admin/DashboardPreviewPage.jsx` hiển thị dấu `—`, không tạo số liệu giả; hiện chưa gắn route hay menu. Route `/admin` dùng trang tổng quan `StaffOverviewPage`. Owner backend báo cáo cần đối chiếu định nghĩa này với trạng thái đơn, thanh toán, trả/hoàn và kho trước khi triển khai.
 
 ## Endpoint dự kiến
 
