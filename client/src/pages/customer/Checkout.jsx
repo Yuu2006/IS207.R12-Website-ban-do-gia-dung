@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Minus, Plus } from 'lucide-react';
+import { Minus, Plus, Trash2 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Icon, ProductLines, Totals } from '../../components/order/OrderParts.jsx';
 import OrderApiState from '../../components/order/OrderApiState.jsx';
@@ -18,7 +18,7 @@ export default function Checkout({ initialCart }) {
   const [note, setNote] = useState('');
   const [voucher, setVoucher] = useState('');
   const [appliedVoucher, setAppliedVoucher] = useState(null);
-  const [pendingCartUpdate, setPendingCartUpdate] = useState(null);
+  const [pendingCartMutation, setPendingCartMutation] = useState(null);
   const cartMutationLock = useRef(false);
   const action = useOrderAction({ onUnauthorized: () => refreshSession().catch(() => {}) });
   const cartAction = useOrderAction({ onUnauthorized: () => refreshSession().catch(() => {}) });
@@ -46,7 +46,7 @@ export default function Checkout({ initialCart }) {
     if (!cart || !Number.isSafeInteger(quantity) || quantity < 1 || cartMutationLock.current || cartAction.busy || (cartLocked && !retry) || action.busy) return;
     const input = { variantId: item.sku_id, quantity, expectedCartVersion: cart.cartVersion };
     cartMutationLock.current = true;
-    setPendingCartUpdate({ ...input, name: item.name });
+    setPendingCartMutation({ ...input, name: item.name, type: 'quantity' });
     try {
       const updatedCart = await cartAction.run('updateCartItem', input, options => service.updateCartItem(
         input.variantId,
@@ -56,7 +56,27 @@ export default function Checkout({ initialCart }) {
       ));
       if (updatedCart) {
         context.setData({ ...context.data, cart: updatedCart });
-        setPendingCartUpdate(null);
+        setPendingCartMutation(null);
+      }
+    } finally {
+      cartMutationLock.current = false;
+    }
+  }
+
+  async function removeCartLine(item, retry = false) {
+    if (!cart || !item?.sku_id || cartMutationLock.current || cartAction.busy || (cartLocked && !retry) || action.busy) return;
+    const input = { variantId: item.sku_id, expectedCartVersion: cart.cartVersion };
+    cartMutationLock.current = true;
+    setPendingCartMutation({ ...input, name: item.name, type: 'remove' });
+    try {
+      const updatedCart = await cartAction.run('removeCartItem', input, options => service.removeCartItem(
+        input.variantId,
+        input.expectedCartVersion,
+        options,
+      ));
+      if (updatedCart) {
+        context.setData({ ...context.data, cart: updatedCart });
+        setPendingCartMutation(null);
       }
     } finally {
       cartMutationLock.current = false;
@@ -85,6 +105,7 @@ export default function Checkout({ initialCart }) {
       <aside id="order-summary" className="oc-card oc-summary"><h2>Đơn hàng của bạn <span>{cart.items.reduce((total, item) => total + item.quantity, 0)} sản phẩm</span></h2><ProductLines items={quote.data?.items ?? cart.items} renderQuantity={item => {
         const cartItem = cart.items.find(line => line.sku_id === item.sku_id);
         const available = cartItem?.availableQuantity;
+        if (cartItem?.available === false) return <div className="oc-cart-line-actions"><small className="oc-cart-unavailable">Sản phẩm đã ngừng kinh doanh</small><button type="button" className="oc-cart-remove" disabled={locked} onClick={() => removeCartLine(cartItem)}><Trash2 size={14} /> Xóa khỏi giỏ</button></div>;
         return <div className="oc-cart-quantity-wrap">
           <div className="oc-cart-quantity" role="group" aria-label={`Số lượng ${item.name}`}>
             <button type="button" aria-label={`Giảm số lượng ${item.name}`} disabled={locked || item.quantity <= 1} onClick={() => updateCartQuantity(item, item.quantity - 1)}><Minus size={14} /></button>
@@ -92,6 +113,7 @@ export default function Checkout({ initialCart }) {
             <button type="button" aria-label={`Tăng số lượng ${item.name}`} disabled={locked || (Number.isSafeInteger(available) && item.quantity >= available)} onClick={() => updateCartQuantity(item, item.quantity + 1)}><Plus size={14} /></button>
           </div>
           {Number.isSafeInteger(available) && <small className="oc-cart-availability">Còn {available} sản phẩm</small>}
+          <button type="button" className="oc-cart-remove" aria-label={`Xóa ${item.name} khỏi giỏ`} disabled={locked} onClick={() => removeCartLine(cartItem)}><Trash2 size={14} /> Xóa</button>
         </div>;
       }} />
         <div className="oc-voucher"><label htmlFor="voucher">Mã ưu đãi</label><div><input id="voucher" value={voucher} disabled={locked} maxLength={50} onChange={event => setVoucher(event.target.value)} placeholder="Nhập mã ưu đãi" /><button className="oc-button oc-button--outline" type="button" disabled={locked} onClick={() => setAppliedVoucher(voucher.trim().toUpperCase() || null)}>Áp dụng</button></div><small>Mỗi đơn hàng áp dụng một mã ưu đãi.</small></div>
@@ -102,7 +124,7 @@ export default function Checkout({ initialCart }) {
         <button className="oc-button oc-button--full" type="submit" disabled={locked || quote.loading || !!quote.error || !quote.data}>{action.busy ? 'Đang gửi…' : action.uncertain ? 'Thử lại đặt hàng' : 'Đặt hàng'}<Icon name="arrow" size={17} /></button>
         {action.error?.status === 409 && !action.uncertain && <button type="button" className="oc-text-action" onClick={() => { context.reload(); quote.reload(); }}>Tải lại giỏ và thông tin thanh toán</button>}
         <Link className="oc-back-link" to="/orders">← Quay lại đơn hàng</Link>
-        {cartAction.uncertain && pendingCartUpdate && <div className="oc-cart-retry" role="status"><p>{"Chưa xác nhận được thay đổi số lượng."}</p><button type="button" className="oc-text-action" onClick={() => updateCartQuantity({ sku_id: pendingCartUpdate.variantId, name: pendingCartUpdate.name }, pendingCartUpdate.quantity, true)}>{"Thử lại cập nhật số lượng"}</button></div>}
+        {cartAction.uncertain && pendingCartMutation && <div className="oc-cart-retry" role="status"><p>{pendingCartMutation.type === 'remove' ? 'Chưa xác nhận được thao tác xóa sản phẩm.' : 'Chưa xác nhận được thay đổi số lượng.'}</p><button type="button" className="oc-text-action" onClick={() => pendingCartMutation.type === 'remove' ? removeCartLine({ sku_id: pendingCartMutation.variantId, name: pendingCartMutation.name }, true) : updateCartQuantity({ sku_id: pendingCartMutation.variantId, name: pendingCartMutation.name }, pendingCartMutation.quantity, true)}>{pendingCartMutation.type === 'remove' ? 'Thử lại thao tác xóa' : 'Thử lại cập nhật số lượng'}</button></div>}
         {cartAction.error?.status === 409 && <button type="button" className="oc-text-action" onClick={() => context.reload()}>Tải lại giỏ hàng</button>}
       </aside>
     </form>}

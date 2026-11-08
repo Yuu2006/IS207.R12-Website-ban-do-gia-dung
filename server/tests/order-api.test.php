@@ -130,6 +130,12 @@ class FixtureCartService implements CartServiceInterface
         $this->calls[] = ['PATCH', $principal, $variantId, $input, $key];
         return $this->spec['paths']['/cart']['get']['responses']['200']['content']['application/json']['example']['data'];
     }
+
+    public function removeItem(array $principal, string $variantId, array $input, string $key): array
+    {
+        $this->calls[] = ['DELETE', $principal, $variantId, $input, $key];
+        return $this->spec['paths']['/cart']['get']['responses']['200']['content']['application/json']['example']['data'];
+    }
 }
 
 function ensure(bool $condition, string $message = 'Assertion failed'): void
@@ -172,9 +178,9 @@ function roleSession(string $role): array
     return array_replace($session, ['user' => array_replace($session['user'], ['role' => $role])]);
 }
 
-check('twelve PHP routes match OpenAPI methods, operation IDs and role matrix', function () use ($spec): void {
+check('fourteen PHP routes match OpenAPI methods, operation IDs and role matrix', function () use ($spec): void {
     $routes = array_merge(orderRoutes(), checkoutRoutes(), cartRoutes());
-    ensure(count($routes) === 12);
+    ensure(count($routes) === 14);
     foreach ($routes as $route) {
         $operation = $spec['paths'][$route['path']][strtolower($route['method'])];
         ensure($operation['operationId'] === $route['action']);
@@ -242,6 +248,18 @@ check('cart add validates SKU-only input and delegates authenticated principal, 
     ensure($service->calls[0][3] === $headers['Idempotency-Key']);
     foreach ([array_replace($body, ['quantity' => 0]), array_replace($body, ['variantId' => '0']), array_replace($body, ['price' => 1])] as $invalid) {
         expectError(request('POST', '/cart/items', $invalid), 422, 'INVALID_INPUT');
+    }
+});
+
+check('cart removal validates expected version and delegates the owned SKU with idempotency key', function () use ($spec, $headers): void {
+    $service = new FixtureCartService($spec);
+    $body = $spec['paths']['/cart/items/{variantId}']['delete']['requestBody']['content']['application/json']['example'];
+    $response = request('DELETE', '/cart/items/1', $body, [], null, null, null, null, $service);
+    ensure($response['status'] === 200);
+    ensure($service->calls[0][0] === 'DELETE' && $service->calls[0][1]['id'] === '1');
+    ensure($service->calls[0][2] === '1' && $service->calls[0][3] === $body && $service->calls[0][4] === $headers['Idempotency-Key']);
+    foreach ([['expectedCartVersion' => 0], ['expectedCartVersion' => '1', 'unexpected' => true]] as $invalid) {
+        expectError(request('DELETE', '/cart/items/1', $invalid), 422, 'INVALID_INPUT');
     }
 });
 

@@ -229,6 +229,13 @@ function validateCartUpdate(array $input): array
     ];
 }
 
+// Validate removal against the cart version; the SKU may already be inactive or out of stock.
+function validateCartRemove(array $input): array
+{
+    allowOrderFields($input, ['expectedCartVersion']);
+    return ['expectedCartVersion' => orderPositiveInteger($input['expectedCartVersion'] ?? null, 'expectedCartVersion')];
+}
+
 // Chuẩn hóa payload ghi; state/owner/version thật phải kiểm tra lại từ database.
 function validateOrderMutation(array $input, string $operation): array
 {

@@ -47,7 +47,8 @@ export function mapCart(dto) {
   if (!Number.isSafeInteger(dto?.cartVersion) || dto.cartVersion < 1 || !Array.isArray(dto.items)) badResponse();
   return { cartVersion: dto.cartVersion, items: dto.items.map(item => {
     if (item?.availableQuantity !== undefined && (!Number.isSafeInteger(item.availableQuantity) || item.availableQuantity < 0)) badResponse();
-    return { ...mapLine(item), availableQuantity: item.availableQuantity ?? null };
+    if (item?.available !== undefined && typeof item.available !== 'boolean') badResponse();
+    return { ...mapLine(item), available: item.available ?? true, availableQuantity: item.availableQuantity ?? null };
   }) };
 }
 
@@ -125,6 +126,13 @@ export function createOrderService(request = createApiClient()) {
         throw new ApiError('SKU, số lượng hoặc phiên bản giỏ hàng không hợp lệ.', 422, 'INVALID_CART_ITEM');
       }
       return mapCart(await mutation(`/cart/items/${idPath(skuId)}`, 'PATCH', { quantity, expectedCartVersion }, options));
+    },
+    removeCartItem: async (variantId, expectedCartVersion, options = {}) => {
+      const skuId = String(variantId);
+      if (!/^\d+$/.test(skuId) || !Number.isSafeInteger(expectedCartVersion) || expectedCartVersion < 1) {
+        throw new ApiError('SKU hoặc phiên bản giỏ hàng không hợp lệ.', 422, 'INVALID_CART_ITEM');
+      }
+      return mapCart(await mutation(`/cart/items/${idPath(skuId)}`, 'DELETE', { expectedCartVersion }, options));
     },
     getAddresses: async options => {
       const result = await request('/users/me/addresses', options);
