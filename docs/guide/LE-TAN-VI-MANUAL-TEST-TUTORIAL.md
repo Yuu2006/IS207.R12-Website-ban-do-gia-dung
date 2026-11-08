@@ -141,6 +141,7 @@ Nếu chưa thể đưa SKU vào giỏ qua giao diện, chỉ ghi nhận bước
    - Để trống nghĩa là chưa có dữ liệu và kết quả cần nêu trường còn thiếu.
    - `0` là giá trị đã xác nhận bằng 0.
 5. Tính TCO và kiểm tra các khoản giá mua, điện, nước, vật tư, bảo trì và tổng theo từng sản phẩm. Đối chiếu công thức `giá mua + điện + nước + vật tư + bảo trì` trong cùng kỳ.
+   - Test backend xác nhận W tương đương kW sau quy đổi, L tương đương m³ mỗi chu trình và chi phí lặp của kỳ 1/3/5 năm được nhân đúng số năm.
 6. Thử chọn sản phẩm khác danh mục, kỳ ngoài 1/3/5, số giờ/lần dùng vượt giới hạn hoặc dữ liệu không hợp lệ. Giao diện phải báo lỗi rõ; không tự coi dữ liệu thiếu là 0 hay đưa ra kết luận bịa.
 7. Thử tính lại cùng đầu vào và kiểm tra UI không nhân đôi kết quả. Tính idempotency/event ledger được bao phủ thêm bằng test service ở mục 9.
 

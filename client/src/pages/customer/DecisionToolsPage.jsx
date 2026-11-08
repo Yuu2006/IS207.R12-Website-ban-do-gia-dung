@@ -249,7 +249,7 @@ function TcoPanel() {
           <div className="hc-field"><label htmlFor="tco-electricity">Giá điện (₫/kWh)</label><input id="tco-electricity" type="number" min="0" max="100000" step="0.01" required value={values.electricityVndPerKwh} onChange={event => updateValue('electricityVndPerKwh', event.target.value)} placeholder="Nhập đơn giá điện" /></div>
           <div className="hc-field"><label htmlFor="tco-water">Giá nước (₫/m³)</label><input id="tco-water" type="number" min="0" max="100000" step="0.01" required value={values.waterVndPerM3} onChange={event => updateValue('waterVndPerM3', event.target.value)} placeholder="Nhập đơn giá nước" /></div>
         </div>
-        <p className="dt-note">TCO = giá mua + điện + nước + vật tư + bảo trì. Điện theo năm dùng kWh/năm từ catalog; nếu chỉ có công suất W, phép tính dùng giờ/lần và số lần/tuần. Sản phẩm cùng danh mục được chọn chung một kịch bản sử dụng. Trường chưa biết để trống sẽ làm tổng hiển thị “Chưa đủ dữ liệu”.</p>
+        <p className="dt-note">TCO = giá mua + điện + nước + vật tư + bảo trì. Điện theo năm dùng kWh/năm từ catalog; công suất W/kW và nước L/m³ được chuẩn hóa trước khi tính. Sản phẩm cùng danh mục được chọn chung một kịch bản sử dụng. Trường chưa biết để trống sẽ làm tổng hiển thị “Chưa đủ dữ liệu”.</p>
         {submitError && <div className="dt-tco-error" role="alert">{submitError}</div>}
         <button className="hc-button" type="submit" disabled={!readyToCalculate}>{submitting ? 'Đang tính…' : 'Tính chi phí sở hữu'}</button>
       </>}

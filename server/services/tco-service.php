@@ -186,8 +186,14 @@ final class TcoCalculator
     {
         $attributes = $product['attributes'] ?? [];
         $defined = $product['defined_attributes'] ?? [];
+        $units = $product['attribute_units'] ?? [];
 
         if (isset($defined['energy_kwh_year'])) {
+            $energyUnit = self::canonicalUnit($units['energy_kwh_year'] ?? null, 'kwh');
+            if ($energyUnit !== 'kwh') {
+                $missing[] = 'Đơn vị điện năng theo năm trong catalog phải là kWh/năm.';
+                return null;
+            }
             $annual = self::physicalUnits($attributes['energy_kwh_year'] ?? null, self::MAX_ENERGY_UNITS);
             if ($annual === null) {
                 $missing[] = 'Thiếu điện năng tiêu thụ theo năm (kWh/năm) trong catalog.';
@@ -197,26 +203,28 @@ final class TcoCalculator
             return self::multiplyDivideRound($annual, $request['years'], 1);
         }
 
+        if ($request['usesPerWeek'] === 0) {
+            $assumptions[] = 'Tần suất người dùng chọn là 0 lần/tuần; điện năng theo công suất sử dụng được tính bằng 0.';
+            return 0;
+        }
+
         $dynamicPower = $attributes['power_watts'] ?? null;
         $basePower = $product['product_power_watts'] ?? null;
+        $dynamicPowerUnits = self::powerInWatts($dynamicPower, $units['power_watts'] ?? null);
+        $basePowerUnits = self::powerInWatts($basePower, 'W');
         if ($dynamicPower !== null && $basePower !== null) {
-            $dynamicUnits = self::physicalUnits($dynamicPower, self::MAX_POWER_UNITS);
-            $baseUnits = self::physicalUnits($basePower, self::MAX_POWER_UNITS);
-            if ($dynamicUnits === null || $baseUnits === null || $dynamicUnits !== $baseUnits) {
+            if ($dynamicPowerUnits === null || $basePowerUnits === null || $dynamicPowerUnits !== $basePowerUnits) {
                 $missing[] = 'Thông số công suất giữa catalog cơ bản và thuộc tính động không khớp; cần kiểm tra dữ liệu.';
                 return null;
             }
         }
 
-        $power = $dynamicPower ?? $basePower;
-        $powerUnits = self::physicalUnits($power, self::MAX_POWER_UNITS);
+        $powerUnits = $dynamicPower !== null ? $dynamicPowerUnits : $basePowerUnits;
         if ($powerUnits === null) {
-            $missing[] = 'Thiếu công suất điện (W) hoặc điện năng tiêu thụ trong catalog.';
+            $missing[] = $dynamicPower !== null
+                ? 'Thiếu công suất hợp lệ hoặc đơn vị công suất trong catalog không được hỗ trợ (W/kW).'
+                : 'Thiếu công suất điện (W) hoặc điện năng tiêu thụ trong catalog.';
             return null;
-        }
-        if ($request['usesPerWeek'] === 0) {
-            $assumptions[] = 'Tần suất người dùng chọn là 0 lần/tuần; điện năng theo công suất sử dụng được tính bằng 0.';
-            return 0;
         }
         if ($request['hoursPerUseUnits'] === null || $request['hoursPerUseUnits'] <= 0) {
             $missing[] = 'Nhập thời lượng mỗi lần sử dụng để tính điện từ công suất W.';
@@ -225,7 +233,7 @@ final class TcoCalculator
 
         $cyclesInPeriod = $request['usesPerWeek'] * 52 * $request['years'];
         $energyUnits = self::multiplyDivideRound($powerUnits, $request['hoursPerUseUnits'] * $cyclesInPeriod, 100000);
-        $assumptions[] = 'Điện năng ước tính = công suất (W) × giờ mỗi lần × số lần/tuần × 52 × số năm.';
+        $assumptions[] = 'Công suất catalog được chuẩn hóa về W (kW × 1.000 nếu cần) trước khi tính điện năng.';
         return $energyUnits;
     }
 
@@ -234,6 +242,12 @@ final class TcoCalculator
     {
         $attributes = $product['attributes'] ?? [];
         $defined = $product['defined_attributes'] ?? [];
+        $units = $product['attribute_units'] ?? [];
+
+        if ($request['usesPerWeek'] === 0) {
+            $assumptions[] = 'Tần suất người dùng chọn là 0 lần/tuần; lượng nước sử dụng được tính bằng 0.';
+            return 0;
+        }
 
         if (!isset($defined['water_liters_cycle'])) {
             if (in_array($product['category_slug'] ?? '', ['tu-lanh', 'may-lanh'], true)) {
@@ -244,15 +258,15 @@ final class TcoCalculator
             return null;
         }
 
-        $litersUnits = self::physicalUnits($attributes['water_liters_cycle'] ?? null, self::MAX_WATER_UNITS);
+        $litersUnits = self::waterInLiters($attributes['water_liters_cycle'] ?? null, $units['water_liters_cycle'] ?? null);
         if ($litersUnits === null) {
-            $missing[] = 'Thiếu lượng nước mỗi chu trình (L/chu trình) trong catalog.';
+            $missing[] = 'Thiếu lượng nước hợp lệ hoặc đơn vị nước trong catalog không được hỗ trợ (L/m³ mỗi chu trình).';
             return null;
         }
 
         $cycles = $request['usesPerWeek'] * 52 * $request['years'];
         $waterUnits = self::multiplyDivideRound($litersUnits, $cycles, 1000);
-        $assumptions[] = 'Lít/chu trình được đổi sang m³; tần suất sử dụng × 52 tuần × số năm.';
+        $assumptions[] = 'Lượng nước catalog được chuẩn hóa về lít (m³ × 1.000 nếu cần), rồi đổi sang m³ để tính chi phí.';
         return $waterUnits;
     }
 
@@ -262,14 +276,14 @@ final class TcoCalculator
         if (isset($defined['energy_kwh_year'])) {
             return 'kWh/năm từ catalog × số năm × giá điện mỗi kWh.';
         }
-        return 'Công suất W ÷ 1000 × giờ/lần × lần/tuần × 52 × số năm × giá điện mỗi kWh.';
+        return 'Công suất catalog quy về W (kW × 1.000 nếu cần) ÷ 1.000 × giờ/lần × lần/tuần × 52 × số năm × giá điện mỗi kWh.';
     }
 
     /** Documents whether water is calculated from catalog or excluded by the known appliance category. */
     private static function waterFormula(array $product, array $defined): string
     {
         if (isset($defined['water_liters_cycle'])) {
-            return 'Lít/chu trình ÷ 1000 × lần/tuần × 52 × số năm × giá nước mỗi m³.';
+            return 'Lượng nước catalog quy về L (m³ × 1.000 nếu cần) ÷ 1.000 × lần/tuần × 52 × số năm × giá nước mỗi m³.';
         }
         if (in_array($product['category_slug'] ?? '', ['tu-lanh', 'may-lanh'], true)) {
             return '0 VND: danh mục tủ lạnh/máy lạnh hiện không khai báo tiêu thụ nước theo chu trình.';
@@ -359,6 +373,52 @@ final class TcoCalculator
     private static function physicalUnits(mixed $value, int $maximum): ?int
     {
         return self::decimalUnits($value, 4, $maximum, 'catalog');
+    }
+
+    /** Converts a catalog power value recorded in W or kW into bounded 1/10,000-W integer units. */
+    private static function powerInWatts(mixed $value, mixed $unit): ?int
+    {
+        $canonical = self::canonicalUnit($unit, 'w');
+        $multiplier = match ($canonical) {
+            'w', 'watt', 'watts' => 1,
+            'kw', 'kilowatt', 'kilowatts' => 1000,
+            default => null,
+        };
+        return $multiplier === null ? null : self::scaledPhysicalUnits($value, $multiplier, self::MAX_POWER_UNITS);
+    }
+
+    /** Converts water per cycle recorded in liters or cubic metres into bounded 1/10,000-liter units. */
+    private static function waterInLiters(mixed $value, mixed $unit): ?int
+    {
+        $canonical = self::canonicalUnit($unit, 'l');
+        $multiplier = match ($canonical) {
+            'l', 'liter', 'liters', 'litre', 'litres' => 1,
+            'm3', 'cubicmeter', 'cubicmeters', 'cubicmetre', 'cubicmetres' => 1000,
+            default => null,
+        };
+        return $multiplier === null ? null : self::scaledPhysicalUnits($value, $multiplier, self::MAX_WATER_UNITS);
+    }
+
+    /** Normalizes unit labels before conversion while preserving the key-defined default for legacy rows. */
+    private static function canonicalUnit(mixed $unit, string $default): string
+    {
+        if (!is_string($unit) || trim($unit) === '') {
+            return $default;
+        }
+
+        $normalized = function_exists('mb_strtolower') ? mb_strtolower(trim($unit), 'UTF-8') : strtolower(trim($unit));
+        $normalized = str_replace(['³', '^3', ' ', "\u{00A0}"], ['3', '3', '', ''], $normalized);
+        return explode('/', $normalized, 2)[0];
+    }
+
+    /** Applies a unit multiplier without overflowing or exceeding the appliance-specific bound. */
+    private static function scaledPhysicalUnits(mixed $value, int $multiplier, int $maximum): ?int
+    {
+        $unscaled = self::physicalUnits($value, intdiv($maximum, $multiplier));
+        if ($unscaled === null || $unscaled > intdiv($maximum, $multiplier)) {
+            return null;
+        }
+        return $unscaled * $multiplier;
     }
 
     private static function databaseMoney(mixed $value): ?int

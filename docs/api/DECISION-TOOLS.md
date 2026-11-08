@@ -92,8 +92,10 @@ Request:
 Quy tắc tính hiện tại:
 
 - Tủ lạnh có `energy_kwh_year`: điện = kWh/năm trong catalog × số năm × giá điện. Không nhân thêm tần suất sử dụng vào chứng nhận kWh/năm.
-- Sản phẩm có `power_watts`: điện = W ÷ 1000 × giờ/lần × lần/tuần × 52 × số năm × giá điện. Tần suất và giờ/lần là một kịch bản chung để so sánh các sản phẩm cùng danh mục.
-- Máy giặt có `water_liters_cycle`: nước = lít/chu trình ÷ 1000 × lần/tuần × 52 × số năm × giá nước. Danh mục tủ lạnh và máy lạnh hiện không khai báo tiêu thụ nước theo chu trình nên khoản nước là 0, có ghi rõ trong assumptions/formula.
+- Sản phẩm có `power_watts`: đơn vị catalog `W` hoặc `kW` được chuẩn hóa về W; điện = W chuẩn hóa ÷ 1000 × giờ/lần × lần/tuần × 52 × số năm × giá điện. Tần suất và giờ/lần là một kịch bản chung để so sánh các sản phẩm cùng danh mục.
+- Sản phẩm có `water_liters_cycle`: đơn vị catalog `L` hoặc `m³` mỗi chu trình được chuẩn hóa về lít; nước = lít chuẩn hóa ÷ 1000 × lần/tuần × 52 × số năm × giá nước. Danh mục tủ lạnh và máy lạnh hiện không khai báo tiêu thụ nước theo chu trình nên khoản nước là 0, có ghi rõ trong assumptions/formula.
+- Đơn vị vật lý không được hỗ trợ hoặc thông số không hợp lệ được coi là thiếu dữ liệu; API không âm thầm diễn giải chúng thành W/L.
+- Nếu trường `unit` để trống, các key `power_watts`, `water_liters_cycle` và `energy_kwh_year` lần lượt mang đơn vị mặc định W, L/chu trình và kWh/năm.
 - Vật tư và bảo trì = chi phí năm người dùng nhập × số năm. Không tự giả định khoản chưa biết bằng 0.
 
 Nếu thiếu giá hoặc thông số/giả định bắt buộc, component tương ứng và `total` là `null`, kèm `missingInputs`; các component biết vẫn được hiển thị. Tất cả phép nhân tiền dùng đơn vị cent integer, làm tròn half-up tới 0,01 VND; không dùng float cho tiền. Khi retry cùng `requestKey` và cùng tài khoản, event không bị ghi thêm lần nữa. Client chỉ dùng lại key với đúng payload retry; dùng key đã thuộc người dùng khác hoặc loại event khác trả 409.
