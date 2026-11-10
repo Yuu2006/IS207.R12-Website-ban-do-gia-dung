@@ -13,7 +13,7 @@ Hướng dẫn này gom các phần của Vĩ được ghi nhận trong mapping 
 | 23 | TCO – Chi phí sở hữu | UI/API có; cần migration 012 và dữ liệu thông số catalog phù hợp. |
 | 24 | Thiết bị của tôi, lịch bảo trì, cấu hình quy tắc và tra cứu catalog trong chatbot | UI/API có; cần migrations 012, 016 và quy tắc bảo trì. Tạo thiết bị cần đơn hoàn tất hợp lệ. |
 | 29 | E2E checkout COD/VNPay | Backend có test cô lập; E2E thật cần cart/catalog tích hợp, migration 013/014, cấu hình VNPay Sandbox và IPN. |
-| 30 | Yêu cầu trả hàng, phân loại, duyệt, kiểm nhận, hoàn tiền mô phỏng và CSV | Luồng đã triển khai; cần migration 015 và dữ liệu đơn đủ điều kiện để kiểm thử xuyên vai trò. |
+| 30 | Yêu cầu trả hàng, phân loại, duyệt, kiểm nhận, hoàn tiền mô phỏng và CSV | Đã chạy E2E nhiều vai trò trên local và đối chiếu CSV; DB dev dùng chung vẫn cần nhóm xác nhận migration 015. |
 
 Task 3 là nền tảng contract/order cho STT 13–14 và 29–30, nên được kiểm tra cùng các luồng này. Bảng trên mô tả tình trạng code, không có nghĩa các task đã được team nghiệm thu. Mã STT được đối chiếu từ tài liệu repo và thông tin Sheet đã có trong phiên trước; đối chiếu lại Sheet trước khi đổi trạng thái task.
 
@@ -32,6 +32,16 @@ Task 3 là nền tảng contract/order cho STT 13–14 và 29–30, nên đượ
 
 Kết luận hiện tại: giữ các task checkout/E2E ở trạng thái **Đang làm**. Trước khi nghiệm thu, sửa các lỗi test nêu trên, chạy lại kiểm tra cạnh tranh SKU/idempotency, rồi thao tác checkout COD trên giao diện và đối chiếu đơn/timeline/kho. VNPay cần được xác nhận riêng với Sandbox và callback.
 
+## Rà soát STT 30 trên local — 2026-11-08
+
+- `homecare_local` có đủ 18/18 dấu hiệu của migration 015; kiểm tra chỉ đọc, không chạy lại DDL.
+- FE `npm test` 71/71; build thành công. PHP Order API 23/23, HTTP router 9/9, MySQL cô lập 49 ca nghiệp vụ và 5 ca race đều đạt.
+- E2E browser trên local hoàn tất cho đơn `HC202611081559AE0C646F182B`: CUSTOMER tạo yêu cầu; SALES phân loại mức nghiêm trọng; ADMIN duyệt; WAREHOUSE hoàn checklist và ghi nhận hoàn tiền mô phỏng 4.990.000₫. COD đã được ghi nhận thu trước bước trả hàng; payment kết thúc `REFUNDED`.
+- Ghi chú nhận hàng nêu rõ đây là dữ liệu mô phỏng, chưa xác minh/nhận thiết bị vật lý. Không gọi ngân hàng và không tự nhập lại tồn. Nhật ký kho của đơn có một lần `RESERVE -1`, không phát sinh restock khi hoàn tiền.
+- ADMIN xuất CSV giao diện cho 02–08/11/2026. Tệp tải về có SALE +13.190.000₫ và SALE +13.990.000₫ cho các đơn khác; với đơn kiểm thử có SALE +4.990.000₫ và REFUND -4.990.000₫. `NET_TOTAL` = 27.180.000₫; đối chiếu khớp ledger.
+- Kiểm thử tự động: FE 71/71; build thành công (bundle 586.69 kB, có cảnh báo ngưỡng 500 kB); PHP Order API 23/23; HTTP router 9/9; MySQL cô lập 49 ca nghiệp vụ + 5 ca race. Browser walkthrough chạy desktop; responsive đã rà bằng zoom, chưa phải kiểm thử trên thiết bị vật lý.
+- Phần local của STT 30 đã được thực thi và xác minh. Nghiệm thu với nhóm còn phụ thuộc xác nhận migration 015 trên DB dev dùng chung/review của nhóm; không suy rộng kết quả mô phỏng thành nhận hàng vật lý hoặc hoàn tiền thật.
+
 ## 2. Chuẩn bị môi trường an toàn
 
 ### 2.1 Dùng database phát triển riêng
@@ -43,11 +53,11 @@ Kết luận hiện tại: giữ các task checkout/E2E ở trạng thái **Đan
    - STT 23: `012_decision_tools.sql`.
    - STT 24: `012_decision_tools.sql`, sau đó `016_care_rule_supplies.sql`.
    - STT 29: thêm `014_vnpay_runtime.sql`.
-   - STT 30: thêm `015_return_refund_reporting.sql`.
+   - STT 30: `015_return_refund_reporting.sql` (đã có đủ dấu hiệu trên `homecare_local` ngày 08/11/2026; DB khác phải kiểm tra trước khi áp).
 4. Áp dụng DDL bằng tài khoản quản trị MySQL trong Workbench. API dùng user ứng dụng có quyền CRUD; không lưu mật khẩu thật vào Git hoặc gửi trong chat.
 5. `server/db/README.md` là nguồn hướng dẫn thứ tự và cấu hình Windows. Nếu chưa chắc một migration đã chạy chưa, dừng lại kiểm tra trước, không chạy lại theo kiểu thử.
 
-Migration 012/016 và các migration checkout/VNPay/return được ghi nhận là chưa áp dụng vào DB local/chung trong tài liệu hiện tại. Hãy xác minh trạng thái DB của chính ông trước khi làm theo.
+Migration 015 đã được xác minh trên `homecare_local` ngày 08/11/2026; điều này không xác nhận trạng thái DB dev dùng chung. Migration 012/016 và các migration khác cần kiểm tra riêng trên đúng môi trường trước khi chạy; không chạy lại migration đã có.
 
 ### 2.2 Khởi động API và frontend
 
@@ -320,3 +330,17 @@ Phân biệt rõ:
 6. Thử SKU hết hàng hoặc số lượng vượt tồn: API phải từ chối và giao diện hiện lỗi; không báo thêm thành công. Người chưa đăng nhập/sai vai trò không được ghi giỏ.
 7. Trong Network, xác nhận POST `/cart/items` gửi `variantId`, `quantity`, `expectedCartVersion`, CSRF và `Idempotency-Key`; response trả `cartVersion` mới. Thêm giỏ không trừ tồn; tồn chỉ được xử lý ở checkout theo quy tắc của Task 3.
 8. Thử retry cùng request sau lỗi mạng/5xx: cùng payload giữ nguyên idempotency key, không tạo thêm một lần cộng số lượng.
+
+## Kiểm tra quản trị người dùng (USR-01)
+
+Trước khi thao tác, cần review/backup DB dev và áp migration `server/db/migrations/017_admin_user_management.sql` đúng một lần sau 016. Chạy API + frontend, đăng nhập bằng tài khoản `ADMIN`, rồi mở `/admin/users`.
+
+1. Tìm theo tên, email và số điện thoại; kết hợp bộ lọc vai trò/trạng thái, đổi trang và xác nhận tổng số bản ghi.
+2. Tạo CUSTOMER/ADMIN/SALES/WAREHOUSE bằng email và số điện thoại chưa dùng. Xác nhận tài khoản đăng nhập được tại đúng cổng và không dùng được ở cổng role khác.
+3. Thử email trùng, phone trùng, email sai, phone sai, role lạ và mật khẩu thiếu chữ/số hoặc sai độ dài. Giao diện phải hiện lỗi; DB không được thêm tài khoản cho request thất bại.
+4. Sửa tên/email/phone/role; thử gửi thêm trường `status`, `password_hash` hoặc `id` bằng DevTools — API phải trả 422. Email/phone trùng phải trả 409.
+5. Khóa tài khoản CUSTOMER bằng lý do, xác nhận lần đăng nhập tiếp theo thất bại và đơn/lịch sử cũ vẫn còn. Mở khóa với lý do khác rồi xác nhận đăng nhập lại; khóa tạm `locked_until` do nhập sai vẫn là cơ chế độc lập.
+6. Thử khóa chính tài khoản ADMIN đang dùng, tự hạ role và vô hiệu hóa ADMIN cuối cùng; API phải từ chối. Thử thao tác sai role (CUSTOMER/SALES/WAREHOUSE), chưa đăng nhập, CSRF sai, ID lạ và request khóa lặp.
+7. Kiểm tra `audit_logs`: tạo/sửa/khóa/mở khóa có actor, action, user ID, thời điểm và lý do khi đổi trạng thái. Response/list không được có `password` hoặc `password_hash`.
+
+Test không cần DB: `php server/tests/admin-user-management-test.php`. Hoàn tất E2E chỉ sau khi migration đã áp trên DB dev và các bước trên được thao tác với session thật; ghi riêng lỗi hoặc bước bị chặn, không đánh dấu pass chỉ theo build.

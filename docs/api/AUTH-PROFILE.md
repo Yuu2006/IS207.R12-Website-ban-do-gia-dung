@@ -29,6 +29,7 @@ Session response: `{ "user": User | null, "expiresAt": 1791300000000 | null, "cs
 | Địa chỉ của chính mình `/users/me/addresses` | Có | Không | Không | Không |
 | Đăng nhập tại `/auth/login` | Có | Không | Không | Không |
 | Đăng nhập tại `/auth/staff/login` | Không | Có | Có | Có |
+| Quản trị tài khoản `/admin/users` | Không | Có | Không | Không |
 | Catalog ghi `/api/*` (PRD) | Không | Có | Không | Không |
 
 Không có principal/hết hạn: 401; sai role hoặc role lạ: 403. ADMIN không tự vượt quyền workspace khác. Route guard React chỉ hỗ trợ UX.
@@ -78,6 +79,25 @@ AddressInput: `{ "recipientName": "Khách demo", "phone": "0901234567", "address
 
 Địa chỉ đầu tiên luôn mặc định; đặt mặc định mới bỏ cờ cũ; không bỏ cờ mặc định hiện tại bằng PATCH false (422). Xóa mặc định → địa chỉ tạo sớm nhất còn lại thành mặc định. Mọi thay đổi chạy trong transaction có `SELECT … FOR UPDATE` trên dòng user nên request đồng thời không tạo hai mặc định. ID không tồn tại hoặc của người khác: 404. Checkout chép địa chỉ vào đơn (snapshot) nên sửa/xóa sau không đổi đơn cũ.
 
+## Quản trị tài khoản nội bộ — USR-01
+
+Chỉ `ADMIN` được gọi. Bốn role cố định là `CUSTOMER`, `ADMIN`, `SALES`, `WAREHOUSE`; không có role tự định nghĩa. Route React chỉ phục vụ UX, API luôn kiểm tra principal và role ở server. Cần áp migration `017_admin_user_management.sql` sau migration 011 để lưu metadata khóa quản trị và index truy vấn; migration này không phụ thuộc các module 012–016.
+
+| Method/path | Quyền | Request | Kết quả |
+| --- | --- | --- | --- |
+| GET `/admin/users?q=&role=&status=&page=1&perPage=10` | ADMIN | `q` tên/email/điện thoại (≤100); role/status tùy chọn; page ≥1; perPage 1–50 | `{ items: UserAdmin[], pagination: { page, perPage, total, totalPages } }` |
+| POST `/admin/users` | ADMIN | `{ fullName, email, phone?, role, password }` | HTTP 201, UserAdmin |
+| PATCH `/admin/users/{id}` | ADMIN | Một hoặc nhiều trường `{ fullName?, email?, phone?, role? }` | UserAdmin sau cập nhật |
+| PATCH `/admin/users/{id}/status` | ADMIN | `{ status: "ACTIVE" | "DISABLED", reason }` (lý do 3–255 ký tự) | UserAdmin sau thay đổi |
+
+UserAdmin không chứa mật khẩu/hash. Ví dụ POST: `{ "fullName": "Nhân viên mới", "email": "staff@example.test", "phone": "0901234567", "role": "SALES", "password": "TempPass123" }`. Ví dụ danh sách trả một user với `id` dạng chuỗi, `fullName`, `email`, `phone`, `role`, `status`, `createdAt`, `lastLoginAt`, `lockedUntil`, `adminLockedAt`, `lockReason`.
+
+- Email chuẩn hóa chữ thường, số điện thoại chuẩn hóa theo quy tắc CUS-01; email/điện thoại trùng → 409. Mật khẩu giữ nguyên whitespace và theo quy tắc 8–200 ký tự có chữ và số; server chỉ lưu `password_hash`.
+- `status=DISABLED` là khóa do quản trị viên; khác với `locked_until` (khóa tạm do đăng nhập sai). Khóa/mở khóa đều cần lý do, đổi status và ghi audit trong cùng transaction. Đăng xuất có hiệu lực ở request kế tiếp vì session kiểm tra lại role/status.
+- Không thể tự khóa/hạ role tài khoản ADMIN đang dùng; không thể loại bỏ ADMIN hoạt động cuối cùng. Các thay đổi role, thông tin và trạng thái đều được ghi `audit_logs`; thao tác lặp cùng status trả 409.
+- Không có xóa cứng tài khoản trong endpoint này. Dữ liệu giao dịch được giữ nguyên. Email/role/status không nhận từ trường thừa; chỉ allowlist role cố định.
+- Lỗi: 401 chưa đăng nhập/phiên admin không còn hiệu lực; 403 sai role hoặc CSRF; 404 ID không tồn tại; 409 trùng thông tin, tự khóa/hạ quyền hoặc trạng thái đã đặt; 422 validation/query sai; 500/503 lỗi hệ thống hoặc schema/migration chưa sẵn sàng.
+
 ## Lỗi chung
 
 400 JSON lỗi; 401 chưa đăng nhập/hết hạn/sai thông tin; 403 sai role/CSRF/Origin; 404 endpoint hoặc đối tượng; 405 method sai (kèm `Allow`); 409 trùng email/điện thoại; 413 body quá 64 KiB; 422 validation; 429 giới hạn hoặc tài khoản tạm khóa; 503 khôi phục mật khẩu trong production.
@@ -87,4 +107,5 @@ AddressInput: `{ "recipientName": "Khách demo", "phone": "0901234567", "address
 - Dựng DB theo `server/db/README.md` (baseline → 008/009 → 010 → seed). Tài khoản demo: `customer@`, `admin@`, `sales@`, `warehouse@example.test`, mật khẩu `Demo@1234567890!`.
 - PHP không tự đọc `.env` khi chạy CLI. PowerShell: `$env:CLIENT_URL='http://localhost:5173'; $env:DB_HOST='127.0.0.1'; php -S localhost:8080 -t server server/index.php`.
 - `php server/tests/auth-profile-test.php`: guard 4 role + validation (không cần DB).
+- `php server/tests/admin-user-management-test.php`: phân quyền ADMIN, filter/pagination validation, chuẩn hóa, băm mật khẩu, trùng thông tin, chặn tự khóa/hạ quyền ADMIN cuối, audit/status (không cần DB).
 - `node --test scripts/auth-profile-api.test.mjs` (đặt `API_TEST_URL` nếu khác `http://127.0.0.1:8080`): HTTP + MySQL thật — cookie/CSRF/CORS, 3 role nội bộ, đăng ký, hồ sơ, CRUD địa chỉ và quyền sở hữu, race địa chỉ mặc định, khóa sau 5 lần sai, đổi mật khẩu hủy phiên khác, khôi phục một lần, đổi email bằng mã, ảnh đại diện. Test tạo tài khoản mới mỗi lần chạy: **chỉ chạy trên database thử nghiệm**, chạy API với `AUTH_IP_MAX_FAILURES=1000` để các lần chạy liên tiếp không tự chặn IP 127.0.0.1.

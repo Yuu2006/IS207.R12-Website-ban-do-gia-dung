@@ -6,6 +6,7 @@ require_once __DIR__ . '/utils/order-api.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/routes/auth-routes.php';
 require_once __DIR__ . '/routes/user-routes.php';
+require_once __DIR__ . '/routes/admin-user-routes.php';
 
 use HomeCare\OrderApi\ApiException as OrderApiException;
 use function HomeCare\OrderApi\apiFailure;
@@ -43,7 +44,8 @@ try {
 
     startAppSession();
     $readOnly = in_array($method, ['GET', 'HEAD'], true);
-    $isAuth = str_starts_with($path, '/auth/') || str_starts_with($path, '/users/');
+    $isAdminUsers = $path === '/admin/users' || str_starts_with($path, '/admin/users/');
+    $isAuth = str_starts_with($path, '/auth/') || str_starts_with($path, '/users/') || $isAdminUsers;
     $isCatalog = str_starts_with($path, '/api/');
     // Order API tự kiểm tra CSRF sau xác thực (401 trước 403) theo contract riêng.
     if (($isAuth || $isCatalog) && !$readOnly && !hash_equals($_SESSION['csrfToken'], $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '')) throw new ApiException('CSRF token chưa hợp lệ. Hãy tải lại phiên đăng nhập.', 403);
@@ -54,7 +56,7 @@ try {
         respondJson(['user' => null, 'expiresAt' => null, 'csrfToken' => $_SESSION['csrfToken']]);
         exit;
     }
-    if (str_starts_with($path, '/users/') && currentPrincipal() === null) {
+    if ((str_starts_with($path, '/users/') || $isAdminUsers) && currentPrincipal() === null) {
         throw new ApiException('Yêu cầu đăng nhập.', 401);
     }
     $model = null;
@@ -76,6 +78,7 @@ try {
             $input = get_object_vars($decoded);
         }
         if (dispatchAuthRoute($method, $path, $input, $auth) || dispatchUserRoute($method, $path, $input, currentPrincipal(), new UserService($model))) exit;
+        if ($isAdminUsers && dispatchAdminUserRoute($method, $path, $readOnly ? $_GET : $input, currentPrincipal(), new AdminUserService(new AdminUserModel(db())))) exit;
         throw new ApiException('Endpoint chưa tồn tại.', 404);
     }
 
