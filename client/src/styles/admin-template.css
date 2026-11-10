@@ -161,6 +161,7 @@
 .hc-tile small { color: var(--text-muted); font-size: 12.5px; }
 .hc-tile b { font-size: 26px; font-weight: 700; }
 @media (max-width: 620px) { .hc-box { grid-template-columns: 1fr; } .hc-grp { padding: 16px; } }
+@media (max-width: 620px) { .ad-users-pagination { align-items: flex-start; flex-direction: column; } }
 
 .ad-brand { display: flex; align-items: center; gap: 12px; padding: 4px 12px 22px; }
 .ad-brand-mark { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 10px; background: var(--accent); color: #fff; }
@@ -206,6 +207,7 @@
 .ad-plus { color: var(--accent-ink); font-weight: 700; }
 .ad-minus { font-weight: 700; }
 .ad-foot { padding: 14px 20px; color: var(--text-muted); font-size: 13px; }
+.ad-users-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .hc-app--staff .ad-empty { padding: 28px 24px; text-align: center; }
 .ad-empty p { margin: 0; color: var(--text-muted); }
 .hc-app--staff .hc-badge--dark { background: var(--bg-sidebar); color: #fff; }

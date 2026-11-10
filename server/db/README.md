@@ -10,12 +10,13 @@ Compose chỉ mount `server/db` và MySQL không tự chạy file trong thư m�
 2. `migrations/008_product_attributes.sql`, `009_product_attribute_values.sql` (catalog — Lan Chi)
 3. `migrations/008_order_runtime.sql` (đơn hàng — Tấn Vĩ)
 4. `migrations/010_auth_profile.sql` (auth/hồ sơ — Tuấn Vũ: unique phone, ngày sinh, khóa đăng nhập tạm), rồi `migrations/011_auth_catalog_completion.sql` (thứ tự danh mục/banner, mô tả thương hiệu, bảng `auth_login_attempts`)
-5. `migrations/012_decision_tools.sql` (sau review; HOME/FIT/TCO/LIFE/CARE, cần cho seed 010)
-6. `migrations/013_checkout_runtime.sql` (cart version và voucher redemption ledger)
-7. `migrations/014_vnpay_runtime.sql` (VNPay expiry and callback fields; cần cho seed đơn/thanh toán)
-8. `migrations/015_return_refund_reporting.sql` (quy trình duyệt trả hàng, ledger hoàn tiền mô phỏng và audit history; cần cho seed đầy đủ)
-9. `migrations/016_care_rule_supplies.sql` (sau 012; liên kết quy tắc bảo trì với SKU vật tư)
-10. `seeds/001_auth_demo_users.sql`, rồi `seeds/003_catalog_appliances.sql` đến `seeds/010_decision_tools.sql` (dữ liệu phát triển; bỏ qua `002_demo_data.sql` trừ khi cần dữ liệu cũ)
+5. `migrations/017_admin_user_management.sql` (sau migration 011; thêm metadata khóa tài khoản quản trị và index cho danh sách)
+6. `migrations/012_decision_tools.sql` (sau review; HOME/FIT/TCO/LIFE/CARE, cần cho seed 010)
+7. `migrations/013_checkout_runtime.sql` (cart version và voucher redemption ledger)
+8. `migrations/014_vnpay_runtime.sql` (VNPay expiry and callback fields; cần cho seed đơn/thanh toán)
+9. `migrations/015_return_refund_reporting.sql` (quy trình duyệt trả hàng, ledger hoàn tiền mô phỏng và audit history; cần cho seed đầy đủ)
+10. `migrations/016_care_rule_supplies.sql` (sau 012; liên kết quy tắc bảo trì với SKU vật tư)
+11. `seeds/001_auth_demo_users.sql`, rồi `seeds/003_catalog_appliances.sql` đến `seeds/010_decision_tools.sql` (dữ liệu phát triển; bỏ qua `002_demo_data.sql` trừ khi cần dữ liệu cũ)
 
 Sau khi nhóm review schema HOME/FIT/TCO/LIFE/CARE, áp **một lần** `migrations/012_decision_tools.sql` lên database đã có các bảng `users`, `categories`, `products`, `product_variants`, `orders`, `order_items`. Migration thêm `room_profiles`, `fit_rules`, `care_rules`, `owned_devices`, `care_tasks`, `decision_events`; không sửa baseline hoặc dữ liệu cũ. Endpoint TCO trong branch `users/le-tan-vi` cần bảng `decision_events`; nếu migration chưa áp, API trả lỗi dịch vụ dữ liệu chưa sẵn sàng. Trạng thái migration phải xác minh riêng trên từng database; lần kiểm tra local ngày 06/11/2026 chưa xác nhận migration 012. Xem [contract công cụ lựa chọn](../../docs/api/DECISION-TOOLS.md) và [định nghĩa dashboard cần TV2/TV3 duyệt](../../docs/api/DASHBOARD-METRICS.md). MySQL DDL có implicit commit; backup/review trước khi áp, không chạy lại nếu đã tạo bảng.
 
