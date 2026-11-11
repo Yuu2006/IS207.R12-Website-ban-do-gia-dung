@@ -5111,7 +5111,8 @@
             "type": "string",
             "enum": [
               "COD",
-              "VNPAY"
+              "VNPAY",
+              "BANK_TRANSFER"
             ]
           },
           "createdAt": {
@@ -5412,7 +5413,8 @@
             "type": "string",
             "enum": [
               "COD",
-              "VNPAY"
+              "VNPAY",
+              "BANK_TRANSFER"
             ]
           },
           "voucherCode": {
@@ -5447,7 +5449,8 @@
             "type": "string",
             "enum": [
               "COD",
-              "VNPAY"
+              "VNPAY",
+              "BANK_TRANSFER"
             ]
           },
           "voucherCode": {
@@ -5632,7 +5635,7 @@
   "x-vnpay-phase": "Task 29 core implemented: backend-generated Sandbox URL, signed IPN, owner-only return status and 15-minute expiry worker. Before enabling: review/apply migration 014, configure Sandbox credentials and a publicly reachable IPN URL, schedule the expiry command, then run Sandbox/browser E2E. Late success after expiry is flagged for manual refund reconciliation; no bank refund is automated.",
   "x-runtime-stage": {
     "phpRoutes": "Customer order list/detail/timeline, checkout quote/create for COD and VNPay, signed public IPN, owner-scoped payment return lookup, scheduled VNPay expiry, SALES state transitions, customer return request, SALES triage, ADMIN decision, WAREHOUSE receipt/simulated refund, and ADMIN revenue CSV; role/ownership/CSRF are enforced server-side.",
-    "storage": "ORDER_STORAGE_MODE=mysql requires baseline + migrations 008_order_runtime.sql, 013_checkout_runtime.sql, 014_vnpay_runtime.sql and 015_return_refund_reporting.sql. Order/cart/stock/voucher/payment/return/refund writes share PDO transactions; VNPay expires after 15 minutes and expiry releases reservation once.",
+    "storage": "ORDER_STORAGE_MODE=mysql requires baseline + migrations 008_order_runtime.sql, 014_payment_ledger.sql and 015_return_refund_reporting.sql. Order/cart/stock/voucher/payment/return/refund writes share PDO transactions; VNPay expires after 15 minutes and expiry releases reservation once.",
     "authentication": "Tuấn Vũ cấp server session user{id,role,fullName}, expiresAt integer Unix và csrfToken. DB kiểm tra ACTIVE/role hiện tại; không nhận principal từ client.",
     "dependencies": "Public home/list/detail read active catalog and real product_variants.id values. CUSTOMER POST /cart/items merges a SKU under cart/SKU locks, validates stock and cartVersion, increments cartVersion once and is idempotent; cart add does not reserve inventory. PATCH /cart/items/{variantId} sets a cart quantity after server-side ownership, version, SKU and stock checks. DELETE /cart/items/{variantId} soft-deletes one owned line even if the SKU is inactive, with cartVersion and idempotency checks; GET /cart marks inactive lines unavailable so checkout can guide removal. Checkout/reorder uses owned addresses, carts/cart_items, product_variants, products, vouchers and voucher_redemptions. Browser checkout E2E still requires a signed-in customer, active SKU/stock, owned address and environment-level verification. Device/care completion bridge remains owned by Dinh Tung.",
     "idempotency": "Khóa actor+operation+key; hash payload và JSON result trong cùng transaction. Cùng payload replay, khác payload 409; rollback không lưu success. Return triage/decision/receipt và refund ledger được ghi transactionally, replay không tạo refund thứ hai. Retry deadlock/lock timeout tối đa 3 lần cùng key."

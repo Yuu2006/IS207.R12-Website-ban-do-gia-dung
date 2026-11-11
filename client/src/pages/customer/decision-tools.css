@@ -15,7 +15,13 @@
 .dt-result--check { border-color: #f6d198; background: #fffaf1; color: #a45d0a; }
 .dt-result--no-fit { border-color: #efb7b1; background: #fff6f4; color: #b42318; }
 .dt-placeholder { margin-top: 16px; padding: 26px; border: 1px dashed #c9d1d8; border-radius: 8px; background: #f9fafb; color: #667085; font-size: 12px; line-height: 1.8; }
-.dt-page .hc-tabs button { display: inline-flex; align-items: center; gap: 7px; }
+.dt-page .hc-tabs { display: flex; gap: 4px; margin: 0 0 16px; padding: 4px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
+.dt-page .hc-tabs button { display: inline-flex; flex: 1 1 0; align-items: center; justify-content: center; gap: 7px; min-width: 0; min-height: 44px; padding: 6px 12px; border-radius: 6px; color: #475467; font-size: 13px; font-weight: 600; line-height: 1.3; cursor: pointer; transition: background-color .15s, color .15s; }
+.dt-page .hc-tabs button svg { flex: none; }
+.dt-page .hc-tabs button:hover { background: #f2f4f7; color: #0f5f73; }
+.dt-page .hc-tabs button.is-active { background: #e7f1f3; color: #0f5f73; font-weight: 700; }
+.dt-page .hc-tabs button:focus-visible { outline: 2px solid #0f5f73; outline-offset: -2px; }
+@media (max-width: 560px) { .dt-page .hc-tabs button { flex-direction: column; gap: 4px; padding: 8px 4px; font-size: 12px; text-align: center; } }
 .dt-page .hc-button:disabled { opacity: .55; cursor: not-allowed; }
 .dt-dashboard-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
 .dt-metric { padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px; background: white; }
@@ -46,3 +52,20 @@
 .dt-tco-missing ul { margin-top: 5px; }
 @media (max-width: 1000px) { .dt-grid--room, .dt-dashboard-row { grid-template-columns: 1fr; } .dt-dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .dt-grid--three, .dt-dashboard-grid, .dt-tco-result-notes { grid-template-columns: 1fr; } .dt-tco-product { padding: 12px; } .dt-tco-results .hc-table { min-width: 640px; } }
+.dt-room-list, .dt-check-list { display: grid; gap: 10px; margin: 16px 0 0; padding: 0; list-style: none; }
+.dt-room-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; }
+.dt-room-list li > div { min-width: 0; overflow-wrap: anywhere; }
+.dt-room-list b { display: block; font-size: 13px; }
+.dt-room-list small { color: #667085; font-size: 12px; }
+.dt-room-actions { display: flex; flex: none; gap: 6px; }
+.dt-room-actions .hc-button { min-width: 44px; min-height: 44px; padding: 0; justify-content: center; }
+.dt-fit-run { margin: 16px 0; }
+.dt-fit-result ul { color: #344054; }
+.dt-check { padding: 12px; border-left: 3px solid #98a2b3; border-radius: 4px; background: #fff; }
+.dt-check--pass { border-left-color: #2e8b57; }
+.dt-check--missing { border-left-color: #d98a1f; }
+.dt-check--fail { border-left-color: #b42318; }
+.dt-check-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-size: 13px; }
+.dt-check-head span { font-weight: 600; }
+.dt-check p { margin: 4px 0; color: #344054; font-size: 12px; }
+.dt-check small { color: #667085; font-size: 12px; }

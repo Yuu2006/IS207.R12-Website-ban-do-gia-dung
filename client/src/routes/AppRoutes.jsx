@@ -76,7 +76,7 @@ export default function AppRoutes() {
   return <RouteTransitionContext.Provider value={{ pathname, direction }}><Routes>
     <Route element={<PublicLayout />}><Route path="/" element={<HomePage />} /><Route path="/products" element={<ProductListPage />} /><Route path="/products/:id" element={<LiveCatalogProductPage />} /><Route path="/catalog/products/:id" element={<LiveCatalogProductPage />} /><Route path="/compare" element={<ComparePage />} /><Route path="/warranty" element={<WarrantyPage />} /></Route>
     <Route path="/login" element={<LoginForm key="login" />} /><Route path="/register" element={<LoginForm key="register" initialScreen="register" />} /><Route path="/internal/login" element={<StaffLogin />} /><Route path="/forgot-password" element={<StaffLogin audience="customer" />} /><Route path="/internal" element={<Navigate to="/internal/login" replace />} />
-    {['/checkout', '/orders', '/orders/payment-return', '/orders/:orderId'].map(path => <Route key={path} path={path} element={orderWorkspace} />)}
+    {['/cart', '/checkout', '/orders', '/orders/payment-return', '/orders/:orderId', '/payment/result'].map(path => <Route key={path} path={path} element={orderWorkspace} />)}
     <Route element={<ProtectedRoute roles={['SALES', 'ADMIN']} />}><Route element={<AppShell />}><Route path="/sales/orders" element={orderWorkspace} /><Route path="/sales/returns" element={<ReturnManagementPage />} /></Route></Route>
     <Route element={<ProtectedRoute />}><Route element={<AppShell />}>
       <Route path="/profile" element={<ProfilePage />} />

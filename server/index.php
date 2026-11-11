@@ -84,7 +84,7 @@ try {
 
     // Catalog/kho/upload tự xuất response và gọi requireAdmin()/requireSessionRole().
     if ($isCatalog) {
-        $catalogRoutes = ['product' => 'handleProductRoutes', 'category' => 'handleCategoryRoutes', 'brand' => 'handleBrandRoutes', 'product-attribute' => 'handleProductAttributeRoutes', 'tco' => 'handleTcoRoutes', 'care' => 'handleCareRoutes', 'chatbot' => 'handleChatbotRoutes', 'inventory-movement' => 'handleInventoryMovementRoutes', 'inventory' => 'handleInventoryRoutes', 'banner' => 'handleBannerRoutes', 'upload' => 'handleUploadRoutes', 'catalog-admin' => 'handleCatalogAdminRoutes'];
+        $catalogRoutes = ['product' => 'handleProductRoutes', 'category' => 'handleCategoryRoutes', 'brand' => 'handleBrandRoutes', 'product-attribute' => 'handleProductAttributeRoutes', 'tco' => 'handleTcoRoutes', 'care' => 'handleCareRoutes', 'chatbot' => 'handleChatbotRoutes', 'inventory-movement' => 'handleInventoryMovementRoutes', 'inventory' => 'handleInventoryRoutes', 'banner' => 'handleBannerRoutes', 'upload' => 'handleUploadRoutes', 'catalog-admin' => 'handleCatalogAdminRoutes', 'fit-rule' => 'handleFitRuleRoutes', 'room-fit' => 'handleRoomFitRoutes'];
         foreach ($catalogRoutes as $file => $handler) {
             require_once __DIR__ . "/routes/{$file}-routes.php";
             if ($handler($method, $path)) exit;

@@ -9,6 +9,13 @@ const makeOrder = (patch = {}) => ({ id: 'order-1', customerId: customer.id, ver
 const makeRequest = (patch = {}) => ({ actor: sales, expectedVersion: 1, toStatus: 'confirmed', ...patch });
 const now = '2026-10-07T02:00:00Z';
 
+test('bank transfer requires confirmed funds and blocks fulfillment while refund review is needed', () => {
+  assert.equal(validateOrderTransition(makeOrder({ method: 'BANK_TRANSFER', payment: 'pending' }), makeRequest()).code, 'PAYMENT_NOT_PAID');
+  assert.equal(validateOrderTransition(makeOrder({ method: 'BANK_TRANSFER', payment: 'paid' }), makeRequest()).ok, true);
+  assert.equal(validateOrderTransition(makeOrder({ method: 'BANK_TRANSFER', payment: 'paid', refundRequired: true }), makeRequest()).code, 'PAYMENT_REVIEW_REQUIRED');
+  assert.equal(validateOrderTransition(makeOrder({ method: 'BANK_TRANSFER', payment: 'pending' }), makeRequest({ toStatus: 'cancelled', reason: 'Đổi nhu cầu' })).ok, true);
+});
+
 test('all 49 state pairs follow only forward edges or pre-shipping cancellation', () => {
   const states = [...Object.keys(nextOrderStatus), 'completed', 'cancelled'];
   for (const from of states) for (const to of states) {

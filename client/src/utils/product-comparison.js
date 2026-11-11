@@ -11,6 +11,21 @@ export function comparableCandidates(products, first) {
   return products.filter(product => sameCategory(first, product) && String(product.id) !== String(first.id));
 }
 
+// Giữ tối đa bốn ID hợp lệ, cùng danh mục và không trùng nhau khi đọc URL.
+export function selectedComparisonProducts(products, ids) {
+  const selected = [];
+  const seen = new Set();
+  for (const id of ids.slice(0, 4)) {
+    const product = findRequestedProduct(products, id);
+    const key = product && String(product.id);
+    if (product && !seen.has(key) && (selected.length === 0 || sameCategory(selected[0], product))) {
+      selected.push(product);
+      seen.add(key);
+    } else selected.push(null);
+  }
+  return selected;
+}
+
 // Resolve the requested catalog product by database ID and reject mismatched legacy names.
 export function findRequestedProduct(products, id, expectedName = '') {
   if (!hasValue(id)) return null;
@@ -67,15 +82,15 @@ function attributeValue(attribute) {
   return `${formatted}${attribute.unit ? ` ${attribute.unit}` : ''}`;
 }
 
-// Hợp nhất tiêu chí động từ API; thuộc tính thiếu giữ dấu gạch thay vì suy đoán giá trị.
-export function comparisonSpecs(first, second) {
+// Hợp nhất tiêu chí động của 2–4 sản phẩm; thuộc tính thiếu giữ dấu gạch thay vì suy đoán.
+export function comparisonSpecs(products) {
   const rows = new Map();
-  for (const [index, product] of [first, second].entries()) {
+  for (const [index, product] of products.entries()) {
     for (const attribute of product?.attributes || []) {
       const key = attribute.attribute_key || attribute.name;
       if (!key) continue;
       if (['production_year', 'manufacture_year'].includes(key) || attribute.name === 'Năm sản xuất') continue;
-      if (!rows.has(key)) rows.set(key, { key, label: attribute.name || key, values: [null, null] });
+      if (!rows.has(key)) rows.set(key, { key, label: attribute.name || key, values: Array(products.length).fill(null) });
       rows.get(key).values[index] = attributeValue(attribute);
     }
     for (const [label, rawValue] of Object.entries(objectSpecifications(product))) {
@@ -83,9 +98,45 @@ export function comparisonSpecs(first, second) {
       if (!hasValue(rawValue) || typeof rawValue === 'object') continue;
       const existing = [...rows.values()].find(row => row.label.toLocaleLowerCase('vi-VN') === label.toLocaleLowerCase('vi-VN'));
       const key = existing?.key || `spec:${label}`;
-      if (!rows.has(key)) rows.set(key, { key, label, values: [null, null] });
+      if (!rows.has(key)) rows.set(key, { key, label, values: Array(products.length).fill(null) });
       if (!hasValue(rows.get(key).values[index])) rows.get(key).values[index] = String(rawValue);
     }
   }
   return [...rows.values()];
+}
+
+const numericInput = value => value === '' || value === null || value === undefined || !Number.isFinite(Number(value)) || Number(value) < 0
+  ? null : Number(value);
+const attributeNumber = (product, key) => {
+  const value = product?.attributes?.find(attribute => attribute.attribute_key === key)?.value_number;
+  return numericInput(value);
+};
+
+// Ước tính hiển thị; thành phần thiếu luôn giữ null, tổng không được suy ra từ số 0 giả.
+export function estimateTco(product, assumptions) {
+  if (!product) return null;
+  const years = Number(assumptions.years);
+  const purchase = productPrice(product);
+  const electricityRate = numericInput(assumptions.electricityRate);
+  const waterRate = numericInput(assumptions.waterRate);
+  const usesPerWeek = numericInput(assumptions.usesPerWeek);
+  const hoursPerUse = numericInput(assumptions.hoursPerUse);
+  const consumablesPerYear = numericInput(assumptions.consumablesPerYear);
+  const maintenancePerYear = numericInput(assumptions.maintenancePerYear);
+  const annualKwh = attributeNumber(product, 'energy_kwh_year');
+  const watts = attributeNumber(product, 'power_watts');
+  const litersPerCycle = attributeNumber(product, 'water_liters_cycle');
+  const yearlyUses = usesPerWeek === null ? null : usesPerWeek * 52;
+  const electricityKwh = annualKwh !== null ? annualKwh * years
+    : watts !== null && yearlyUses !== null && hoursPerUse !== null ? watts / 1000 * hoursPerUse * yearlyUses * years : null;
+  const electricity = electricityRate !== null && electricityKwh !== null ? Math.round(electricityKwh * electricityRate) : null;
+  // Các loại này không dùng nước vận hành; máy giặt cần số lít và tần suất sử dụng.
+  const noWater = ['tu-lanh', 'may-lanh'].includes(product.category_slug);
+  const waterM3 = noWater ? 0 : litersPerCycle !== null && yearlyUses !== null ? litersPerCycle / 1000 * yearlyUses * years : null;
+  const water = noWater ? 0 : waterM3 !== null && waterRate !== null ? Math.round(waterM3 * waterRate) : null;
+  const consumables = consumablesPerYear === null ? null : Math.round(consumablesPerYear * years);
+  const maintenance = maintenancePerYear === null ? null : Math.round(maintenancePerYear * years);
+  const parts = { purchase, electricity, water, consumables, maintenance };
+  const missing = Object.entries(parts).filter(([, value]) => value === null).map(([key]) => key);
+  return { ...parts, total: missing.length ? null : Object.values(parts).reduce((sum, value) => sum + value, 0), missing };
 }

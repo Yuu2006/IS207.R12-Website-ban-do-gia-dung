@@ -5,8 +5,11 @@ if (PHP_SAPI !== 'cli' || getenv('ORDER_MYSQL_TEST') !== 'isolated') { http_resp
 require_once __DIR__ . '/../utils/order-api.php';
 require_once __DIR__ . '/order-test-dependencies.php';
 
-use HomeCare\OrderApi\{ApiException, OrderModel, OrderService, CheckoutService, CartService, MysqlCheckoutDependencies, SqlTestCheckoutDependencies, VnpayGateway, VnpayPaymentService, ReturnRefundModel, ReturnRefundService, ReportModel, ReportService};
-use function HomeCare\OrderApi\{orderMoney, orderTransition, validateOrderList};
+use HomeCare\OrderApi\{ApiException, OrderModel, OrderService, CheckoutService, CartService, MysqlCheckoutDependencies, SqlTestCheckoutDependencies, PaymentService, VnpayPaymentService, ReturnRefundModel, ReturnRefundService, ReportModel, ReportService};
+use function HomeCare\OrderApi\{orderMoney, orderTransition, validateOrderList, vnpaySignature};
+
+putenv('CHECKOUT_SHIPPING_VND=30000');
+putenv('CHECKOUT_FREE_SHIPPING_MIN_VND=500000');
 
 // Guard all modes, including schema creation/shutdown, to the runner's private loopback DB.
 $name = getenv('DB_NAME');
@@ -29,8 +32,7 @@ if ($mode === 'init') {
     if (!is_string($schema)) throw new RuntimeException('Could not prepare isolated baseline schema.');
     $pdo->exec($schema);
     $pdo->exec(file_get_contents(__DIR__ . '/../db/migrations/008_order_runtime.sql'));
-    $pdo->exec(file_get_contents(__DIR__ . '/../db/migrations/013_checkout_runtime.sql'));
-    $pdo->exec(file_get_contents(__DIR__ . '/../db/migrations/014_vnpay_runtime.sql'));
+    $pdo->exec(file_get_contents(__DIR__ . '/../db/migrations/014_payment_ledger.sql'));
     $pdo->exec(file_get_contents(__DIR__ . '/../db/migrations/015_return_refund_reporting.sql'));
     $pdo->exec('CREATE TABLE test_cart_versions (cart_id BIGINT UNSIGNED PRIMARY KEY, version BIGINT UNSIGNED NOT NULL DEFAULT 1) ENGINE=InnoDB');
     foreach (['CUSTOMER', 'CUSTOMER', 'SALES', 'ADMIN', 'WAREHOUSE', 'CUSTOMER', 'CUSTOMER', 'CUSTOMER', 'CUSTOMER', 'CUSTOMER'] as $index => $role) {
@@ -41,7 +43,7 @@ if ($mode === 'init') {
     $pdo->exec("INSERT INTO brands (id, name) VALUES (1, 'Test brand')");
     $pdo->exec("INSERT INTO products (id, category_id, brand_id, product_code, name, slug, warranty_months) VALUES (1, 1, 1, 'TEST-P', 'Snapshot product', 'test-product', 24)");
     $pdo->exec("INSERT INTO product_variants (id, product_id, sku, variant_name, price, stock_quantity) VALUES (1, 1, 'TEST-1', 'White', 600000, 100), (2, 1, 'TEST-LAST', 'Black', 800000, 1)");
-    echo "Baseline + 008/013/014/015 migrations applied to a fresh isolated DB; fixture cart version is test-only.\n";
+    echo "Baseline + 008/014/015 migrations applied to a fresh isolated DB; fixture cart version is test-only.\n";
     exit;
 }
 $pdo->exec("USE `{$name}`");
@@ -51,9 +53,9 @@ $orders = new OrderService($model, $deps);
 $checkout = new CheckoutService($model, $deps);
 $runtimeDependencies = new MysqlCheckoutDependencies();
 $cartService = new CartService($model, $runtimeDependencies);
-$gateway = new VnpayGateway(['tmnCode' => 'TEST1234', 'hashSecret' => 'isolated-test-secret', 'returnUrl' => 'http://localhost:5173/orders/payment-return', 'ipnUrl' => 'https://merchant.example.test/api/payments/vnpay/ipn']);
-$runtimeCheckout = new CheckoutService($model, $runtimeDependencies, $gateway);
-$vnpayPayments = new VnpayPaymentService($model, $runtimeDependencies, $gateway);
+$runtimeCheckout = new CheckoutService($model, $runtimeDependencies);
+$vnpayPayments = new VnpayPaymentService($model);
+$payments = new PaymentService($model, $runtimeDependencies);
 function actor(int $id = 1, string $role = 'CUSTOMER'): array { return ['id' => (string) $id, 'role' => $role, 'fullName' => 'Test']; }
 function sql(string $query, array $values = []): mixed {
     global $pdo;
@@ -96,20 +98,17 @@ function cart(int $user = 1, int $sku = 1, int $quantity = 1): array {
 function runtimeCart(int $user, int $sku = 1, int $quantity = 1, ?string $voucher = null): array {
     global $pdo;
     $cartId = sql('SELECT id FROM carts WHERE user_id = ?', [$user]);
-    if (!$cartId) { sql('INSERT INTO carts (user_id, cart_version) VALUES (?, 1)', [$user]); $cartId = $pdo->lastInsertId(); }
+    if (!$cartId) { sql('INSERT INTO carts (user_id, version) VALUES (?, 1)', [$user]); $cartId = $pdo->lastInsertId(); }
     sql('UPDATE cart_items SET is_deleted = 1 WHERE cart_id = ?', [$cartId]);
     sql('INSERT INTO cart_items (cart_id, variant_id, quantity, is_deleted) VALUES (?, ?, ?, 0) ON DUPLICATE KEY UPDATE quantity = VALUES(quantity), is_deleted = 0', [$cartId, $sku, $quantity]);
     $addressId = sql('SELECT id FROM addresses WHERE user_id = ? LIMIT 1', [$user]);
     if (!$addressId) { sql("INSERT INTO addresses (user_id, recipient_name, phone, address_line, province) VALUES (?, 'Runtime Test', '0900000000', '99 Runtime street', 'Test city')", [$user]); $addressId = $pdo->lastInsertId(); }
-    return ['cartVersion' => (int) sql('SELECT cart_version FROM carts WHERE id = ?', [$cartId]), 'addressId' => (string) $addressId, 'paymentMethod' => 'COD', 'voucherCode' => $voucher];
+    return ['cartVersion' => (int) sql('SELECT version FROM carts WHERE id = ?', [$cartId]), 'addressId' => (string) $addressId, 'paymentMethod' => 'COD', 'voucherCode' => $voucher];
 }
 // Independently sign callback fixtures using the documented VNPAY 2.1 sorted-field format.
 function signedVnpay(array $parameters): array {
-    $parameters['vnp_SecureHash'] = '';
-    ksort($parameters, SORT_STRING);
-    $pairs = [];
-    foreach ($parameters as $key => $value) if ($key !== 'vnp_SecureHash' && $value !== '' && $value !== null) $pairs[] = urlencode((string) $key) . '=' . urlencode((string) $value);
-    $parameters['vnp_SecureHash'] = hash_hmac('sha512', implode('&', $pairs), 'isolated-test-secret');
+    $parameters += ['vnp_PayDate' => (new DateTimeImmutable('now', new DateTimeZone('Asia/Ho_Chi_Minh')))->format('YmdHis')];
+    $parameters['vnp_SecureHash'] = vnpaySignature($parameters, 'isolated-test-secret');
     return $parameters;
 }
 function createAs(array $principal, array $input, string $key): array {
@@ -369,6 +368,7 @@ check('approved return records one simulated full refund after warehouse checkli
     ensure(count($receivedReturn['history']) === 4 && $receivedReturn['inspectionChecklist'] == $receipt, 'History or inspection checklist mismatch.');
     ensure(sql('SELECT payment_status FROM orders WHERE id = ?', [$id]) === 'REFUNDED' && sql('SELECT status FROM payments WHERE order_id = ?', [$id]) === 'REFUNDED', 'Payment/order status mismatch.');
     ensure((int) sql('SELECT COUNT(*) FROM order_simulated_refunds WHERE order_id = ?', [$id]) === 1, 'Refund ledger count mismatch.');
+    ensure((int) sql("SELECT COUNT(*) FROM payment_events e JOIN payments p ON p.id = e.payment_id WHERE p.order_id = ? AND e.event_type = 'REFUND_SIMULATED'", [$id]) === 1, 'Return refund must write one payment ledger event.');
     ensure((int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === $stockBeforeReceipt, 'Return receipt changed sellable stock.');
     $replay = $returnDesk->receive(actor(5, 'WAREHOUSE'), $returned['id'], ['checklist' => $receipt], 'return-warehouse-receipt-key');
     ensure($replay == $receivedReturn, 'Idempotent replay response changed: ' . json_encode([$receivedReturn, $replay], JSON_UNESCAPED_UNICODE));
@@ -421,9 +421,17 @@ check('runtime MySQL opt-in reaches real storage; owner and checkout API contrac
         $input = runtimeCart(6, 1);
         $quote = HomeCare\OrderApi\handleOrderApi('POST', '/checkout/quote', [], json_encode($input, JSON_THROW_ON_ERROR), ['Content-Type' => 'application/json', 'X-CSRF-Token' => 'test-runtime-csrf'], $session);
         ensure($quote['status'] === 200 && $quote['body']['data']['totals']['total'] === 710000);
+        putenv('CHECKOUT_SHIPPING_VND=');
+        $quote = HomeCare\OrderApi\handleOrderApi('POST', '/checkout/quote', [], json_encode($input, JSON_THROW_ON_ERROR), ['Content-Type' => 'application/json', 'X-CSRF-Token' => 'test-runtime-csrf'], $session);
+        ensure($quote['status'] === 503 && $quote['body']['errors']['code'] === 'SHIPPING_NOT_CONFIGURED');
+        putenv('CHECKOUT_SHIPPING_VND=30000');
     } finally { putenv('ORDER_STORAGE_MODE=disabled'); }
 });
-check('production checkout calculates voucher totals and confirms signed VNPay IPN once', function () use ($runtimeCheckout, $gateway, $vnpayPayments) {
+check('production checkout calculates voucher totals and confirms signed VNPay IPN once', function () use ($runtimeCheckout, $vnpayPayments) {
+    putenv('VNPAY_TMN_CODE=TEST1234');
+    putenv('VNPAY_HASH_SECRET=isolated-test-secret');
+    putenv('VNPAY_RETURN_URL=http://localhost:5173/orders/payment-return');
+    putenv('ORDER_STORAGE_MODE=mysql');
     sql("INSERT INTO vouchers (code, discount_type, discount_value, min_order_amount, max_discount, starts_at, ends_at, usage_limit, used_count, is_active, per_customer_limit, is_deleted) VALUES ('TASK29-10', 'percent', 10, 500000, 100000, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 DAY), DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 DAY), 10, 0, 1, 1, 0)");
     $beforeStock = (int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1');
     $input = array_replace(runtimeCart(6, 1, 1, 'TASK29-10'), ['paymentMethod' => 'VNPAY']);
@@ -436,33 +444,35 @@ check('production checkout calculates voucher totals and confirms signed VNPay I
     ensure($attempt['attemptReference'] === 'VNPAY-' . $created['order']['code'], 'Payment reference must identify its order attempt.');
     ensure((int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === $beforeStock - 1, 'VNPay checkout must reserve inventory once.');
     ensure((int) sql("SELECT used_count FROM vouchers WHERE code = 'TASK29-10'") === 1, 'Checkout must reserve one voucher use.');
-    ensure(sql("SELECT status FROM voucher_redemptions WHERE order_id = ?", [$orderId]) === 'RESERVED', 'Voucher redemption must be reserved.');
+    ensure((int) sql('SELECT released_at IS NULL FROM voucher_usages WHERE order_id = ?', [$orderId]) === 1, 'Voucher usage must be reserved.');
     ensure((int) sql('SELECT TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), expires_at) FROM payments WHERE order_id = ?', [$orderId]) >= 890, 'VNPay attempt must expire after about 15 minutes.');
     $url = parse_url($attempt['redirectUrl']);
     parse_str($url['query'] ?? '', $redirect);
     ensure($url['scheme'] === 'https' && $url['host'] === 'sandbox.vnpayment.vn', 'VNPay redirect must target the official Sandbox host.');
-    ensure(($redirect['vnp_Amount'] ?? null) === '63900000' && ($redirect['vnp_TxnRef'] ?? null) === $attempt['attemptReference'] && $gateway->verifyCallback($redirect), 'Sandbox redirect amount, reference and signature must match the server quote.');
+    ensure(($redirect['vnp_Amount'] ?? null) === '63900000' && ($redirect['vnp_TxnRef'] ?? null) === $attempt['attemptReference'] && hash_equals(vnpaySignature($redirect, 'isolated-test-secret'), $redirect['vnp_SecureHash']), 'Sandbox redirect amount, reference and signature must match the server quote.');
 
-    $callback = ['vnp_TmnCode' => 'TEST1234', 'vnp_TxnRef' => $attempt['attemptReference'], 'vnp_Amount' => '63900000', 'vnp_ResponseCode' => '00', 'vnp_TransactionStatus' => '00', 'vnp_TransactionNo' => 'TXN-TASK29-001'];
+    $callback = ['vnp_TmnCode' => 'TEST1234', 'vnp_TxnRef' => $attempt['attemptReference'], 'vnp_Amount' => '63900000', 'vnp_ResponseCode' => '00', 'vnp_TransactionStatus' => '00', 'vnp_TransactionNo' => '29001'];
     $tampered = signedVnpay($callback);
     $tampered['vnp_Amount'] = '63900001';
-    $invalidSignature = HomeCare\OrderApi\handleOrderApi('GET', '/payments/vnpay/ipn', $tampered, '', [], [], null, null, null, $vnpayPayments);
+    $invalidSignature = HomeCare\OrderApi\handleOrderApi('GET', '/payments/vnpay/ipn', $tampered, '', [], []);
     ensure($invalidSignature['status'] === 200 && $invalidSignature['body']['RspCode'] === '97', 'Tampered VNPay signature must be rejected.');
     ensure(sql('SELECT status FROM payments WHERE order_id = ?', [$orderId]) === 'PENDING' && sql('SELECT payment_status FROM orders WHERE id = ?', [$orderId]) === 'PENDING');
     $wrongAmount = signedVnpay(array_replace($callback, ['vnp_Amount' => '63900001']));
-    $invalidAmount = HomeCare\OrderApi\handleOrderApi('POST', '/payments/vnpay/ipn', [], http_build_query($wrongAmount), ['Content-Type' => 'application/x-www-form-urlencoded'], [], null, null, null, $vnpayPayments);
+    $invalidAmount = HomeCare\OrderApi\handleOrderApi('POST', '/payments/vnpay/ipn', [], http_build_query($wrongAmount), ['Content-Type' => 'application/x-www-form-urlencoded'], []);
     ensure($invalidAmount['status'] === 200 && $invalidAmount['body']['RspCode'] === '04', 'Signed but incorrect VNPay amount must be rejected.');
     ensure(sql('SELECT status FROM payments WHERE order_id = ?', [$orderId]) === 'PENDING', 'Invalid amount must not settle the payment.');
 
     $signed = signedVnpay($callback);
-    $success = HomeCare\OrderApi\handleOrderApi('GET', '/payments/vnpay/ipn', $signed, '', [], [], null, null, null, $vnpayPayments);
-    $replay = HomeCare\OrderApi\handleOrderApi('GET', '/payments/vnpay/ipn', $signed, '', [], [], null, null, null, $vnpayPayments);
+    $success = HomeCare\OrderApi\handleOrderApi('GET', '/payments/vnpay/ipn', $signed, '', [], []);
+    $replay = HomeCare\OrderApi\handleOrderApi('GET', '/payments/vnpay/ipn', $signed, '', [], []);
     ensure($success['status'] === 200 && $success['body']['RspCode'] === '00' && $replay['body']['RspCode'] === '02', 'First signed success must settle; duplicate callback must be acknowledged as already handled.');
     ensure(sql('SELECT status FROM payments WHERE order_id = ?', [$orderId]) === 'PAID', 'Valid callback must mark payment paid.');
     ensure(sql('SELECT payment_status FROM orders WHERE id = ?', [$orderId]) === 'PAID', 'Valid callback must update order payment status.');
     ensure(sql('SELECT order_status FROM orders WHERE id = ?', [$orderId]) === 'PENDING', 'Payment must not advance fulfillment status.');
     ensure((int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === $beforeStock - 1, 'Payment callback must not reserve inventory a second time.');
     ensure((int) sql("SELECT COUNT(*) FROM inventory_movements WHERE movement_type = 'RESERVE' AND order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)", [$orderId]) === 1, 'Exactly one inventory reservation must exist.');
+    ensure((int) sql("SELECT COUNT(*) FROM payment_events e JOIN payments p ON p.id = e.payment_id WHERE p.order_id = ? AND e.event_type = 'PAID'", [$orderId]) === 1, 'IPN must write exactly one ledger event.');
+    putenv('ORDER_STORAGE_MODE=disabled');
     errorCode(fn () => $vnpayPayments->getAttempt(actor(2), $attempt['attemptReference']), 'PAYMENT_ATTEMPT_NOT_FOUND');
     $session = ['user' => actor(6), 'expiresAt' => time() + 3600, 'csrfToken' => 'test-return-csrf'];
     $ownedAttempt = HomeCare\OrderApi\handleOrderApi('GET', '/payments/vnpay/attempts/' . rawurlencode($attempt['attemptReference']), [], '', [], $session, null, null, null, $vnpayPayments);
@@ -470,7 +480,7 @@ check('production checkout calculates voucher totals and confirms signed VNPay I
     $foreignAttempt = HomeCare\OrderApi\handleOrderApi('GET', '/payments/vnpay/attempts/' . rawurlencode($attempt['attemptReference']), [], '', [], array_replace($session, ['user' => actor(2)]), null, null, null, $vnpayPayments);
     ensure($foreignAttempt['status'] === 404 && $foreignAttempt['body']['errors']['code'] === 'PAYMENT_ATTEMPT_NOT_FOUND');
 });
-check('late VNPay success before expiry worker releases stock and requires refund reconciliation', function () use ($runtimeCheckout, $vnpayPayments) {
+check('late VNPay success before expiry worker releases stock and requires refund reconciliation', function () use ($runtimeCheckout, $payments) {
     $stockBefore = (int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1');
     $input = array_replace(runtimeCart(7, 1), ['paymentMethod' => 'VNPAY']);
     $quote = $runtimeCheckout->quoteCheckout(actor(7), $input);
@@ -478,16 +488,16 @@ check('late VNPay success before expiry worker releases stock and requires refun
     $orderId = $created['order']['id'];
     $attempt = $created['payment'];
     sql('UPDATE payments SET expires_at = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 SECOND) WHERE order_id = ?', [$orderId]);
-    $callback = signedVnpay(['vnp_TmnCode' => 'TEST1234', 'vnp_TxnRef' => $attempt['attemptReference'], 'vnp_Amount' => (string) ($created['order']['totals']['total'] * 100), 'vnp_ResponseCode' => '00', 'vnp_TransactionStatus' => '00', 'vnp_TransactionNo' => 'TXN-TASK29-LATE-BEFORE-WORKER']);
-    ensure($vnpayPayments->handleIpn($callback)['RspCode'] === '00', 'Late successful payment must be recorded for reconciliation.');
+    $callback = signedVnpay(['vnp_TmnCode' => 'TEST1234', 'vnp_TxnRef' => $attempt['attemptReference'], 'vnp_Amount' => (string) ($created['order']['totals']['total'] * 100), 'vnp_ResponseCode' => '00', 'vnp_TransactionStatus' => '00', 'vnp_TransactionNo' => '29002']);
+    ensure($payments->ipn($callback)['RspCode'] === '00', 'Late successful payment must be recorded for reconciliation.');
     ensure(sql('SELECT order_status FROM orders WHERE id = ?', [$orderId]) === 'CANCELLED', 'Expired unpaid order must be cancelled even when expiry job has not run.');
     ensure(sql('SELECT payment_status FROM orders WHERE id = ?', [$orderId]) === 'PAID' && (int) sql('SELECT refund_required FROM orders WHERE id = ?', [$orderId]) === 1, 'Late success must be paid in the ledger and flagged for refund.');
     ensure(sql('SELECT status FROM payments WHERE order_id = ?', [$orderId]) === 'PAID', 'Late success must be retained in the payment ledger.');
     ensure(sql('SELECT inventory_state FROM orders WHERE id = ?', [$orderId]) === 'RELEASED' && (int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === $stockBefore, 'Expired stock reservation must be released.');
     ensure((int) sql("SELECT COUNT(*) FROM inventory_movements WHERE movement_type = 'RELEASE' AND order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)", [$orderId]) === 1, 'Late callback must create one stock release movement.');
-    ensure($vnpayPayments->handleIpn($callback)['RspCode'] === '02', 'Duplicate late callback must be idempotent.');
+    ensure($payments->ipn($callback)['RspCode'] === '02', 'Duplicate late callback must be idempotent.');
 });
-check('VNPay expiry releases stock/voucher once and late success requires reconciliation', function () use ($runtimeCheckout, $vnpayPayments) {
+check('VNPay expiry releases stock/voucher once and late success requires reconciliation', function () use ($runtimeCheckout, $payments, $runtimeDependencies) {
     $stockBefore = (int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1');
     $input = array_replace(runtimeCart(7, 1, 1, 'TASK29-10'), ['paymentMethod' => 'VNPAY']);
     $quote = $runtimeCheckout->quoteCheckout(actor(7), $input);
@@ -496,19 +506,19 @@ check('VNPay expiry releases stock/voucher once and late success requires reconc
     $attempt = $created['payment'];
     ensure((int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === $stockBefore - 1);
     sql('UPDATE payments SET expires_at = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 SECOND) WHERE order_id = ?', [$orderId]);
-    ensure($vnpayPayments->expirePending() === 1);
-    ensure($vnpayPayments->expirePending() === 0);
+    ensure($payments->expirePendingVnpay($runtimeDependencies) === 1);
+    ensure($payments->expirePendingVnpay($runtimeDependencies) === 0);
     ensure(sql('SELECT order_status FROM orders WHERE id = ?', [$orderId]) === 'CANCELLED');
     ensure(sql('SELECT inventory_state FROM orders WHERE id = ?', [$orderId]) === 'RELEASED');
     ensure(sql('SELECT status FROM payments WHERE order_id = ?', [$orderId]) === 'FAILED');
     ensure((int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === $stockBefore);
     ensure((int) sql("SELECT used_count FROM vouchers WHERE code = 'TASK29-10'") === 1);
-    ensure(sql('SELECT status FROM voucher_redemptions WHERE order_id = ?', [$orderId]) === 'RELEASED');
+    ensure((int) sql('SELECT released_at IS NOT NULL FROM voucher_usages WHERE order_id = ?', [$orderId]) === 1);
     ensure((int) sql("SELECT COUNT(*) FROM inventory_movements WHERE movement_type = 'RELEASE' AND order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)", [$orderId]) === 1);
 
-    $lateSuccess = signedVnpay(['vnp_TmnCode' => 'TEST1234', 'vnp_TxnRef' => $attempt['attemptReference'], 'vnp_Amount' => (string) ($created['order']['totals']['total'] * 100), 'vnp_ResponseCode' => '00', 'vnp_TransactionStatus' => '00', 'vnp_TransactionNo' => 'TXN-TASK29-LATE']);
-    ensure($vnpayPayments->handleIpn($lateSuccess)['RspCode'] === '00');
-    ensure($vnpayPayments->handleIpn($lateSuccess)['RspCode'] === '02');
+    $lateSuccess = signedVnpay(['vnp_TmnCode' => 'TEST1234', 'vnp_TxnRef' => $attempt['attemptReference'], 'vnp_Amount' => (string) ($created['order']['totals']['total'] * 100), 'vnp_ResponseCode' => '00', 'vnp_TransactionStatus' => '00', 'vnp_TransactionNo' => '29003']);
+    ensure($payments->ipn($lateSuccess)['RspCode'] === '00');
+    ensure($payments->ipn($lateSuccess)['RspCode'] === '02');
     ensure(sql('SELECT payment_status FROM orders WHERE id = ?', [$orderId]) === 'PAID');
     ensure((int) sql('SELECT refund_required FROM orders WHERE id = ?', [$orderId]) === 1);
     ensure((int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === $stockBefore);

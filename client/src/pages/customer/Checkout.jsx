@@ -6,6 +6,7 @@ import OrderApiState from '../../components/order/OrderApiState.jsx';
 import { useOrderService } from '../../context/OrderServiceContext.jsx';
 import { useOrderAction, useOrderQuery } from '../../hooks/use-order-api.js';
 import { useCustomerAuth } from '../../context/CustomerAuthContext.jsx';
+import { paymentMethods } from '../../services/payment-service.js';
 
 // Nhận địa chỉ/giỏ/quote từ service; chỉ submit ID/version, không gửi giá/tồn từ JSX.
 export default function Checkout({ initialCart }) {
@@ -22,6 +23,7 @@ export default function Checkout({ initialCart }) {
   const cartMutationLock = useRef(false);
   const action = useOrderAction({ onUnauthorized: () => refreshSession().catch(() => {}) });
   const cartAction = useOrderAction({ onUnauthorized: () => refreshSession().catch(() => {}) });
+  const methods = useOrderQuery(signal => paymentMethods({ signal }), [service], { enabled: service.mode === 'http', initialData: service.mode !== 'http' ? { COD: true, VNPAY: false, BANK_TRANSFER: false } : null });
   const context = useOrderQuery(async signal => {
     const [cart, addresses] = await Promise.all([service.getCart({ signal }), service.getAddresses({ signal })]);
     return { cart, addresses };
@@ -101,7 +103,7 @@ export default function Checkout({ initialCart }) {
           {addresses.filter(address => address.id === selectedAddressId).map(address => <div key={address.id}><strong>{address.recipientName}</strong><p>{address.phone}</p><p>{address.addressLine}</p></div>)}</>}
         <label className="oc-field">Ghi chú giao hàng <span className="oc-muted">(không bắt buộc)</span><textarea rows={2} value={note} maxLength={500} disabled={locked} onChange={event => setNote(event.target.value)} placeholder="Ví dụ: Gọi trước khi giao…" /></label>
         <div className="oc-info"><Icon name="truck" /><div><strong>Giao hàng tiêu chuẩn</strong><span>Phí giao hàng được tính trong thông tin thanh toán.</span></div></div>
-      </section><section className="oc-card oc-form-section"><h2><span className="oc-section-icon"><Icon name="card" /></span>Phương thức thanh toán</h2><fieldset className="oc-payment-options" disabled={locked}><legend className="oc-sr-only">Chọn phương thức thanh toán</legend>{[['COD', 'Thanh toán khi nhận hàng', 'Đơn chỉ được ghi nhận đã thanh toán sau khi nhân viên giao hàng xác nhận đã thu tiền.'], ['VNPAY', 'VNPay · Sandbox', 'Thanh toán trực tuyến. Hàng được giữ tối đa 15 phút trong lúc chờ xác nhận từ máy chủ.']].map(([value, title, text]) => <label key={value} className={`oc-payment-option ${method === value ? 'is-selected' : ''}`}><input type="radio" name="payment" checked={method === value} onChange={() => setMethod(value)} /><Icon name={value === 'COD' ? 'box' : 'card'} /><span><strong>{title}</strong><small>{text}</small></span></label>)}</fieldset></section></div>
+      </section><section className="oc-card oc-form-section"><h2><span className="oc-section-icon"><Icon name="card" /></span>Phương thức thanh toán</h2><fieldset className="oc-payment-options" disabled={locked}><legend className="oc-sr-only">Chọn phương thức thanh toán</legend>{[['COD', 'Thanh toán khi nhận hàng', 'Đơn chỉ được ghi nhận đã thanh toán sau khi nhân viên giao hàng xác nhận đã thu tiền.'], ['VNPAY', 'VNPay · Sandbox', 'Thanh toán trực tuyến. Hàng được giữ tối đa 15 phút trong lúc chờ xác nhận từ máy chủ.'], ['BANK_TRANSFER', 'Chuyển khoản ngân hàng / QR', 'Nhân viên xác nhận sau khi kiểm tra tiền vào.']].map(([value, title, text]) => <label key={value} className={`oc-payment-option ${method === value ? 'is-selected' : ''}`}><input type="radio" name="payment" disabled={!methods.data?.[value]} checked={method === value} onChange={() => setMethod(value)} /><Icon name={value === 'COD' ? 'box' : 'card'} /><span><strong>{title}</strong><small>{methods.data?.[value] ? text : "Chưa sẵn sàng"}</small></span></label>)}</fieldset></section></div>
       <aside id="order-summary" className="oc-card oc-summary"><h2>Đơn hàng của bạn <span>{cart.items.reduce((total, item) => total + item.quantity, 0)} sản phẩm</span></h2><ProductLines items={quote.data?.items ?? cart.items} renderQuantity={item => {
         const cartItem = cart.items.find(line => line.sku_id === item.sku_id);
         const available = cartItem?.availableQuantity;

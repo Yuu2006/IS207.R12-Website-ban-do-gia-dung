@@ -12,13 +12,13 @@ Compose chỉ mount `server/db` và MySQL không tự chạy file trong thư m�
 4. `migrations/010_auth_profile.sql` (auth/hồ sơ — Tuấn Vũ: unique phone, ngày sinh, khóa đăng nhập tạm), rồi `migrations/011_auth_catalog_completion.sql` (thứ tự danh mục/banner, mô tả thương hiệu, bảng `auth_login_attempts`)
 5. `migrations/017_admin_user_management.sql` (sau migration 011; thêm metadata khóa tài khoản quản trị và index cho danh sách)
 6. `migrations/012_decision_tools.sql` (sau review; HOME/FIT/TCO/LIFE/CARE, cần cho seed 010)
-7. `migrations/013_checkout_runtime.sql` (cart version và voucher redemption ledger)
-8. `migrations/014_vnpay_runtime.sql` (VNPay expiry and callback fields; cần cho seed đơn/thanh toán)
+7. `migrations/013_fit_rule_versions.sql` (sau 012; version/audit quy tắc FitCheck)
+8. `migrations/014_payment_ledger.sql` (version giỏ, voucher usage, expiry/metadata thanh toán, sổ cái và chứng từ; cần cho seed đơn/thanh toán)
 9. `migrations/015_return_refund_reporting.sql` (quy trình duyệt trả hàng, ledger hoàn tiền mô phỏng và audit history; cần cho seed đầy đủ)
 10. `migrations/016_care_rule_supplies.sql` (sau 012; liên kết quy tắc bảo trì với SKU vật tư)
 11. `seeds/001_auth_demo_users.sql`, rồi `seeds/003_catalog_appliances.sql` đến `seeds/010_decision_tools.sql` (dữ liệu phát triển; bỏ qua `002_demo_data.sql` trừ khi cần dữ liệu cũ)
 
-Sau khi nhóm review schema HOME/FIT/TCO/LIFE/CARE, áp **một lần** `migrations/012_decision_tools.sql` lên database đã có các bảng `users`, `categories`, `products`, `product_variants`, `orders`, `order_items`. Migration thêm `room_profiles`, `fit_rules`, `care_rules`, `owned_devices`, `care_tasks`, `decision_events`; không sửa baseline hoặc dữ liệu cũ. Endpoint TCO trong branch `users/le-tan-vi` cần bảng `decision_events`; nếu migration chưa áp, API trả lỗi dịch vụ dữ liệu chưa sẵn sàng. Trạng thái migration phải xác minh riêng trên từng database; lần kiểm tra local ngày 06/11/2026 chưa xác nhận migration 012. Xem [contract công cụ lựa chọn](../../docs/api/DECISION-TOOLS.md) và [định nghĩa dashboard cần TV2/TV3 duyệt](../../docs/api/DASHBOARD-METRICS.md). MySQL DDL có implicit commit; backup/review trước khi áp, không chạy lại nếu đã tạo bảng.
+Sau khi nhóm review schema HOME/FIT/TCO/LIFE/CARE, áp **một lần** `migrations/012_decision_tools.sql` lên database đã có các bảng `users`, `categories`, `products`, `product_variants`, `orders`, `order_items`. Migration thêm `room_profiles`, `fit_rules`, `care_rules`, `owned_devices`, `care_tasks`, `decision_events`; không sửa baseline hoặc dữ liệu cũ. Sau 012, áp **một lần** `migrations/013_fit_rule_versions.sql` để bật CRUD rule quản trị và snapshot/audit theo version. Không áp 013 trước 012. Không migration nào trong hai file được tự chạy trên database chung; backup/review trước khi áp. Xem [contract công cụ lựa chọn](../../docs/api/DECISION-TOOLS.md) và [định nghĩa dashboard cần TV2/TV3 duyệt](../../docs/api/DASHBOARD-METRICS.md). MySQL DDL có implicit commit; không chạy lại nếu đã tạo bảng.
 
 Sau khi review và áp 012, STT 24 cần áp tiếp `migrations/016_care_rule_supplies.sql` một lần để liên kết quy tắc bảo trì với SKU vật tư. Migration 016 không tạo lại hay thay đổi các bảng 012; chỉ thêm bảng nối `care_rule_supplies`. Chưa xác nhận 012/016 trên database local trong lần kiểm tra 06/11/2026; trạng thái database dùng chung chưa được kiểm tra. Không bật luồng hoàn tất đơn tạo thiết bị/lịch hoặc cấu hình SKU vật tư trước khi schema đã sẵn sàng.
 
@@ -48,8 +48,8 @@ Vẫn dùng tài khoản quản trị để áp schema. Trong Workbench chọn `
 5. `E:\DoAnWeb\server\db\migrations\010_auth_profile.sql`
 6. `E:\DoAnWeb\server\db\migrations\011_auth_catalog_completion.sql`
 7. `E:\DoAnWeb\server\db\migrations\012_decision_tools.sql` (only after review/backup; creates HOME/FIT/TCO/LIFE/CARE tables)
-8. `E:\DoAnWeb\server\db\migrations\013_checkout_runtime.sql`
-9. `E:\DoAnWeb\server\db\migrations\014_vnpay_runtime.sql` (review/backup first; required before enabling VNPay)
+8. `E:\DoAnWeb\server\db\migrations\013_fit_rule_versions.sql` (only after 012)
+9. `E:\DoAnWeb\server\db\migrations\014_payment_ledger.sql` (review/backup first; required before enabling checkout and payments)
 10. `E:\DoAnWeb\server\db\migrations\015_return_refund_reporting.sql` (review/backup first; required before enabling returns/refund CSV)
 11. `E:\DoAnWeb\server\db\migrations\016_care_rule_supplies.sql` (only after 012; enables SKU links for maintenance rules)
 12. `E:\DoAnWeb\server\db\seeds\001_auth_demo_users.sql` (optional accounts for development)
@@ -71,7 +71,8 @@ ORDER_STORAGE_MODE=mysql
 VNPAY_TMN_CODE=
 VNPAY_HASH_SECRET=
 VNPAY_RETURN_URL=http://localhost:5173/orders/payment-return
-VNPAY_IPN_URL=https://<public-api-host>/payments/vnpay/ipn
+CHECKOUT_SHIPPING_VND=30000
+CHECKOUT_FREE_SHIPPING_MIN_VND=500000
 ```
 
 `DB_HOST=db` chỉ dùng trong Docker, không dùng cho PHP chạy trực tiếp trên Windows. `start-api.ps1` đọc giá trị literal, có thể bao mật khẩu bằng dấu nháy; không thực thi nội dung `.env`, không in mật khẩu. File không hỗ trợ nội suy biến hoặc comment cuối dòng giá trị. Script không chạy migration. Chỉ dùng thông tin Sandbox của VNPay; endpoint IPN phải có thể truy cập công khai qua HTTPS khi thử callback thật. Không đưa TMN code/secret thật vào Git hoặc chat. Sau khi bật VNPay, lên lịch chạy `php server/commands/expire-vnpay-payments.php` mỗi phút để giải phóng tồn/voucher của phiên thanh toán quá 15 phút; lệnh chỉ xử lý DB đã cấu hình.
@@ -82,11 +83,13 @@ Kiểm tra `http://localhost:8080/auth/me`: 200 có `user:null` khi chưa đăng
 
 ## Áp dụng module đơn hàng
 
+Thanh toán/chứng từ mới: sau baseline và `008_order_runtime.sql`, áp một lần `014_payment_ledger.sql` trên DB đã review/backup. Migration thêm version giỏ, giới hạn voucher theo khách, snapshot cửa hàng, metadata/expiry payment, audit payment, chứng từ bất biến và lượt voucher; độc lập với 012/013. Không tự bật `ORDER_STORAGE_MODE=mysql` hoặc tự đặt phí/tài khoản ngân hàng. Xem [hướng dẫn thanh toán](../../docs/api/PAYMENT-LEDGER.md).
+
 1. Team kiểm tra/backup database đích và xác nhận baseline đã được áp dụng. Không import lại baseline vào database đang có bảng/dữ liệu.
 2. Review rồi chạy **một lần** `server/db/migrations/008_order_runtime.sql` trên database đã chọn. Migration thêm trường snapshot/version/inventory/audit và bảng idempotency/return request; không sửa baseline. Khi bật quy trình trả hàng, review và chạy tiếp `server/db/migrations/015_return_refund_reporting.sql` sau migrations 013/014. MySQL DDL có implicit commit, không giả định rollback DDL.
 3. Đơn cũ mặc định `inventory_state=UNTRACKED`; không tự đặt RESERVED hoặc hoàn kho. Lịch sử cũ thiếu `actor_role` trả 503 ORDER_DATA_INCOMPATIBLE khi lấy detail, không suy diễn role từ tài khoản hiện tại. Cần owner xác minh lịch sử và timezone DATETIME cũ trước khi bật.
 4. Sau review auth/schema, đặt `ORDER_STORAGE_MODE=mysql` trên API để bật đọc và xử lý đơn. PDO dùng native prepared statements, UTF-8 và UTC. Health chỉ báo cấu hình, `storageReady=false` không phải probe database/migration.
-5. Checkout COD/hủy dùng `MysqlCheckoutDependencies`; migration `013_checkout_runtime.sql` phải được review và chạy một lần trước khi bật. Cart write API và catalog-to-SKU mapping đã có trong runtime; kiểm tra cart integration hiện thất bại ở suite cô lập nên chưa nghiệm thu E2E. Mua lại thuộc STT 14; cần kiểm tra trạng thái endpoint thực tế trước khi ghi nhận hoàn tất. Không import adapter trong `server/tests/` vào HTTP.
+5. Checkout COD/hủy dùng `MysqlCheckoutDependencies`; migration `014_payment_ledger.sql` phải được review và chạy một lần trước khi bật. URL IPN `https://<public-api-host>/payments/vnpay/ipn` đăng ký trong cổng merchant VNPay, không cấu hình trong `.env`. Database từng áp `013_checkout_runtime`/`014_vnpay_runtime` của nhánh `users/le-tan-vi` (hai file đã bỏ khi tích hợp) sẽ lỗi trùng cột khi áp 014 mới: backup rồi dựng lại database phát triển đó. Cart write API và catalog-to-SKU mapping đã có trong runtime; kiểm tra cart integration hiện thất bại ở suite cô lập nên chưa nghiệm thu E2E. Mua lại thuộc STT 14; cần kiểm tra trạng thái endpoint thực tế trước khi ghi nhận hoàn tất. Không import adapter trong `server/tests/` vào HTTP.
 6. Current order detail DTO, return queue/triage/decision/receipt and revenue CSV require migration `015_return_refund_reporting.sql`; SALES rejects `MINOR`, only `MAJOR`/`CRITICAL` reaches ADMIN, and WAREHOUSE inspection records one full-order simulated refund. No automatic stock restock or bank refund occurs. Apply migration 015 before enabling this version of order runtime.
 
 Compose hiện chỉ mount `server/db` vào thư mục init, không tự import baseline ở `database/` và không tự chạy migration nằm trong thư mục con. Không sửa volume/reset DB để ép chạy init. `ORDER_STORAGE_MODE` đã được truyền cho container API, mặc định disabled.
@@ -95,4 +98,4 @@ Compose hiện chỉ mount `server/db` vào thư mục init, không tự import 
 
 Từ gốc repo, cung cấp `PHP_BIN`, `PHP_EXTENSION_DIR` (PHP Windows cần pdo_mysql) và `MYSQLD_BIN`, rồi chạy `node server/tests/run-order-mysql-tests.mjs`. Runner tạo datadir mới ngoài repo, loopback/port ngẫu nhiên khác 3306, database `homecare_order_test_*`; áp baseline + migrations 008/013/014/015 cùng dữ liệu giả rồi dừng đúng instance đó. Không kết nối/reset service MySQL đang có. Sau khi dừng, runner xác minh đường dẫn rồi xóa đúng datadir test mới tạo; không để dump/database test trong repo.
 
-`test_cart_versions` và adapter SQL là fixture kiểm thử, **không phải runtime production**. Runtime dùng `carts.cart_version`, voucher ledger và migrations 013/014; cart write API và catalog-to-SKU UI mapping đã được triển khai, nhưng test tích hợp cart đang lỗi. Phí giao hàng đã được Vĩ duyệt: 0₫ từ 500.000₫, thấp hơn thu 30.000₫. Kiểm tra chỉ đọc ngày 06/11/2026 thấy dấu hiệu schema của 008 và 013 trên database local; cần xác nhận đầy đủ trước khi dùng. Chưa xác nhận 014/015 trên local và chưa kiểm tra database dùng chung; review, backup và áp dụng migration còn thiếu trước khi bật VNPay/return workflow. Runner kiểm thử tự áp baseline cùng migrations 008, 013, 014 và 015 vào DB MySQL tạm riêng, không thay đổi database HomeCare của người dùng.
+`test_cart_versions` và adapter SQL là fixture kiểm thử, **không phải runtime production**. Runtime dùng `carts.version`, `voucher_usages` và migration 014; cart write API và catalog-to-SKU UI mapping đã được triển khai, nhưng test tích hợp cart đang lỗi. Phí giao hàng đã được Vĩ duyệt: 0₫ từ 500.000₫, thấp hơn thu 30.000₫. Kiểm tra chỉ đọc ngày 06/11/2026 thấy dấu hiệu schema của 008 và 013 trên database local; cần xác nhận đầy đủ trước khi dùng. Chưa xác nhận 014/015 trên local và chưa kiểm tra database dùng chung; review, backup và áp dụng migration còn thiếu trước khi bật VNPay/return workflow. Runner kiểm thử tự áp baseline cùng migrations 008, 013, 014 và 015 vào DB MySQL tạm riêng, không thay đổi database HomeCare của người dùng.

@@ -12,7 +12,6 @@ require_once __DIR__ . '/../models/order-model.php';
 require_once __DIR__ . '/../models/payment-model.php';
 require_once __DIR__ . '/../models/order-idempotency-model.php';
 require_once __DIR__ . '/../models/checkout-model.php';
-require_once __DIR__ . '/../services/vnpay-gateway.php';
 require_once __DIR__ . '/../services/vnpay-payment-service.php';
 require_once __DIR__ . '/../models/checkout-runtime-model.php';
 require_once __DIR__ . '/../services/checkout-dependencies.php';
@@ -37,6 +36,7 @@ require_once __DIR__ . '/../routes/cart-routes.php';
 require_once __DIR__ . '/../routes/payment-routes.php';
 require_once __DIR__ . '/../routes/return-refund-routes.php';
 require_once __DIR__ . '/../routes/report-routes.php';
+require_once __DIR__ . '/../models/catalog-checkout-model.php';
 
 // CORS credential chỉ cho origin cấu hình; không phản chiếu Origin tùy ý.
 function orderCorsHeaders(string $origin, string $allowedOrigin): array
@@ -51,7 +51,7 @@ function orderCorsHeaders(string $origin, string $allowedOrigin): array
         'Access-Control-Allow-Origin' => $allowedOrigin,
         'Access-Control-Allow-Credentials' => 'true',
         'Access-Control-Allow-Headers' => 'Content-Type, Authorization, X-CSRF-Token, Idempotency-Key',
-        'Access-Control-Allow-Methods' => 'GET, POST, PATCH, OPTIONS',
+        'Access-Control-Allow-Methods' => 'GET, POST, PUT, PATCH, OPTIONS',
         'Access-Control-Expose-Headers' => 'Allow',
         'Vary' => 'Origin',
     ];
@@ -78,7 +78,7 @@ function runtimeCheckoutService(): CheckoutServiceInterface
     try {
         require_once __DIR__ . '/../config/database.php';
         $pdo = \db();
-        return new CheckoutService(new OrderModel($pdo), new MysqlCheckoutDependencies(), VnpayGateway::fromEnvironment());
+        return new CheckoutService(new OrderModel($pdo), new MysqlCheckoutDependencies());
     } catch (\PDOException $error) {
         error_log('Checkout database unavailable: ' . $error->getCode());
         throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Chưa thể kết nối dữ liệu checkout.');
@@ -91,7 +91,7 @@ function runtimeVnpayPaymentService(): VnpayPaymentServiceInterface
     try {
         require_once __DIR__ . '/../config/database.php';
         $pdo = \db();
-        return new VnpayPaymentService(new OrderModel($pdo), new MysqlCheckoutDependencies(), VnpayGateway::fromEnvironment());
+        return new VnpayPaymentService(new OrderModel($pdo));
     } catch (\PDOException $error) {
         error_log('VNPay database unavailable: ' . $error->getCode());
         throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Chưa thể kết nối dữ liệu thanh toán.');
@@ -158,6 +158,8 @@ function handleOrderApi(
         $method = strtoupper($method);
         $path = rtrim($path, '/') ?: '/';
         $headers = array_change_key_case($headers, CASE_LOWER);
+        $paymentResponse = handlePaymentApi($method, $path, $query, $rawBody, $headers, $serverSession);
+        if ($paymentResponse !== null) return $paymentResponse;
         if ($path === '/' && $method === 'GET') {
             return apiSuccess(['version' => '0.1.0', 'orderApi' => getenv('ORDER_STORAGE_MODE') === 'mysql' ? 'mysql-configured' : 'skeleton', 'storageReady' => false], 'Household E-commerce API');
         }
@@ -170,7 +172,7 @@ function handleOrderApi(
                 else $parameters = [];
             }
             try {
-                $response = ($vnpayPaymentService ?? runtimeVnpayPaymentService())->handleIpn($parameters);
+                $response = runtimePaymentService()->ipn($parameters);
             } catch (\Throwable $error) {
                 error_log('VNPay IPN endpoint unavailable: ' . get_class($error));
                 $response = ['RspCode' => '99', 'Message' => 'System error'];

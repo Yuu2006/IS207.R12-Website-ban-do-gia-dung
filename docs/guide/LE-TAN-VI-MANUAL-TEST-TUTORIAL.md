@@ -49,10 +49,10 @@ Kết luận hiện tại: giữ các task checkout/E2E ở trạng thái **Đan
 1. Chỉ kiểm thử trên `homecare_local` hoặc một database dev riêng mà ông kiểm soát. Không chạy trên database dùng chung/production.
 2. Trước khi thêm migration, kiểm tra các bảng/cột tương ứng đã tồn tại chưa và backup database. Chỉ chạy migration còn thiếu, đúng thứ tự trong [`server/db/README.md`](../../server/db/README.md). Không import lại baseline vào database đang có dữ liệu; không DROP/TRUNCATE/reset.
 3. Các task dưới đây cần những migration chính:
-   - STT 13–14: baseline, `008_order_runtime.sql`, `013_checkout_runtime.sql`.
+   - STT 13–14: baseline, `008_order_runtime.sql`, `014_payment_ledger.sql`.
    - STT 23: `012_decision_tools.sql`.
    - STT 24: `012_decision_tools.sql`, sau đó `016_care_rule_supplies.sql`.
-   - STT 29: thêm `014_vnpay_runtime.sql`.
+   - STT 29: dùng cùng `014_payment_ledger.sql`, không cần migration riêng.
    - STT 30: `015_return_refund_reporting.sql` (đã có đủ dấu hiệu trên `homecare_local` ngày 08/11/2026; DB khác phải kiểm tra trước khi áp).
 4. Áp dụng DDL bằng tài khoản quản trị MySQL trong Workbench. API dùng user ứng dụng có quyền CRUD; không lưu mật khẩu thật vào Git hoặc gửi trong chat.
 5. `server/db/README.md` là nguồn hướng dẫn thứ tự và cấu hình Windows. Nếu chưa chắc một migration đã chạy chưa, dừng lại kiểm tra trước, không chạy lại theo kiểu thử.
@@ -206,7 +206,7 @@ Chỉ thực hiện sau khi migration 014 được review/áp dụng và đã c�
 2. Hoàn tất hoặc hủy trong môi trường Sandbox. Trang return phải truy vấn trạng thái từ API server; query string quay về không tự chứng minh thanh toán thành công.
 3. Xác nhận IPN hợp lệ mới đổi payment sang PAID. Sai chữ ký, sai số tiền hoặc mã giao dịch phải bị từ chối và không đổi đơn thành đã thanh toán.
 4. Gửi lại cùng callback/event nếu môi trường Sandbox cho phép; chỉ được ghi nhận một lần.
-5. Kiểm tra phiên chưa thanh toán hết hạn sau 15 phút: worker `php server/commands/expire-vnpay-payments.php` phải hủy/đánh dấu hết hạn và giải phóng tồn/voucher một lần. Chạy lịch worker mỗi phút theo hướng dẫn DB README.
+5. Kiểm tra phiên chưa thanh toán hết hạn sau 15 phút: worker `php server/scripts/expire-payments.php` phải hủy/đánh dấu hết hạn và giải phóng tồn/voucher một lần. Chạy lịch worker mỗi phút theo hướng dẫn DB README.
 6. Nếu callback thành công đến sau khi phiên hết hạn, hệ thống cần ghi nhận tình huống để đối soát thủ công; không tự hoàn tiền ngân hàng.
 
 ### Ma trận lỗi backend cần có

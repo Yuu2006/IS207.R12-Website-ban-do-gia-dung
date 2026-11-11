@@ -73,12 +73,14 @@ function orderTransition(array $order, array $principal, array $input): array
     if ($to === 'cancelled' ? !in_array($from, ['pending', 'confirmed', 'preparing'], true) : (ORDER_NEXT_STATUS[$from] ?? null) !== $to) {
         throw new ApiException(409, 'INVALID_ORDER_TRANSITION', 'Không thể chuyển sang trạng thái này.');
     }
-    if (!in_array($method, ['COD', 'VNPAY'], true) || !in_array($payment, ['unpaid', 'pending', 'paid', 'failed', 'refunded'], true)) {
+    if (!in_array($method, ['COD', 'VNPAY', 'BANK_TRANSFER'], true) || !in_array($payment, ['unpaid', 'pending', 'paid', 'failed', 'refunded'], true)) {
         throw new ApiException(503, 'ORDER_DATA_INCOMPATIBLE', 'Dữ liệu thanh toán cần được chuẩn hóa.');
     }
     if ($to === 'cancelled') {
         orderText($input['reason'] ?? '', 'reason', 1, 500);
-    } elseif ($method === 'VNPAY' && $payment !== 'paid') {
+    } elseif ((bool) $order['refund_required']) {
+        throw new ApiException(409, 'PAYMENT_REVIEW_REQUIRED', 'Khoản thu cần đối soát/hoàn tiền trước khi xử lý giao hàng.');
+    } elseif ($method !== 'COD' && $payment !== 'paid') {
         throw new ApiException(409, 'PAYMENT_NOT_PAID', 'Đơn VNPay chưa được máy chủ xác nhận thanh toán.');
     } elseif ($method === 'COD') {
         $expected = $from === 'delivered' ? 'paid' : 'unpaid';

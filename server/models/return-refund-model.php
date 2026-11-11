@@ -133,6 +133,7 @@ final class ReturnRefundModel
         $orderUpdate = $this->pdo->prepare("UPDATE orders SET payment_status = 'REFUNDED', refund_required = FALSE, version = version + 1 WHERE id = ? AND version = ? AND payment_status = 'PAID'");
         $orderUpdate->execute([$order['id'], $order['version']]);
         if ($orderUpdate->rowCount() !== 1) throw new ApiException(409, 'PAYMENT_CONFLICT', 'Trạng thái thanh toán của đơn đã thay đổi.');
+        (new PaymentModel($this->pdo))->audit($payment, $actor, 'REFUND_SIMULATED', 'SIM-REFUND:' . $payment['id'], 'Hoàn tiền mô phỏng sau khi kho kiểm nhận hàng trả.');
         $checklistJson = json_encode($checklist, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
         $requestUpdate = $this->pdo->prepare("UPDATE order_return_requests SET status = 'REFUNDED', received_by = ?, received_at = UTC_TIMESTAMP(), inspection_checklist = ?, updated_at = UTC_TIMESTAMP() WHERE id = ? AND status = 'APPROVED'");
         $requestUpdate->execute([$actor['id'], $checklistJson, $return['id']]);

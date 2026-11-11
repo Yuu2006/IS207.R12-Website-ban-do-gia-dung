@@ -112,7 +112,10 @@ final class OrderService implements OrderServiceInterface
                 if ($order['inventory_state'] !== 'RESERVED') throw new ApiException(409, 'INVENTORY_UNTRACKED', 'Không có reservation hợp lệ để hoàn kho.');
                 $this->dependencies->release($model->pdo, $principal, $order, $model->itemsFor([$id])[$id] ?? []);
             }
-            if ($decision['to'] === 'delivered' && $order['payment_method'] === 'COD') $payments->collectCod($order, $lockedPayments);
+            if ($decision['to'] === 'delivered' && $order['payment_method'] === 'COD') {
+                $payments->collectCod($order, $lockedPayments);
+                $payments->audit($lockedPayments[0], $principal, 'COD_COLLECTED', 'COD:' . $order['order_code'], 'Xác nhận giao hàng và thu đủ tiền COD.');
+            }
             $model->transition($order, $principal, $input, $decision);
             if ($decision['to'] === 'completed') $this->completion->createDevicesAndCare($model->pdo, $principal, $model->find($id, null), $model->itemsFor([$id])[$id] ?? []);
             return $model->detail($id, $customer ? $principal['id'] : null, !$customer);

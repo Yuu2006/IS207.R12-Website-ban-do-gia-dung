@@ -7,10 +7,10 @@ final class CheckoutRuntimeModel
 {
     public function __construct(private readonly \PDO $pdo) {}
 
-    // Read or lock the customer's one active cart row; versioning is added by migration 013.
+    // Read or lock the customer's one active cart row; versioning is added by migration 014.
     public function cart(string $customerId, bool $lock = false): ?array
     {
-        $statement = $this->pdo->prepare('SELECT id, cart_version FROM carts WHERE user_id = ? AND is_deleted = 0' . ($lock ? ' FOR UPDATE' : ''));
+        $statement = $this->pdo->prepare('SELECT id, version FROM carts WHERE user_id = ? AND is_deleted = 0' . ($lock ? ' FOR UPDATE' : ''));
         $statement->execute([$customerId]);
         $cart = $statement->fetch(\PDO::FETCH_ASSOC);
         return $cart ?: null;
@@ -20,7 +20,7 @@ final class CheckoutRuntimeModel
     public function ensureLockedCart(string $customerId): array
     {
         if (!$this->pdo->inTransaction()) throw new \LogicException('Cart creation requires the order transaction.');
-        $statement = $this->pdo->prepare('INSERT INTO carts (user_id, cart_version, is_deleted) VALUES (?, 1, 0) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)');
+        $statement = $this->pdo->prepare('INSERT INTO carts (user_id, version, is_deleted) VALUES (?, 1, 0) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)');
         $statement->execute([$customerId]);
         $cart = $this->cart($customerId, true);
         if (!$cart) throw new ApiException(409, 'CART_NOT_AVAILABLE', 'Giỏ hàng hiện không khả dụng.');
@@ -54,7 +54,7 @@ final class CheckoutRuntimeModel
     public function incrementCartVersion(string $cartId, int $expectedVersion): void
     {
         if ($expectedVersion >= MAX_ORDER_INTEGER) throw new ApiException(409, 'CART_VERSION_CONFLICT', 'Phiên bản giỏ hàng đã đạt giới hạn an toàn.');
-        $statement = $this->pdo->prepare('UPDATE carts SET cart_version = cart_version + 1 WHERE id = ? AND cart_version = ? AND is_deleted = 0');
+        $statement = $this->pdo->prepare('UPDATE carts SET version = version + 1 WHERE id = ? AND version = ? AND is_deleted = 0');
         $statement->execute([$cartId, $expectedVersion]);
         if ($statement->rowCount() !== 1) throw new ApiException(409, 'CART_VERSION_CONFLICT', 'Giỏ hàng đã thay đổi. Hãy tải lại.');
     }
@@ -89,7 +89,7 @@ final class CheckoutRuntimeModel
     // Locking reads see committed reservations after the caller has locked the voucher row.
     public function lockVoucherReservations(string $voucherId, string $customerId): array
     {
-        $statement = $this->pdo->prepare("SELECT id FROM voucher_redemptions WHERE voucher_id = ? AND customer_id = ? AND status = 'RESERVED' ORDER BY id FOR UPDATE");
+        $statement = $this->pdo->prepare('SELECT id FROM voucher_usages WHERE voucher_id = ? AND customer_id = ? AND released_at IS NULL ORDER BY id FOR UPDATE');
         $statement->execute([$voucherId, $customerId]);
         return $statement->fetchAll(\PDO::FETCH_ASSOC);
     }
@@ -151,7 +151,7 @@ final class CheckoutRuntimeModel
             $item['available'] = $available;
             $items[] = $item;
         }
-        return ['cartVersion' => (int) $cart['cart_version'], 'items' => $items];
+        return ['cartVersion' => (int) $cart['version'], 'items' => $items];
     }
 
     // Include inactive catalog rows only for cart recovery; checkout still uses active variants().
@@ -225,7 +225,7 @@ final class CheckoutRuntimeModel
     {
         $statement = $this->pdo->prepare('UPDATE cart_items SET is_deleted = 1 WHERE cart_id = ? AND is_deleted = 0');
         $statement->execute([$cartId]);
-        $statement = $this->pdo->prepare('UPDATE carts SET cart_version = cart_version + 1 WHERE id = ? AND cart_version = ? AND is_deleted = 0');
+        $statement = $this->pdo->prepare('UPDATE carts SET version = version + 1 WHERE id = ? AND version = ? AND is_deleted = 0');
         $statement->execute([$cartId, $expectedVersion]);
         if ($statement->rowCount() !== 1) throw new ApiException(409, 'CART_VERSION_CONFLICT', 'Giỏ hàng đã thay đổi. Hãy xác nhận lại.');
     }
@@ -236,21 +236,21 @@ final class CheckoutRuntimeModel
         $statement = $this->pdo->prepare('UPDATE vouchers SET used_count = used_count + 1 WHERE id = ? AND is_active = 1 AND is_deleted = 0 AND (usage_limit IS NULL OR used_count < usage_limit)');
         $statement->execute([$voucherId]);
         if ($statement->rowCount() !== 1) throw new ApiException(409, 'VOUCHER_EXHAUSTED', 'Mã ưu đãi vừa hết lượt sử dụng.');
-        $statement = $this->pdo->prepare("INSERT INTO voucher_redemptions (voucher_id, customer_id, order_id, status) VALUES (?, ?, ?, 'RESERVED')");
+        $statement = $this->pdo->prepare('INSERT INTO voucher_usages (voucher_id, customer_id, order_id) VALUES (?, ?, ?)');
         $statement->execute([$voucherId, $customerId, $orderId]);
     }
 
     // Cancellation releases a voucher slot once and preserves the audit row.
     public function releaseVoucher(array $order): void
     {
-        $statement = $this->pdo->prepare("SELECT id, voucher_id FROM voucher_redemptions WHERE order_id = ? AND status = 'RESERVED' FOR UPDATE");
+        $statement = $this->pdo->prepare('SELECT id, voucher_id FROM voucher_usages WHERE order_id = ? AND released_at IS NULL FOR UPDATE');
         $statement->execute([$order['id']]);
         $redemption = $statement->fetch(\PDO::FETCH_ASSOC);
         if (!$redemption || (string) $redemption['voucher_id'] !== (string) $order['voucher_id']) throw new ApiException(503, 'ORDER_DATA_INCOMPATIBLE', 'Không tìm thấy lượt voucher đã giữ cho đơn này.');
         $statement = $this->pdo->prepare('UPDATE vouchers SET used_count = used_count - 1 WHERE id = ? AND used_count > 0');
         $statement->execute([$redemption['voucher_id']]);
         if ($statement->rowCount() !== 1) throw new ApiException(503, 'ORDER_DATA_INCOMPATIBLE', 'Bộ đếm voucher không khớp lịch sử sử dụng.');
-        $statement = $this->pdo->prepare("UPDATE voucher_redemptions SET status = 'RELEASED', released_at = UTC_TIMESTAMP() WHERE id = ? AND status = 'RESERVED'");
+        $statement = $this->pdo->prepare('UPDATE voucher_usages SET released_at = UTC_TIMESTAMP() WHERE id = ? AND released_at IS NULL');
         $statement->execute([$redemption['id']]);
         if ($statement->rowCount() !== 1) throw new ApiException(409, 'VOUCHER_CONFLICT', 'Lượt voucher đã được xử lý.');
     }

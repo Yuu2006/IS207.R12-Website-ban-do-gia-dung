@@ -117,7 +117,7 @@ final class OrderModel
     {
         $status = strtolower($row['order_status']);
         $payment = strtolower($row['payment_status']);
-        if (!in_array($status, ORDER_STATUSES, true) || !in_array($payment, ['unpaid', 'pending', 'paid', 'failed', 'refunded'], true) || !in_array($row['payment_method'], ['COD', 'VNPAY'], true)) {
+        if (!in_array($status, ORDER_STATUSES, true) || !in_array($payment, ['unpaid', 'pending', 'paid', 'failed', 'refunded'], true) || !in_array($row['payment_method'], ['COD', 'VNPAY', 'BANK_TRANSFER'], true)) {
             throw new ApiException(503, 'ORDER_DATA_INCOMPATIBLE', 'Dữ liệu trạng thái cần được chuẩn hóa.');
         }
         $totals = ['subtotal' => orderMoney($row['subtotal']), 'discount' => orderMoney($row['discount_amount']), 'shipping' => orderMoney($row['shipping_fee']), 'total' => orderMoney($row['total_amount'])];
@@ -164,14 +164,6 @@ final class OrderModel
             $result['returnRequest'] = $this->returnRequest((string) $row['id']);
         }
         return $result;
-    }
-
-    public function expireVnpayOrder(array $order, array $actor): void
-    {
-        $statement = $this->pdo->prepare("UPDATE orders SET order_status = 'CANCELLED', payment_status = 'FAILED', inventory_state = 'RELEASED', version = version + 1 WHERE id = ? AND version = ? AND order_status = 'PENDING' AND payment_status IN ('PENDING', 'FAILED') AND inventory_state = 'RESERVED'");
-        $statement->execute([$order['id'], $order['version']]);
-        if ($statement->rowCount() !== 1) throw new ApiException(409, 'ORDER_VERSION_CONFLICT', 'Đơn hàng đã thay đổi trong lúc hết hạn thanh toán.');
-        $this->appendHistory((string) $order['id'], 'pending', 'cancelled', $actor, 'VNPay payment window expired');
     }
 
     // The locked order serializes transitions; version condition remains a second safety check.

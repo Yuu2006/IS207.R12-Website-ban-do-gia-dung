@@ -4,11 +4,11 @@
 |---|---|---|
 | CUS-01..05 | auth/profile/address: shell bốn role, đăng ký/đăng nhập email-mật khẩu, quên/đổi mật khẩu (mã demo), hồ sơ và CRUD địa chỉ | Auth, User: MySQL qua PDO, PHP session + CSRF, role guard, khóa tạm sau 5 lần sai, validation và quyền sở hữu |
 | CUS-06..12 | home/catalog/product/wishlist/review | Product, Category, Brand, Review |
-| HOME-01 / FIT-01 / ADM-FIT-01 | `customer/DecisionToolsPage.jsx`, `admin/FitRulesPreviewPage.jsx` (màn hình mẫu) | Đề xuất `room_profiles`, `fit_rules`, FitCheck evaluator; API chưa triển khai |
-| TCO-01 | `customer/DecisionToolsPage.jsx` + `services/decision-tools-service.js` (branch `users/le-tan-vi`) | `POST /api/tco/calculate`, catalog SKU/specs, exact-cent calculation và `decision_events`; cần review/áp migration 012 trước khi bật trên DB |
+| HOME-01 / FIT-01 / ADM-FIT-01 | `customer/RoomFitPanel.jsx` (tab trong `DecisionToolsPage.jsx`); `admin/FitRulesPreviewPage.jsx` quản trị rule bằng API thật | `room-fit-*` (CRUD hồ sơ phòng, evaluator `POST /api/fit-checks`); `fit_rules` + `fit_rule_versions` CRUD/version/audit ADMIN |
+| TCO-01 | `customer/DecisionToolsPage.jsx` + `services/decision-tools-service.js` | `POST /api/tco/calculate`, catalog SKU/specs, exact-cent calculation và `decision_events`; cần review/áp migration 012 trước khi bật trên DB |
 | LIFE-01 / CARE-01 / ADM-CARE-01 (STT 24) | `customer/MyDevicesPage.jsx`, `admin/CareRulesPage.jsx`, `public/LiveCatalogProductPage.jsx` | `care-service.php`/`care-model.php`; completion bridge cùng transaction đơn hàng; migrations 012 + 016 cần review/áp dụng trước khi dùng DB |
 | BOT-01..06 (STT 24: catalog action) | `components/chatbot/ChatbotWidget.jsx`, `services/chatbot-service.js` | `GET /api/chatbot/catalog-search` tra SKU/giá/tồn hiện thời; compare/FAQ/rule engine chưa triển khai; xem `docs/api/CHATBOT-DESIGN-CONTRACT.md` |
-| CART / PROMO / CHK / PAY | cart/checkout/payment | Cart, Voucher, Checkout, Payment |
+| CART / PROMO / CHK / PAY | `/cart`, checkout HTTP, QR chuyển khoản chờ đối soát, kết quả VNPay, bill khách và chứng từ nhân viên | Giỏ/version, snapshot giá/voucher/kho, COD, BANK_TRANSFER xác nhận thủ công có audit, VNPay Sandbox ký/IPN, expiry CLI, chứng từ bất biến, ADMIN hoàn toàn bộ mô phỏng cho đơn đã hủy + đã thu tiền; cần migration 014/cấu hình và test merchant thật |
 | ORD / RET | orders/returns | Order, ReturnRefund |
 | NOTI | notifications | Notification |
 | SER / WAR | warranty | Serial, Warranty |

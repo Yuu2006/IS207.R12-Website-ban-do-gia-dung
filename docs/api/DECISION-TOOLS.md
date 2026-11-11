@@ -1,6 +1,6 @@
 # HOME-01 / FIT-01 / TCO-01 / LIFE-01 / CARE-01 — schema và API contract
 
-Trạng thái 06/11/2026: **TCO-01 và STT 24 (LIFE-01/CARE-01/ADM-CARE-01) đã có FE/API implementation trên branch `users/le-tan-vi`.** STT 24 thêm bridge tạo thiết bị/lịch cùng transaction hoàn tất đơn, API theo quyền sở hữu, cấu hình chu kỳ ADMIN và liên kết SKU vật tư hiện hành. Migration 012 và 016 chưa được áp vào DB local/chung; cần review rồi áp cả hai trước khi dùng các luồng này với MySQL. HOME/FIT vẫn là contract, chưa nối API.
+Trạng thái 11/11/2026: CRUD quy tắc FitCheck cho ADMIN, hồ sơ phòng và FitCheck cho CUSTOMER đã có FE/API, cần áp `012_decision_tools.sql` rồi `013_fit_rule_versions.sql`. TCO-01 và STT 24 (LIFE-01/CARE-01/ADM-CARE-01) cũng đã có FE/API: bridge tạo thiết bị/lịch cùng transaction hoàn tất đơn, API theo quyền sở hữu, cấu hình chu kỳ ADMIN và liên kết SKU vật tư; cần áp 012 và `016_care_rule_supplies.sql` trước khi dùng với MySQL. Màn hình quản trị lấy field từ catalog, không dùng dữ liệu minh họa. Ba mức kết quả FitCheck được giữ trong contract; thay đổi rule không sửa snapshot phiên bản cũ.
 
 ## 1. Quy ước chung
 
@@ -12,7 +12,7 @@ Trạng thái 06/11/2026: **TCO-01 và STT 24 (LIFE-01/CARE-01/ADM-CARE-01) đã
 
 ## 2. Hồ sơ phòng (`room_profiles`)
 
-`GET /api/room-profiles` (CUSTOMER) trả hồ sơ chưa xóa của phiên hiện tại. `POST /api/room-profiles` tạo; `PATCH /api/room-profiles/{id}` sửa; `DELETE /api/room-profiles/{id}` soft delete. `POST /api/room-profiles/{id}/default` đặt mặc định. Chỉ owner truy cập ID; ID của người khác trả 404 để không lộ sự tồn tại. Xóa default thì chuyển sang hồ sơ khác đã chọn trong cùng transaction hoặc không còn default. Unique generated column trong schema chặn hai default cùng lúc.
+`GET /api/room-profiles` (CUSTOMER) trả hồ sơ chưa xóa của phiên hiện tại. `POST /api/room-profiles` tạo; `PATCH /api/room-profiles/{id}` sửa; `DELETE /api/room-profiles/{id}` soft delete. Endpoint đặt mặc định chưa triển khai; hồ sơ `isDefault` (nếu có) được chọn sẵn khi FitCheck. Chỉ owner truy cập ID; ID của người khác trả 404 để không lộ sự tồn tại. Xóa hồ sơ mặc định thì không còn mặc định. Unique generated column trong schema chặn hai default cùng lúc.
 
 Request tạo/sửa (PATCH cho phép gửi một phần):
 
@@ -35,7 +35,7 @@ Response `data` thêm `id`, `isDefault`, `createdAt`, `updatedAt`. Field không 
 
 ## 3. FitCheck và quy tắc quản trị
 
-`POST /api/fit-checks` (CUSTOMER hoặc khách chưa đăng nhập dùng `roomDraft`) nhận đúng một trong `roomProfileId` hoặc `roomDraft`; `productId` bắt buộc. Chỉ CUSTOMER được dùng `roomProfileId` của mình. `requestKey` UUID chống ghi sự kiện trùng khi retry.
+`POST /api/fit-checks` (CUSTOMER) bắt buộc `productId`, `roomProfileId` của chính khách và `requestKey` UUID chống ghi sự kiện trùng khi retry. `roomDraft` cho khách chưa đăng nhập chưa triển khai và trả 422. Response có thêm `roomProfileId`; mỗi phần tử `checks` có thêm `severity` và `margin`. `actual` là vế trái, `limit` là vế phải của quy tắc, vế chưa biết là `null`.
 
 ```json
 { "productId": 42, "roomProfileId": 7, "requestKey": "0b05aa35-3170-44d3-94cf-e981f31d7d5b" }
@@ -62,7 +62,24 @@ Response mẫu (giá trị minh họa, không phải dữ liệu catalog):
 
 Áp dụng quy tắc `ACTIVE` của danh mục và sản phẩm; quy tắc sản phẩm cùng `ruleKey` **ghi đè** quy tắc danh mục. Nếu không có quy tắc áp dụng hoặc thiếu thông số bắt buộc, trả `NEEDS_CHECK`, không báo `FIT`. Với mỗi quy tắc, một vế lấy từ trường phòng hoặc thuộc tính sản phẩm trong whitelist; vế còn lại lấy từ trường/thuộc tính hoặc hằng số. So sánh bằng toán tử `LT/LTE/EQ/GTE/GT`; `marginValue` cộng vào vế trái đối với quy tắc kích thước `mm` (khoảng hở cần chừa). Không dùng `eval`. `FAIL` của `BLOCK` → `NOT_FIT`; nếu không có lỗi chặn nhưng có `MISSING` hoặc `FAIL` của `WARN` → `NEEDS_CHECK`; tất cả `PASS` → `FIT`. Response phải giải thích từng quy tắc, kể cả dữ liệu thiếu. Lưu `decision_events` chỉ sau khi tính thành công; retry cùng `requestKey` không tăng lượt.
 
-ADMIN dùng `GET /api/admin/fit-rules?categoryId=&productId=`, `POST /api/admin/fit-rules`, `PATCH /api/admin/fit-rules/{id}` để cấu hình phạm vi, nguồn/toán tử, giá trị, đơn vị, `severity`, thông điệp PASS/FAIL/MISSING, `status`. Một quy tắc thuộc **một** `categoryId` hoặc `productId`; `updatedBy`/`updatedAt` do server ghi, `version` tăng khi sửa. Cho phép vô hiệu hóa, không xóa cứng quy tắc đã được dùng. Chỉ chấp nhận key thuộc whitelist theo danh mục, đúng kiểu/đơn vị, và tối đa một khoảng hở dương. Cần thống nhất với catalog nguồn dữ liệu kích thước và clearance trước khi bật rule production.
+ADMIN dùng `GET /api/admin/fit-rules?categoryId=&productId=&status=&page=`, `GET /api/admin/fit-rules/options?categoryId=`, `GET /api/admin/fit-rules/{id}`, `GET /api/admin/fit-rules/{id}/versions`, `POST /api/admin/fit-rules`, `PATCH /api/admin/fit-rules/{id}` và `DELETE /api/admin/fit-rules/{id}` để cấu hình phạm vi, nguồn/toán tử, giá trị, đơn vị, `severity`, thông điệp PASS/FAIL/MISSING và `status`. `DELETE` chỉ đổi trạng thái sang `INACTIVE`. Một quy tắc thuộc **một** `categoryId` hoặc `productId`; `updatedBy`/`updatedAt` do server ghi theo UTC, `version` tăng khi sửa. PATCH nhận toàn bộ field và `expectedVersion` để chặn ghi đè đồng thời. Mỗi lần tạo/sửa/vô hiệu lưu snapshot JSON bất biến trong `fit_rule_versions` cùng transaction; lịch sử cũ không bị cập nhật. Migration 013 lưu trạng thái hiện tại của rule đã có thành bản `BASELINE`, không giả lập các lần sửa trước khi có audit. Chỉ chấp nhận key trong [bảng field chuẩn](SPEC-FIELDS.md) và metadata `product_attributes` của danh mục có đúng kiểu/đơn vị. Không nhận biểu thức mã nguồn và không dùng `eval`. Khoảng hở không âm, chỉ áp cho mm. Cần TV4 xác nhận nguồn field/đơn vị trước khi bật evaluator FitCheck production.
+
+Ví dụ tạo quy tắc chiều rộng (chỉ khi catalog danh mục 2 có `width_mm` kiểu `number`, đơn vị `mm`):
+
+```json
+{
+  "categoryId": 2, "productId": null, "ruleKey": "width_clearance", "title": "Chiều rộng vị trí",
+  "leftSource": "PRODUCT_ATTRIBUTE", "leftKey": "width_mm", "operator": "LTE",
+  "rightSource": "ROOM_FIELD", "rightKey": "placement_width_mm", "rightValue": null,
+  "marginValue": "20", "unit": "mm", "severity": "BLOCK", "status": "ACTIVE",
+  "passMessage": "Vừa vị trí đặt.", "failMessage": "Vượt chiều rộng vị trí đặt.",
+  "missingMessage": "Thiếu kích thước để kiểm tra."
+}
+```
+
+`GET /api/admin/fit-rules` trả `{ items, total, page, pageSize }` với `pageSize=50`; danh sách và lịch sử chỉ ADMIN xem được. POST trả 201, GET/PATCH/DELETE 200. Thiếu phiên 401, sai role 403, scope/field/đơn vị/toán tử sai 422, ID không tồn tại 404, trùng mã quy tắc hoặc `expectedVersion` cũ 409. Mọi thao tác ghi cần cookie phiên và CSRF theo `http-client.js`; `updatedBy` không nhận từ request. `GET /options` trả danh mục, sản phẩm, field phòng và các field catalog **đủ điều kiện FitCheck** của `categoryId` đã chọn. Metadata không khớp bảng chuẩn sẽ không xuất hiện và không được lưu thành rule.
+
+Kiểm thử độc lập từ gốc repo: `powershell -NoProfile -ExecutionPolicy Bypass -File server/tests/run-fit-rule-mysql.ps1` sau khi có Docker và image PHP `is207r12-website-ban-do-gia-dung-api:latest`. Runner tạo MySQL 8.4 tạm không mở cổng, áp baseline/migration trên `fit_rule_isolated`, kiểm tra CRUD, audit, bản cũ bất biến, version cũ 409, role 403, field sai đơn vị 422 và metadata seed của TV4; sau đó xóa đúng container tạm. Không chạy 012/013 trên DB chung chỉ để thử form.
 
 ## 4. TCO (`POST /api/tco/calculate`)
 
@@ -190,6 +207,8 @@ Tại thời điểm tạo thiết bị, chỉ quy tắc `ACTIVE` được đưa
 
 ## 7. Ranh giới triển khai hiện tại
 
-CRUD phòng và FitCheck evaluator chưa được triển khai. STT 24 cần migrations 012 và 016 đã review/áp dụng; code không tự chạy DDL. Quy tắc bảo hành bắt đầu ngày nào vẫn chờ nhóm thống nhất nên API không tự đặt ngày. Trước khi merge cần người khác review bridge/migration và xác nhận chu kỳ bảo trì với chủ catalog/nghiệp vụ.
+CRUD rule quản trị, CRUD phòng và rule evaluator đã triển khai nhưng cần áp migration 012/013 trên database được duyệt. `decision_events` hiện chỉ ghi lượt và mức kết quả, chưa lưu chi tiết từng lần đánh giá; không được coi bảng phiên bản rule là lịch sử kết quả FitCheck của khách. Metadata catalog dùng cho evaluator vẫn chờ TV4 xác nhận trước khi dùng production. Kiểm thử: `php server/tests/room-fit-evaluate.test.php` (biên, thiếu dữ liệu, ghi đè) và `node scripts/room-fit-api.test.mjs` (quyền, ba mức kết quả).
+
+STT 24 cần migrations 012 và 016 đã review/áp dụng; code không tự chạy DDL. Quy tắc bảo hành bắt đầu ngày nào vẫn chờ nhóm thống nhất nên API không tự đặt ngày. Trước khi merge cần người khác review bridge/migration và xác nhận chu kỳ bảo trì với chủ catalog/nghiệp vụ.
 
 Regression suite STT 24 nằm trong `server/tests/care-mysql.test.php` và được gọi bởi `server/tests/run-order-mysql-tests.mjs`. Suite kiểm tra giao dịch hoàn tất đơn → thiết bị/lịch, số lượng theo từng chiếc, snapshot, ưu tiên rule sản phẩm, rule ngừng áp dụng, quyền sở hữu/role, hoãn và hoàn tất chu kỳ, retry, lưu trữ, SKU vật tư hết tồn, chatbot lọc catalog đang hoạt động và gửi đồng thời cùng một tác vụ. Runner chỉ tạo database MySQL tạm trên loopback; nếu môi trường không có `mysqld`, cần chạy tại môi trường dev có MySQL cục bộ trước khi xác nhận kết quả tích hợp.
