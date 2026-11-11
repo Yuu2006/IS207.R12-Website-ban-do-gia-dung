@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon, StatusBadge } from '../../components/order/OrderParts.jsx';
 import { money, nextStatus, orderTotal, paymentLabel, statusLabels } from '../../services/order-ui-data.js';
 import { OrderDetailContent } from '../customer/OrderHistory.jsx';
@@ -18,6 +18,7 @@ export default function SalesOrders({ initialOrders }) {
   const [reason, setReason] = useState('');
   const [collected, setCollected] = useState(false);
   const [notice, setNotice] = useState('');
+  const detailPanelRef = useRef(null);
   const action = useOrderAction();
   const busy = action.busy;
   useEffect(() => { const timer = setTimeout(() => { setSearch(query.trim()); setPage(1); }, 300); return () => clearTimeout(timer); }, [query]);
@@ -27,6 +28,16 @@ export default function SalesOrders({ initialOrders }) {
   const selected = detail.data;
   const orders = resource.data?.items ?? [];
   const visible = orders;
+
+  // On narrow screens the detail panel follows the order list, so bring it into view after selection.
+  useEffect(() => {
+    if (selectedId === null || window.matchMedia('(min-width: 1001px)').matches) return undefined;
+    const frame = window.requestAnimationFrame(() => detailPanelRef.current?.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'start',
+    }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedId]);
 
   async function update(status) {
     if (!selected || busy) return;
@@ -48,10 +59,10 @@ export default function SalesOrders({ initialOrders }) {
     <div className="oc-staff-grid"><section className="oc-card oc-staff-list">
       <div className="oc-toolbar"><label className="oc-search"><Icon name="search" size={18} /><input aria-label="Tìm mã đơn, tên hoặc số điện thoại" placeholder="Tìm mã đơn, tên, số điện thoại…" value={query} maxLength={100} disabled={busy || action.uncertain} onChange={event => setQuery(event.target.value)} /></label><select aria-label="Lọc trạng thái đơn" value={filter} disabled={busy || action.uncertain} onChange={event => { setFilter(event.target.value); setPage(1); }}><option value="all">Tất cả trạng thái</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
       <OrderApiState {...resource} retry={resource.reload} />
-      <div key={filter} className="oc-table-scroll oc-table-scroll--filtered"><table className="oc-order-table"><caption className="oc-sr-only">Danh sách đơn hàng</caption><thead><tr><th>Đơn hàng / khách hàng</th><th>Trạng thái</th><th>Tổng tiền</th><th><span className="oc-sr-only">Thao tác</span></th></tr></thead><tbody>{visible.map(order => <tr key={order.id} className={String(selectedId) === String(order.id) ? 'is-selected' : ''}><td><strong>#{order.code || order.id}</strong><span>{order.customer.name}</span><small>{order.date} · {order.customer.phone}</small></td><td><StatusBadge status={order.status} /><small>{paymentLabel(order.payment)}</small></td><td><strong>{money(orderTotal(order))}</strong><small>{order.method}</small></td><td><button className="oc-button oc-button--outline" disabled={busy || action.uncertain} onClick={() => { setSelectedId(order.id); setNotice(''); setCollected(false); setReason(''); }}>Xử lý</button></td></tr>)}</tbody></table></div>
+      <div key={filter} className="oc-table-scroll oc-table-scroll--filtered"><table className="oc-order-table"><caption className="oc-sr-only">Danh sách đơn hàng</caption><thead><tr><th>Đơn hàng / khách hàng</th><th>Trạng thái</th><th>Tổng tiền</th><th><span className="oc-sr-only">Thao tác</span></th></tr></thead><tbody>{visible.map(order => <tr key={order.id} className={String(selectedId) === String(order.id) ? 'is-selected' : ''}><td><strong>#{order.code || order.id}</strong><span>{order.customer.name}</span><small>{order.date} · {order.customer.phone}</small></td><td><StatusBadge status={order.status} /><small>{paymentLabel(order.payment)}</small></td><td><strong>{money(orderTotal(order))}</strong><small>{order.method}</small></td><td><button className="oc-button oc-button--outline" aria-controls="sales-order-detail" aria-expanded={String(selectedId) === String(order.id)} disabled={busy || action.uncertain} onClick={() => { setSelectedId(order.id); setNotice(''); setCollected(false); setReason(''); }}>Xử lý</button></td></tr>)}</tbody></table></div>
       {!resource.loading && !resource.error && !visible.length && <div className="oc-empty"><Icon name="search" size={36} /><h2>{search || filter !== 'all' ? 'Không tìm thấy đơn hàng' : 'Chưa có đơn hàng cần xử lý'}</h2><p>Thử đổi từ khóa hoặc trạng thái.</p></div>}<div className="oc-table-foot">{resource.data?.pagination.totalItems ?? 0} đơn hàng</div>
       {resource.data?.pagination.totalPages > 1 && <nav className="oc-detail-actions" aria-label="Phân trang đơn nhân viên"><button className="oc-button oc-button--outline" disabled={page <= 1 || busy || action.uncertain} onClick={() => setPage(value => value - 1)}>Trước</button><span>Trang {page} / {resource.data.pagination.totalPages}</span><button className="oc-button oc-button--outline" disabled={page >= resource.data.pagination.totalPages || busy || action.uncertain} onClick={() => setPage(value => value + 1)}>Sau</button></nav>}
-    </section><aside key={selectedId ?? 'empty'} className="oc-staff-detail">{detail.loading || detail.error ? <OrderApiState {...detail} retry={detail.reload} /> : selected ? <><div className="oc-card oc-form-section">
+    </section><aside id="sales-order-detail" ref={detailPanelRef} key={selectedId ?? 'empty'} className="oc-staff-detail">{detail.loading || detail.error ? <OrderApiState {...detail} retry={detail.reload} /> : selected ? <><div className="oc-card oc-form-section">
       <span className="oc-eyebrow">ĐƠN ĐANG XỬ LÝ</span><h2>#{selected.code || selected.id}</h2><StatusBadge status={selected.status} />
       {notice && <p className="oc-notice" role="status">{notice}</p>}
       {action.error && <p className="oc-error" role="alert">{action.error.message}{action.error.status === 409 && !action.uncertain && <button className="oc-text-action" onClick={detail.reload}>Tải lại đơn</button>}</p>}

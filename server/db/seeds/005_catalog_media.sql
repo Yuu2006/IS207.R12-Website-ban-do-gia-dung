@@ -1,6 +1,5 @@
 -- Seed 005 — ảnh placeholder (PNG sinh bởi generator vào server/uploads), banner, logo thương hiệu, thứ tự danh mục. Cần migration 011.
 -- FILE SINH TỰ ĐỘNG bởi scripts/generate-seed-data.mjs — đừng sửa tay. Dữ liệu MÔ PHỎNG cho demo.
-USE household_ecommerce;
 
 UPDATE categories SET sort_order = 1 WHERE slug = 'tu-lanh';
 UPDATE categories SET sort_order = 2 WHERE slug = 'may-giat';

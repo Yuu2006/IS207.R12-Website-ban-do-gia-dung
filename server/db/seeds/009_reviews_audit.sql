@@ -1,6 +1,5 @@
 -- Seed 009 — đánh giá (chỉ cho dòng hàng của đơn COMPLETED, mỗi dòng tối đa một lần) và audit log. Cần 008.
 -- FILE SINH TỰ ĐỘNG bởi scripts/generate-seed-data.mjs — đừng sửa tay. Dữ liệu MÔ PHỎNG cho demo.
-USE household_ecommerce;
 
 INSERT IGNORE INTO product_reviews (order_item_id, customer_id, rating, content, is_visible, created_at) SELECT oi.id, o.customer_id, 4, 'Máy chạy tốt, thiết kế đẹp, tiếc là hơi ồn lúc khởi động.', 1, UTC_TIMESTAMP() - INTERVAL 111293 MINUTE FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.order_code = 'HC2026110001' AND oi.sku = 'ML-003-A';
 INSERT IGNORE INTO product_reviews (order_item_id, customer_id, rating, content, is_visible, created_at) SELECT oi.id, o.customer_id, 5, 'Sản phẩm rất tốt, giao hàng nhanh, nhân viên lắp đặt nhiệt tình.', 1, UTC_TIMESTAMP() - INTERVAL 109508 MINUTE FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.order_code = 'HC2026110001' AND oi.sku = 'ML-005-01';

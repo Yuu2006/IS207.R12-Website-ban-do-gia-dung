@@ -1,6 +1,5 @@
 -- Seed 008 — 48 đơn trải ~90 ngày, đủ trạng thái, thanh toán COD/VNPAY, vận chuyển, trả hàng, biến động kho, giỏ hàng. Cần 001–007 và migration 008_order_runtime. Thời gian tính từ lúc nạp (UTC_TIMESTAMP).
 -- FILE SINH TỰ ĐỘNG bởi scripts/generate-seed-data.mjs — đừng sửa tay. Dữ liệu MÔ PHỎNG cho demo.
-USE household_ecommerce;
 
 
 -- HC2026110001 · COMPLETED · VNPAY/PAID

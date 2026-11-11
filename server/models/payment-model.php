@@ -16,6 +16,14 @@ final class PaymentModel
         return $statement->fetchAll(\PDO::FETCH_ASSOC);
     }
 
+    public function findOwnedVnpayAttempt(string $paymentCode, string $customerId): ?array
+    {
+        $statement = $this->pdo->prepare('SELECT p.order_id, p.status, p.expires_at, o.order_code, o.order_status, o.refund_required FROM payments p JOIN orders o ON o.id = p.order_id WHERE p.payment_code = ? AND p.payment_method = ? AND p.is_deleted = 0 AND o.customer_id = ? AND o.is_deleted = 0 LIMIT 1');
+        $statement->execute([$paymentCode, 'VNPAY', $customerId]);
+        $row = $statement->fetch(\PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
     // A paid order header alone is not evidence of a valid payment ledger.
     public function assertSettled(array $order, array $payments): void
     {
