@@ -1,4 +1,3 @@
-USE household_ecommerce;
 
 -- Danh muc
 INSERT INTO categories (name, slug)

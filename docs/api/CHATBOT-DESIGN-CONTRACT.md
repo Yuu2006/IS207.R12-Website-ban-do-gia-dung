@@ -1,10 +1,10 @@
 # BOT-01..06 — thiết kế chatbot theo quy tắc và API contract
 
-Trạng thái 20/10/2026: **bản mẫu FE và contract BE**, chưa có endpoint chatbot, rule engine hay model API. Giao diện ở `client/src/components/chatbot/` dùng dữ liệu minh họa cô lập trong `demo-products.js`, không đọc catalog và không đưa ra báo giá thật. Lịch sử bản mẫu lưu trong `sessionStorage` của tab hiện tại (tối đa 40 tin nhắn), không gửi lên server; đóng/mở hộp chat không xóa hội thoại. Chatbot MVP dùng ý định, bộ lọc, quy tắc và FAQ; **không dùng LLM**. PR so sánh sản phẩm và contract FitCheck/TCO đang ở nhánh khác, chưa được coi là đã tích hợp vào `develop`.
+Trạng thái 06/11/2026: **STT 24 bổ sung tra cứu catalog chatbot có dữ liệu thật**: `GET /api/chatbot/catalog-search` tìm SKU đang bán và trả giá/tồn hiện tại; widget gọi qua frontend service và mở trang chi tiết catalog thật. Widget hiện không dùng dữ liệu demo và không lưu hội thoại sau khi đóng trang. Đây chỉ là tra cứu catalog theo từ khóa; compare/FAQ/rule engine và luồng BOT-01..06 đầy đủ vẫn chưa triển khai. MVP dùng quy tắc, không dùng LLM.
 
 ## 1. Luồng và tiêu chí trả lời
 
-1. Giao diện hiển thị trước ba câu hỏi mẫu: **Hỏi giá**, **So sánh sản phẩm**, **Chỉ so sánh giá**. Đây là lối vào nhanh, không phải danh sách các câu hỏi mà bot đã trả lời được trong bản mẫu. Tin nhắn tự nhập hiện chỉ được nhận trên giao diện và trả thông báo chưa xử lý.
+1. Hiện widget có ba nút tìm nhanh theo nhóm hàng và ô nhập tên/brand/SKU. Chỉ API catalog search được triển khai; kết quả nêu SKU, giá, tồn tại thời điểm tra cứu và route chi tiết thật. Đây chưa phải phân loại ý định hoặc tư vấn tổng quát.
 2. Khi triển khai BE, phân loại ý định `PRICE`, `COMPARE`, `RECOMMEND`, `FAQ`, `UNKNOWN` bằng quy tắc/keyword có kiểm soát. Tách tên/ID sản phẩm, danh mục, ngân sách và tiêu chí được nhắc tới thành slot có cấu trúc. Không đoán sản phẩm từ câu mơ hồ; thiếu ID hoặc danh mục thì hỏi làm rõ trước khi truy vấn.
 3. Mỗi câu trả lời bắt đầu bằng **kết luận trực tiếp**, tối đa 2–3 câu ngắn trước khi hiển thị bảng/thẻ chi tiết. Chỉ nêu dữ kiện có nguồn, đơn vị và thời điểm phù hợp. Không tự tạo giá, tồn kho, công suất, độ bền, chính sách hay “sản phẩm tốt nhất”. Nếu có dữ liệu thiếu, nói rõ “Chưa có dữ liệu”.
 4. Sau **mỗi** câu trả lời hiển thị **một câu hỏi mở** liên quan đến bước tiếp theo, ví dụ: “Bạn muốn so sánh thêm tiêu chí nào?” hoặc “Bạn muốn hỏi giá của sản phẩm nào?”. Không lặp máy móc một câu hỏi khi người dùng vừa trả lời nó.
@@ -33,7 +33,39 @@ Nếu thông số cùng tên có cả ở cột `products` và thuộc tính đ�
 
 `chatbot_intent_rules`: `id`, `intent_key`, `pattern_type` (`KEYWORD`, `PHRASE`), `pattern`, `priority`, `status`, `updated_by`, `updated_at`. Rule match theo text chuẩn hóa, không chạy `eval` hoặc regex do ADMIN nhập nếu chưa có bộ kiểm tra an toàn. Xung đột ý định hoặc độ tin cậy thấp trả `NEEDS_CLARIFICATION`, không tự đoán. Ma trận ánh xạ trường so sánh theo `category_id` dùng whitelist trong service/config được review với chủ catalog; không cho client yêu cầu tên cột SQL bất kỳ.
 
-## 4. API dự kiến
+## 4. API
+
+Đã triển khai `GET /api/chatbot/catalog-search?q={keyword}&limit=8&categoryId={optional}` (Public, chỉ đọc). Search tối đa 100 ký tự, `limit` 1–12; cần có từ khóa hoặc category ID. API chỉ trả sản phẩm, thương hiệu, danh mục và SKU đang hoạt động, kèm giá khuyến mãi nếu còn hiệu lực, tồn hiện tại, thời điểm kiểm tra và `href` dạng `/catalog/products/{productId}?variantId={variantId}`. Từ “điều hòa/điều hoà” được chuẩn hóa thành “máy lạnh” để khớp tên danh mục hiện có.
+
+Ví dụ request:
+
+```http
+GET /api/chatbot/catalog-search?q=Máy%20giặt%20LG&limit=8
+```
+
+Ví dụ response:
+
+```json
+{
+  "success": true,
+  "message": "Đã tra cứu catalog.",
+  "data": {
+    "checkedAt": "2026-11-06T08:15:00Z",
+    "items": [{
+      "productId": "12", "productName": "Máy giặt mẫu", "categoryName": "Máy giặt",
+      "brandName": "LG", "variantId": "31", "sku": "WM-12-WH", "variantName": "Trắng",
+      "currentPrice": "8900000.00", "stockQuantity": 4, "availability": "IN_STOCK",
+      "href": "/catalog/products/12?variantId=31"
+    }]
+  }
+}
+```
+
+200 trả kết quả (danh sách rỗng nếu không khớp); 422 nếu từ khóa/limit sai, thiếu từ khóa lẫn category, hoặc category không tồn tại/ngừng hoạt động; 503 khi MySQL/schema chưa sẵn sàng. Endpoint không cần đăng nhập và không nhận giá/tồn do client cung cấp. Giá/tồn có thể thay đổi sau thời điểm phản hồi. `/catalog/products/{id}` tải chi tiết và SKU bằng catalog API, không tạo thao tác mua giả.
+
+Các ca hồi quy của endpoint tra cứu gồm: ký tự `%`/`_` được tìm như ký tự thường; SKU, sản phẩm, thương hiệu và danh mục đã vô hiệu hóa không xuất hiện; giới hạn từ khóa và số kết quả; category ID không hợp lệ; giá/tồn được đọc từ MySQL. MySQL integration suite dùng một database local cô lập mới, không kết nối DB đang chạy của người dùng.
+
+Các endpoint chatbot tổng quát và quản trị FAQ phía dưới vẫn là **đề xuất, chưa triển khai**.
 
 | Method/path | Quyền | Mục đích |
 | --- | --- | --- |

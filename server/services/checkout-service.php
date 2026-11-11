@@ -62,6 +62,14 @@ final class CheckoutService implements CheckoutServiceInterface
         return orderCanonicalHash(['actorId' => $principal['id'], 'input' => array_intersect_key($input, array_flip(['cartVersion', 'addressId', 'paymentMethod', 'voucherCode'])), 'items' => $quote['items'], 'address' => $quote['shippingAddress'], 'totals' => $quote['totals'], 'voucherId' => $quote['voucherId'] ?? null]);
     }
 
+    private function validatePaymentQuote(array $input, array $quote): void
+    {
+        if ($input['paymentMethod'] !== 'VNPAY') return;
+        vnpayConfig();
+        if ($quote['totals']['total'] < 1) throw new ApiException(422, 'VNPAY_AMOUNT_UNSUPPORTED', 'VNPay không hỗ trợ đơn hàng có tổng thanh toán bằng 0₫.');
+        if ($quote['totals']['total'] > 9999999999) throw new ApiException(422, 'VNPAY_AMOUNT_UNSUPPORTED', 'Số tiền đơn hàng vượt giới hạn thanh toán VNPay.');
+    }
+
     // Quote is read-only; it is not a reservation or a guarantee of unchanged stock.
     public function quoteCheckout(array $principal, array $input): array
     {
@@ -74,6 +82,7 @@ final class CheckoutService implements CheckoutServiceInterface
         $pdo->beginTransaction();
         try {
             $quote = $this->normalize($this->dependencies->quote($pdo, $principal, $input), $input);
+            $this->validatePaymentQuote($input, $quote);
             $result = array_intersect_key($quote, array_flip(['cartVersion', 'items', 'shippingAddress', 'totals']));
             $result['quoteFingerprint'] = $this->fingerprint($principal, $input, $quote);
             $pdo->commit();
@@ -94,8 +103,10 @@ final class CheckoutService implements CheckoutServiceInterface
         if ($input['paymentMethod'] === 'BANK_TRANSFER') bankTransferConfig();
         return (new OrderIdempotencyModel($this->model->pdo))->run($principal, 'checkout', $key, $input, function () use ($principal, $input) {
             $quote = $this->normalize($this->dependencies->lockForCreate($this->model->pdo, $principal, $input), $input);
+            $this->validatePaymentQuote($input, $quote);
             if (!hash_equals($this->fingerprint($principal, $input, $quote), $input['quoteFingerprint'])) throw new ApiException(409, 'CHECKOUT_CHANGED', 'Giá, địa chỉ hoặc ưu đãi đã thay đổi. Hãy xác nhận lại.');
-            $order = (new CheckoutModel($this->model))->insert($principal, $input, $quote);
+            $expiresAt = $input['paymentMethod'] === 'VNPAY' ? time() + 900 : null;
+            $order = (new CheckoutModel($this->model))->insert($principal, $input, $quote, $expiresAt);
             $this->dependencies->commitCheckout($this->model->pdo, $principal, $quote, $order);
             $payment = null;
             if ($input['paymentMethod'] === 'VNPAY') {
