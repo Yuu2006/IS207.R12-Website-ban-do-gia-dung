@@ -2,10 +2,14 @@
 declare(strict_types=1);
 
 namespace HomeCare\OrderApi;
-
 final class CheckoutModel
 {
-    public function __construct(private readonly OrderModel $orders) {}
+    private OrderModel $orders;
+
+    public function __construct(OrderModel $orders)
+    {
+        $this->orders = $orders;
+    }
 
     // Caller owns the transaction. Snapshots and unpaid COD payment are inserted together.
     public function insert(array $actor, array $input, array $quote): array

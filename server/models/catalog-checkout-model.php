@@ -96,8 +96,17 @@ final class CatalogCheckoutDependencies implements CheckoutDependencies
             if (!is_array($item)) throw new ApiException(422, 'INVALID_CART', 'Dòng giỏ hàng không hợp lệ.');
             allowOrderFields($item, ['skuId', 'quantity']);
             $id = orderDatabaseId($item['skuId'] ?? null, 'skuId');
-            if (isset($lines[$id])) throw new ApiException(422, 'DUPLICATE_SKU', 'SKU trong giỏ phải gộp số lượng.');
-            $lines[$id] = orderPositiveInteger($item['quantity'] ?? null, 'quantity');
+           $quantity = orderPositiveInteger($item['quantity'] ?? null, 'quantity');
+
+$lines[$id] = ($lines[$id] ?? 0) + $quantity;
+
+if ($lines[$id] > 10000) {
+    throw new ApiException(
+        422,
+        'INVALID_QUANTITY',
+        'Tổng số lượng SKU vượt giới hạn cho phép.'
+    );
+}
         }
         uksort($lines, fn ($a, $b) => strlen((string) $a) <=> strlen((string) $b) ?: strcmp((string) $a, (string) $b));
         return (new OrderIdempotencyModel($pdo))->run($actor, 'replace-cart', $key, $input, function () use ($pdo, $actor, $version, $lines) {

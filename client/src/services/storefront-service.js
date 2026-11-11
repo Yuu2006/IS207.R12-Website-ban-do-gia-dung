@@ -1,20 +1,44 @@
 import { API_URL } from './http-client.js';
-import { getProduct, getProductAttributes, listProducts } from './catalog-service.js';
-
+import {
+  getProduct,
+  getProductAttributes,
+  listProducts,
+  categories,
+  brands,
+  searchProducts
+} from './catalog-service.js';
 // Đọc catalog công khai (GET /api/products*) và đổi sang dạng mà ProductCard/trang khách đang dùng.
 // API chưa có đánh giá/xếp hạng nên rating = null; trang hiển thị "chưa có đánh giá" thay vì số giả.
 const NO_IMAGE = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="400" height="400" fill="#F1F5F9"/><text x="200" y="205" font-family="Arial" font-size="18" fill="#94A3B8" text-anchor="middle">Chưa có ảnh</text></svg>');
 const imageUrl = path => (path ? (/^https?:/.test(path) ? path : `${API_URL}${path}`) : NO_IMAGE);
 const CATEGORY_ICON = { 'Tủ lạnh': '🧊', 'Máy giặt': '🧺', 'Máy lạnh': '❄️' };
+const toCard = (p) => ({
+  id: String(p.id),
+  name: p.name,
+  brand: p.brand_name,
+  brandId: p.brand_id,
+  category: p.category_name,
+  categoryId: p.category_id,
 
-const toCard = p => ({
-  id: String(p.id), name: p.name, brand: p.brand_name, category: p.category_name,
-  price: Number(p.min_price), originalPrice: Number(p.min_price), discount: 0, // min_price đã là giá bán hiện hành
-  rating: null, reviews: 0, reviewCount: 0,
-  inStock: Number(p.total_stock) > 0, warranty: `${p.warranty_months} tháng`,
-  image: imageUrl(p.primary_image), images: [], specs: {},
+  price: Number(p.min_price),
+  originalPrice: Number(p.min_price),
+  discount: 0,
+
+  rating: p.rating_average == null
+    ? null
+    : Number(p.rating_average),
+
+  reviews: Number(p.review_count ?? 0),
+  reviewCount: Number(p.review_count ?? 0),
+  soldQuantity: Number(p.sold_quantity ?? 0),
+
+  inStock: Number(p.total_stock) > 0,
+  warranty: `${p.warranty_months} tháng`,
+
+  image: imageUrl(p.primary_image),
+  images: [],
+  specs: {},
 });
-
 let listPromise;
 export function loadStorefront() {
   listPromise ??= listProducts({ is_active: 1 }).then(rows => {
@@ -25,6 +49,20 @@ export function loadStorefront() {
     return { products, categories };
   }).catch(error => { listPromise = undefined; throw error; });
   return listPromise;
+}
+export async function loadProductListing(filters = {}) {
+  const [result, categoryData, brandData] = await Promise.all([
+    searchProducts(filters),
+    categories.list(),
+    brands.list(),
+  ]);
+
+  return {
+    products: result.items.map(toCard),
+    categories: categoryData,
+    brands: brandData,
+    pagination: result.pagination,
+  };
 }
 
 const attributeText = a => (a.data_type === 'boolean' ? (a.value_boolean ? 'Có' : 'Không')

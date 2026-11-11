@@ -2,12 +2,14 @@
 declare(strict_types=1);
 
 namespace HomeCare\OrderApi;
-
 final class OrderModel
 {
-    // All access uses one native-prepared PDO connection; no HTTP or stock arithmetic here.
-    public function __construct(public readonly \PDO $pdo) {}
+    private \PDO $pdo;
 
+    public function __construct(\PDO $pdo)
+    {
+        $this->pdo = $pdo;
+    }
     // Refuse a stale role/disabled account even when a server session still exists.
     public function requireActor(array $principal, array $roles): void
     {

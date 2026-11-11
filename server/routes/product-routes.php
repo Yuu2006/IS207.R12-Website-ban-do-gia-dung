@@ -10,6 +10,10 @@ function handleProductRoutes(string $method, string $path): bool
         listProducts();
         return true;
     }
+if ($path === '/api/products/search' && $method === 'GET') {
+    searchProducts();
+    return true;
+}
 
     // POST tao san pham: chi ADMIN
     if ($path === '/api/products' && $method === 'POST') {

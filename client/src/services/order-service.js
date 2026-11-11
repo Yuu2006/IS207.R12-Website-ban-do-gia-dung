@@ -42,12 +42,15 @@ export function mapOrder(dto, detail = false) {
     }),
   };
 }
-
 export function mapCart(dto) {
   if (!Number.isSafeInteger(dto?.cartVersion) || dto.cartVersion < 1 || !Array.isArray(dto.items)) badResponse();
-  return { cartVersion: dto.cartVersion, items: dto.items.map(mapLine) };
-}
 
+  return {
+    cartVersion: dto.cartVersion,
+    items: dto.items.map(mapLine),
+    ...(dto.totals ? { totals: validateTotals(dto.totals) } : {})
+  };
+}
 export function mapQuote(dto) {
   if (!isId(dto?.quoteFingerprint) || !dto.shippingAddress) badResponse();
   return { ...mapCart(dto), quoteFingerprint: dto.quoteFingerprint, shippingAddress: dto.shippingAddress, totals: validateTotals(dto.totals) };

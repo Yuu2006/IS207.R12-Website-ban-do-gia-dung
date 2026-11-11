@@ -12,8 +12,16 @@ interface CheckoutServiceInterface
 // The transaction is implemented; production owner adapters must be supplied explicitly.
 final class CheckoutService implements CheckoutServiceInterface
 {
-    public function __construct(private readonly ?OrderModel $model = null, private readonly ?CheckoutDependencies $dependencies = null) {}
+    private ?OrderModel $model;
+    private ?CheckoutDependencies $dependencies;
 
+    public function __construct(
+        ?OrderModel $model = null,
+        ?CheckoutDependencies $dependencies = null
+    ) {
+        $this->model = $model;
+        $this->dependencies = $dependencies;
+    }
     // Fail closed instead of trusting frontend prices or partially wired dependencies.
     private function ready(array $principal): void
     {
