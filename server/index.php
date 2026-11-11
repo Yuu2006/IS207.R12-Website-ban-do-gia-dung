@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/utils/response.php';
-require_once __DIR__ . '/utils/order-api.php';
+require_once __DIR__ . '/utils/api-response.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/routes/auth-routes.php';
 require_once __DIR__ . '/routes/user-routes.php';
@@ -80,7 +80,8 @@ try {
         }
         throw new ApiException('Endpoint chưa tồn tại.', 404);
     }
-
+// Chỉ nạp module Order khi request thực sự đi vào nhánh Order.
+require_once __DIR__ . '/utils/order-api.php';
     // Order API nhận bản sao phiên theo contract của nó; đóng session để request đơn không khóa nhau.
     $principal = currentPrincipal();
     $orderSession = ['csrfToken' => $_SESSION['csrfToken']];

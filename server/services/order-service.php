@@ -24,8 +24,20 @@ interface OrderCompletionDependencies
 // MySQL order domain; cart/voucher/inventory adapters remain explicitly owner-reviewed dependencies.
 final class OrderService implements OrderServiceInterface
 {
+    private ?OrderModel $model;
+    private ?CheckoutDependencies $dependencies;
+    private ?OrderCompletionDependencies $completion;
+
     // Dependency wiring is explicit; null keeps default runtime fail-closed until DB is configured.
-    public function __construct(private readonly ?OrderModel $model = null, private readonly ?CheckoutDependencies $dependencies = null, private readonly ?OrderCompletionDependencies $completion = null) {}
+    public function __construct(
+        ?OrderModel $model = null,
+        ?CheckoutDependencies $dependencies = null,
+        ?OrderCompletionDependencies $completion = null
+    ) {
+        $this->model = $model;
+        $this->dependencies = $dependencies;
+        $this->completion = $completion;
+    }
 
     // Read/write services verify active DB actor as well as middleware role.
     private function model(array $principal, array $roles): OrderModel

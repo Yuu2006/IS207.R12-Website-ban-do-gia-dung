@@ -21,6 +21,15 @@ require_once __DIR__ . '/../routes/order-routes.php';
 require_once __DIR__ . '/../routes/checkout-routes.php';
 require_once __DIR__ . '/../routes/payment-routes.php';
 require_once __DIR__ . '/../models/catalog-checkout-model.php';
+require_once __DIR__ . '/../models/cart-model.php';
+require_once __DIR__ . '/../services/cart-service.php';
+require_once __DIR__ . '/../controllers/cart-controller.php';
+require_once __DIR__ . '/../routes/cart-routes.php';
+// Wishlist
+require_once __DIR__ . '/../models/wishlist-model.php';
+require_once __DIR__ . '/../services/wishlist-service.php';
+require_once __DIR__ . '/../controllers/wishlist-controller.php';
+require_once __DIR__ . '/../routes/wishlist-routes.php';
 
 // CORS credential chỉ cho origin cấu hình; không phản chiếu Origin tùy ý.
 function orderCorsHeaders(string $origin, string $allowedOrigin): array
@@ -35,7 +44,7 @@ function orderCorsHeaders(string $origin, string $allowedOrigin): array
         'Access-Control-Allow-Origin' => $allowedOrigin,
         'Access-Control-Allow-Credentials' => 'true',
         'Access-Control-Allow-Headers' => 'Content-Type, Authorization, X-CSRF-Token, Idempotency-Key',
-        'Access-Control-Allow-Methods' => 'GET, POST, PUT, PATCH, OPTIONS',
+        'Access-Control-Allow-Methods' => 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
         'Access-Control-Expose-Headers' => 'Allow',
         'Vary' => 'Origin',
     ];
@@ -66,7 +75,58 @@ function runtimeCheckoutService(): CheckoutServiceInterface
         throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Chưa thể kết nối dữ liệu checkout.');
     }
 }
+function runtimeCartService(): CartServiceInterface
+{
+    if (getenv('ORDER_STORAGE_MODE') !== 'mysql') {
+        return new CartService();
+    }
 
+    try {
+        require_once __DIR__ . '/../config/database.php';
+
+        return new CartService(
+            new CartModel(\db())
+        );
+    } catch (\PDOException $error) {
+        error_log('Cart database unavailable: ' . $error->getCode());
+
+        throw new ApiException(
+            503,
+            'SERVICE_UNAVAILABLE',
+            'Chưa thể kết nối dữ liệu giỏ hàng.'
+        );
+    }
+}
+function runtimeWishlistService(): WishlistService
+{
+    if (getenv('ORDER_STORAGE_MODE') !== 'mysql') {
+        throw new ApiException(
+            503,
+            'SERVICE_UNAVAILABLE',
+            'Dịch vụ Wishlist chưa sẵn sàng.'
+        );
+    }
+
+    try {
+        require_once __DIR__ . '/../config/database.php';
+
+        $pdo = \db();
+
+        return new WishlistService(
+            $pdo,
+            new WishlistModel($pdo),
+            new CartService(new CartModel($pdo))
+        );
+    } catch (\PDOException $error) {
+        error_log('Wishlist database unavailable: ' . $error->getCode());
+
+        throw new ApiException(
+            503,
+            'SERVICE_UNAVAILABLE',
+            'Chưa thể kết nối dữ liệu Wishlist.'
+        );
+    }
+}
 // Hàm thuần điều phối dùng chung HTTP/tests; principal test chỉ truyền trực tiếp trong process.
 function handleOrderApi(
     string $method,
@@ -90,7 +150,14 @@ function handleOrderApi(
         $allowedMethods = [];
         $matched = null;
         $orderId = null;
-        foreach (array_merge(orderRoutes(), checkoutRoutes()) as $route) {
+        foreach (
+    array_merge(
+        orderRoutes(),
+        checkoutRoutes(),
+        cartRoutes(),
+        wishlistRoutes()
+    ) as $route
+) {
             if (preg_match($route['pattern'], $path, $captures) !== 1) {
                 continue;
             }
@@ -98,6 +165,9 @@ function handleOrderApi(
             if ($method === $route['method']) {
                 $matched = $route;
                 $orderId = isset($captures[1]) ? rawurldecode($captures[1]) : null;
+                $params = isset($captures[1])
+    ? ['productId' => rawurldecode($captures[1])]
+    : [];
                 break;
             }
         }
@@ -137,11 +207,38 @@ function handleOrderApi(
                 default => validateOrderMutation($body, $matched['schema']),
             };
         }
-        $request = ['principal' => $principal, 'orderId' => $orderId, 'input' => $input, 'idempotencyKey' => $key];
-        $controller = $matched['controller'] === 'order'
-            ? new OrderController($orderService ?? runtimeOrderService())
-            : new CheckoutController($checkoutService ?? runtimeCheckoutService());
-        return $controller->{$matched['action']}($request);
+        $request = [
+    'principal' => $principal,
+    'orderId' => $orderId,
+    'params' => $params,
+    'input' => $input,
+    'idempotencyKey' => $key
+];
+if ($matched['controller'] === 'order') {
+    $controller = new OrderController(
+        $orderService ?? runtimeOrderService()
+    );
+} elseif ($matched['controller'] === 'checkout') {
+    $controller = new CheckoutController(
+        $checkoutService ?? runtimeCheckoutService()
+    );
+} elseif ($matched['controller'] === 'cart') {
+    $controller = new CartController(
+        runtimeCartService()
+    );
+} elseif ($matched['controller'] === 'wishlist') {
+    $controller = new WishlistController(
+        runtimeWishlistService()
+    );
+} else {
+    throw new ApiException(
+        500,
+        'INVALID_CONTROLLER',
+        'Controller không hợp lệ.'
+    );
+}
+
+return $controller->{$matched['action']}($request);
     } catch (ApiException $error) {
         return apiFailure($error);
     } catch (\PDOException $error) {

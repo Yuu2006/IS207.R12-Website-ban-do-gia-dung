@@ -2,12 +2,15 @@
 declare(strict_types=1);
 
 namespace HomeCare\OrderApi;
-
 final class PaymentModel
 {
-    // Use the order transaction; never call a payment provider in an open transaction.
-    public function __construct(private readonly \PDO $pdo) {}
+    private \PDO $pdo;
 
+    // Use the order transaction; never call a payment provider in an open transaction.
+    public function __construct(\PDO $pdo)
+    {
+        $this->pdo = $pdo;
+    }
     // Lock payments after order and in increasing ID order, before cart/voucher/SKU.
     public function lock(string $orderId): array
     {
