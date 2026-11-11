@@ -12,7 +12,7 @@ interface CheckoutServiceInterface
 // The transaction is implemented; production owner adapters must be supplied explicitly.
 final class CheckoutService implements CheckoutServiceInterface
 {
-    public function __construct(private readonly ?OrderModel $model = null, private readonly ?CheckoutDependencies $dependencies = null, private readonly ?VnpayGateway $vnpay = null) {}
+    public function __construct(private readonly ?OrderModel $model = null, private readonly ?CheckoutDependencies $dependencies = null) {}
 
     // Fail closed instead of trusting frontend prices or partially wired dependencies.
     private function ready(array $principal): void
@@ -51,6 +51,7 @@ final class CheckoutService implements CheckoutServiceInterface
         // Existing storage uses DECIMAL(14,2): at most 12 whole-VND digits.
         if (max($totals) > 999999999999) throw new ApiException(422, 'INVALID_INPUT', 'Tổng tiền vượt giới hạn lưu trữ đơn hàng.');
         if ($totals['subtotal'] !== $subtotal || $totals['discount'] > $subtotal || $subtotal - $totals['discount'] > MAX_ORDER_INTEGER - $totals['shipping'] || $totals['total'] !== $subtotal - $totals['discount'] + $totals['shipping']) throw new \LogicException('Invalid server quote totals.');
+        if ($totals['total'] === 0 && $input['paymentMethod'] !== 'COD') throw new ApiException(422, 'ZERO_PAYMENT', 'Đơn không cần thu tiền phải dùng phương thức COD để xác nhận khi giao.');
         if (($quote['voucherId'] ?? null) !== null) orderDatabaseId($quote['voucherId'], 'voucherId');
         return $quote;
     }
@@ -64,8 +65,7 @@ final class CheckoutService implements CheckoutServiceInterface
     private function validatePaymentQuote(array $input, array $quote): void
     {
         if ($input['paymentMethod'] !== 'VNPAY') return;
-        if ($this->vnpay === null) throw new ApiException(503, 'VNPAY_NOT_CONFIGURED', 'Thanh toán VNPay chưa được cấu hình. Vui lòng chọn COD hoặc thử lại sau.');
-        $this->vnpay->requireConfigured();
+        vnpayConfig();
         if ($quote['totals']['total'] < 1) throw new ApiException(422, 'VNPAY_AMOUNT_UNSUPPORTED', 'VNPay không hỗ trợ đơn hàng có tổng thanh toán bằng 0₫.');
         if ($quote['totals']['total'] > 9999999999) throw new ApiException(422, 'VNPAY_AMOUNT_UNSUPPORTED', 'Số tiền đơn hàng vượt giới hạn thanh toán VNPay.');
     }
@@ -75,10 +75,8 @@ final class CheckoutService implements CheckoutServiceInterface
     {
         $this->ready($principal);
         $input = validateCheckoutInput($input);
-        if ($input['paymentMethod'] === 'VNPAY') {
-            if ($this->vnpay === null) throw new ApiException(503, 'VNPAY_NOT_CONFIGURED', 'Thanh toán VNPay chưa được cấu hình. Vui lòng chọn COD hoặc thử lại sau.');
-            $this->vnpay->requireConfigured();
-        }
+        if ($input['paymentMethod'] === 'VNPAY') vnpayConfig();
+        if ($input['paymentMethod'] === 'BANK_TRANSFER') bankTransferConfig();
         $pdo = $this->model->pdo;
         $pdo->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
         $pdo->beginTransaction();
@@ -101,10 +99,8 @@ final class CheckoutService implements CheckoutServiceInterface
         $this->ready($principal);
         $input = validateCheckoutInput($input, true);
         orderIdempotencyKey(['idempotency-key' => $key]);
-        if ($input['paymentMethod'] === 'VNPAY') {
-            if ($this->vnpay === null) throw new ApiException(503, 'VNPAY_NOT_CONFIGURED', 'Thanh toán VNPay chưa được cấu hình. Vui lòng chọn COD hoặc thử lại sau.');
-            $this->vnpay->requireConfigured();
-        }
+        if ($input['paymentMethod'] === 'VNPAY') vnpayConfig();
+        if ($input['paymentMethod'] === 'BANK_TRANSFER') bankTransferConfig();
         return (new OrderIdempotencyModel($this->model->pdo))->run($principal, 'checkout', $key, $input, function () use ($principal, $input) {
             $quote = $this->normalize($this->dependencies->lockForCreate($this->model->pdo, $principal, $input), $input);
             $this->validatePaymentQuote($input, $quote);
@@ -114,9 +110,8 @@ final class CheckoutService implements CheckoutServiceInterface
             $this->dependencies->commitCheckout($this->model->pdo, $principal, $quote, $order);
             $payment = null;
             if ($input['paymentMethod'] === 'VNPAY') {
-                $paymentCode = 'VNPAY-' . $order['order_code'];
-                $redirectUrl = $this->vnpay->createPaymentUrl($paymentCode, $order['order_code'], $quote['totals']['total'], (string) ($_SERVER['REMOTE_ADDR'] ?? '127.0.0.1'), $expiresAt);
-                $payment = ['attemptReference' => $paymentCode, 'redirectUrl' => $redirectUrl, 'expiresAt' => gmdate('Y-m-d\TH:i:s\Z', $expiresAt)];
+                $row = (new PaymentModel($this->model->pdo))->lock((string) $order['id'])[0];
+                $payment = ['attemptReference' => $row['payment_code'], 'expiresAt' => orderIsoDate($row['expires_at']), 'redirectUrl' => vnpayRedirect($row)];
             }
             return ['order' => $this->model->detail((string) $order['id'], $principal['id'], false), 'payment' => $payment];
         });

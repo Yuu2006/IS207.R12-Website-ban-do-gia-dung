@@ -1,6 +1,6 @@
 # DASH-01 / RPT-03 — dashboard contract để TV2/TV3 duyệt
 
-Trạng thái 04/11/2026: **dashboard tổng hợp vẫn là đề xuất, chưa được TV2/TV3 xác nhận và chưa có endpoint**. React preview tại `client/src/pages/admin/DashboardPreviewPage.jsx` hiển thị dấu `—`, không tạo số liệu giả. Task 30 đã bổ sung CSV giao dịch riêng theo quy tắc bên dưới; không coi CSV là endpoint dashboard.
+Trạng thái 04/11/2026: **dashboard tổng hợp vẫn là đề xuất, chưa được TV2/TV3 xác nhận và chưa có endpoint**. React preview tại `client/src/pages/admin/DashboardPreviewPage.jsx` hiển thị dấu `—`, không tạo số liệu giả; hiện chưa gắn route hay menu. Route `/admin` dùng trang tổng quan `StaffOverviewPage`. Task 30 đã bổ sung CSV giao dịch riêng theo quy tắc bên dưới; không coi CSV là endpoint dashboard.
 
 ## Endpoint dự kiến
 

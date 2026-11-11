@@ -35,7 +35,7 @@ final class MysqlCheckoutDependencies implements CheckoutDependencies
         $runtime = new CheckoutRuntimeModel($pdo);
         $cart = $runtime->ensureLockedCart((string) $principal['id']);
         $cartId = (string) $cart['id'];
-        $cartVersion = (int) $cart['cart_version'];
+        $cartVersion = (int) $cart['version'];
         if ($cartVersion !== $input['expectedCartVersion']) throw new ApiException(409, 'CART_VERSION_CONFLICT', 'Giỏ hàng đã thay đổi. Hãy tải lại trước khi thêm sản phẩm.');
 
         $variantId = $input['variantId'];
@@ -63,7 +63,7 @@ final class MysqlCheckoutDependencies implements CheckoutDependencies
         $runtime = new CheckoutRuntimeModel($pdo);
         $cart = $runtime->ensureLockedCart((string) $principal['id']);
         $cartId = (string) $cart['id'];
-        $cartVersion = (int) $cart['cart_version'];
+        $cartVersion = (int) $cart['version'];
         if ($cartVersion !== $input['expectedCartVersion']) throw new ApiException(409, 'CART_VERSION_CONFLICT', 'Giỏ hàng đã thay đổi. Hãy tải lại trước khi cập nhật số lượng.');
 
         $lineExists = false;
@@ -87,7 +87,7 @@ final class MysqlCheckoutDependencies implements CheckoutDependencies
         $runtime = new CheckoutRuntimeModel($pdo);
         $cart = $runtime->ensureLockedCart((string) $principal['id']);
         $cartId = (string) $cart['id'];
-        $cartVersion = (int) $cart['cart_version'];
+        $cartVersion = (int) $cart['version'];
         if ($cartVersion !== $input['expectedCartVersion']) throw new ApiException(409, 'CART_VERSION_CONFLICT', 'Giỏ hàng đã thay đổi. Hãy tải lại trước khi xóa sản phẩm.');
 
         $lineExists = false;
@@ -105,7 +105,7 @@ final class MysqlCheckoutDependencies implements CheckoutDependencies
     {
         $cart = $model->cart($principal['id'], $lock);
         if (!$cart) throw new ApiException(422, 'EMPTY_CART', 'Giỏ hàng đang trống.');
-        if ((int) $cart['cart_version'] !== $input['cartVersion']) throw new ApiException(409, 'CART_VERSION_CONFLICT', 'Giỏ hàng đã thay đổi. Hãy tải lại.');
+        if ((int) $cart['version'] !== $input['cartVersion']) throw new ApiException(409, 'CART_VERSION_CONFLICT', 'Giỏ hàng đã thay đổi. Hãy tải lại.');
         $lines = $model->cartLines((string) $cart['id'], $lock);
         if ($lines === []) throw new ApiException(422, 'EMPTY_CART', 'Giỏ hàng đang trống.');
 
@@ -132,7 +132,7 @@ final class MysqlCheckoutDependencies implements CheckoutDependencies
         }
 
         $discount = $voucher === null ? 0 : $this->voucherDiscount($voucher, $subtotal);
-        $shipping = $subtotal >= 500000 ? 0 : 30000;
+        $shipping = checkoutShippingFee($subtotal);
         if ($subtotal - $discount > MAX_ORDER_INTEGER - $shipping) throw new ApiException(422, 'INVALID_INPUT', 'Tổng thanh toán vượt giới hạn.');
         $addressParts = array_filter([
             trim((string) $address['address_line']),
@@ -142,7 +142,7 @@ final class MysqlCheckoutDependencies implements CheckoutDependencies
         ], static fn ($part) => $part !== '');
 
         return [
-            'cartVersion' => (int) $cart['cart_version'],
+            'cartVersion' => (int) $cart['version'],
             'cartId' => (string) $cart['id'],
             'voucherId' => $voucher === null ? null : (string) $voucher['id'],
             'items' => $items,
@@ -208,7 +208,7 @@ final class MysqlCheckoutDependencies implements CheckoutDependencies
         $runtime = new CheckoutRuntimeModel($pdo);
         $cart = $runtime->ensureLockedCart((string) $principal['id']);
         $cartId = (string) $cart['id'];
-        $cartVersion = (int) $cart['cart_version'];
+        $cartVersion = (int) $cart['version'];
         if ($cartVersion !== (int) $input['expectedCartVersion']) {
             throw new ApiException(409, 'CART_VERSION_CONFLICT', 'Giỏ hàng đã thay đổi. Hãy tải lại trước khi mua lại.');
         }

@@ -9,7 +9,7 @@ $taskEnvFile = Join-Path $taskRepoRoot '.env'
 
 # Load only API settings as literal values; never execute .env or print credentials.
 if (Test-Path -LiteralPath $taskEnvFile) {
-    $taskAllowedSettings = @('DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD', 'CLIENT_URL', 'APP_ENV', 'ORDER_STORAGE_MODE', 'VNPAY_TMN_CODE', 'VNPAY_HASH_SECRET', 'VNPAY_RETURN_URL', 'VNPAY_IPN_URL')
+    $taskAllowedSettings = @('DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD', 'CLIENT_URL', 'APP_ENV', 'ORDER_STORAGE_MODE', 'VNPAY_TMN_CODE', 'VNPAY_HASH_SECRET', 'VNPAY_RETURN_URL', 'BANK_TRANSFER_BIN', 'BANK_TRANSFER_ACCOUNT_NO', 'BANK_TRANSFER_ACCOUNT_NAME', 'CHECKOUT_SHIPPING_VND', 'CHECKOUT_FREE_SHIPPING_MIN_VND', 'STORE_NAME', 'STORE_ADDRESS', 'STORE_PHONE')
     foreach ($taskLine in Get-Content -LiteralPath $taskEnvFile -Encoding UTF8) {
         if ($taskLine -notmatch '^\s*([A-Z_]+)\s*=(.*)$') { continue }
         $taskKey = $Matches[1]

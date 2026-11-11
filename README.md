@@ -70,13 +70,15 @@ Ví dụ: `feature/product-filter`, `feature/vnpay-payment`, `feature/repair-tra
 3. Frontend: `cd client && npm install && npm run dev`.
 4. Database mới: áp baseline `database/schema_database.sql`, rồi migration/seed theo thứ tự trong [hướng dẫn database](server/db/README.md), một lần và có review/backup. Không import lại baseline hoặc reset volume trên database dùng chung.
 
-Hiện trạng đơn hàng và checkout ngày 08/10/2026, kết quả test và mapping còn chờ: [review Task 3](docs/plan/TASK-3-ORDER-UI.md#review-ngày-08102026--tuần-2-task-13-và-14). `ORDER_STORAGE_MODE` mặc định disabled; bật MySQL không đồng nghĩa giỏ/voucher/kho production đã tích hợp.
+Review lịch sử đơn hàng/checkout ngày 08/10/2026: [Task 3](docs/plan/TASK-3-ORDER-UI.md#review-ngày-08102026--tuần-2-task-13-và-14). Bản thanh toán mới nối adapter giỏ/voucher/kho qua migration 014; `ORDER_STORAGE_MODE` vẫn mặc định disabled cho đến khi database và cấu hình đã được kiểm tra. Bridge hoàn tất đơn sang thiết bị/bảo trì còn chờ module tương ứng.
 
 ## Auth, hồ sơ và địa chỉ (CUS-01..05)
 
+Thanh toán/chứng từ: [hướng dẫn giỏ thật, COD, QR đối soát thủ công và VNPay Sandbox](docs/api/PAYMENT-LEDGER.md). Cần migration 014 và cấu hình server; không mặc định xem QR là đã thanh toán. Frontend mặc định HTTP, mock chỉ bật rõ trong Vite dev.
+
 Auth chạy thật trên MySQL qua PHP session (cookie HttpOnly `HOMECARE_SESSION` + CSRF). CUSTOMER đăng ký/đăng nhập tại `/login`, `/register` bằng email + mật khẩu; quên mật khẩu tại `/forgot-password` (mã dùng một lần hiển thị trên trang vì chưa có email). ADMIN, SALES, WAREHOUSE đăng nhập tại `/internal/login`. Tài khoản demo từ `server/db/seeds/001_auth_demo_users.sql`: `customer@`, `admin@`, `sales@`, `warehouse@example.test`, mật khẩu chung `Demo@1234567890!`.
 
-Sau đăng nhập có shell/menu và route guard theo bốn role, trang `/profile` (sửa tên/điện thoại/ngày sinh, đổi mật khẩu); CUSTOMER có `/addresses` với thêm/sửa/xóa và địa chỉ mặc định. Trang đơn hàng mặc định gọi API thật. Fixture chỉ bật khi cấu hình rõ `VITE_ORDER_API_MODE=mock` trong Vite dev; production không dùng fixture.
+Sau đăng nhập có shell/menu và route guard theo bốn role, trang `/profile` (sửa tên/điện thoại/ngày sinh, đổi mật khẩu); CUSTOMER có `/addresses` với thêm/sửa/xóa và địa chỉ mặc định. Trang đơn hàng mặc định gọi HTTP; chỉ bật order mock trong Vite dev khi đặt rõ `VITE_ORDER_API_MODE=mock`.
 
 Kiểm thử: `cd client && npm test && npm run build`. Backend auth trên MySQL thật: xem [Task 1/9 — Auth/Profile](docs/plan/TASK-1-AUTH-PROFILE.md). Contract: `docs/api/AUTH-PROFILE.md`.
 

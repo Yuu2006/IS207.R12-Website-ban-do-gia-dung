@@ -8,6 +8,8 @@ import { getCustomerOrders } from '../../services/order-ui-data.js';
 import OrderHistory from './OrderHistory.jsx';
 import Checkout from './Checkout.jsx';
 import VnpayReturnPage from './VnpayReturnPage.jsx';
+import PaymentResult from './PaymentResult.jsx';
+import Cart from './Cart.jsx';
 import SalesOrders from '../sales/SalesOrders.jsx';
 import './order-workspace.css';
 
@@ -19,19 +21,21 @@ export default function OrderWorkspace({ orders, cart, transitionDirection } = {
   const isSales = location.pathname.startsWith('/sales/');
   const isCheckout = location.pathname === '/checkout';
   const isPaymentReturn = location.pathname === '/orders/payment-return';
+  const isPaymentResult = location.pathname === '/payment/result';
+  const isCart = location.pathname === '/cart';
   // Snapshot tùy chọn chỉ phục vụ SSR/test; App thật tải dữ liệu qua service.
   const customerOrders = orders ? getCustomerOrders(orders, user?.id) : undefined;
 
   useEffect(() => {
-    document.title = `${isSales ? 'Xử lý đơn hàng' : isCheckout ? 'Thanh toán' : isPaymentReturn ? 'Kết quả thanh toán' : 'Đơn hàng của tôi'} · HomeCare`;
+    document.title = `${isSales ? 'Xử lý đơn hàng' : isCart ? 'Giỏ hàng' : isCheckout ? 'Thanh toán' : isPaymentReturn || isPaymentResult ? 'Kết quả thanh toán' : 'Đơn hàng của tôi'} · HomeCare`;
     window.scrollTo(0, 0);
-  }, [location.pathname, isSales, isCheckout, isPaymentReturn]);
+  }, [location.pathname, isSales, isCart, isCheckout, isPaymentReturn, isPaymentResult]);
 
   if (isSales) return <div className="order-app"><SalesOrders initialOrders={orders} /></div>;
 
   return <><Header /><div className="order-app order-app--storefront">
     <div key={location.pathname} className={`oc-route-panel${transitionDirection ? ` oc-route-panel--${transitionDirection}` : ''}`}>
-      <CustomerRoute>{isPaymentReturn ? <VnpayReturnPage key="vnpay-return" /> : isCheckout ? <Checkout key={user?.id} initialCart={cart} /> :
+      <CustomerRoute>{isCart ? <Cart /> : isPaymentResult ? <PaymentResult /> : isPaymentReturn ? <VnpayReturnPage key="vnpay-return" /> : isCheckout ? <Checkout key={user?.id} initialCart={cart} /> :
         <OrderHistory key={`${user?.id ?? 'guest'}-${orderId ?? 'list'}`} initialOrders={customerOrders} detail={Boolean(orderId)} />
       }</CustomerRoute>
     </div>

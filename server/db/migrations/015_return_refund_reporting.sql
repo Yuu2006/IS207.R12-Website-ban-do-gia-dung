@@ -1,4 +1,4 @@
--- Apply after 014_vnpay_runtime.sql on a reviewed database; never rewrite the baseline.
+-- Apply after 014_payment_ledger.sql on a reviewed database; never rewrite the baseline.
 -- Return approval is staff-controlled; refunds are ledger-only simulations, not bank transactions.
 ALTER TABLE order_return_requests
     ADD COLUMN issue_category VARCHAR(40) NOT NULL DEFAULT 'OTHER',

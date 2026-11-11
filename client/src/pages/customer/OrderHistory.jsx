@@ -9,6 +9,7 @@ import { useOrderAction, useOrderQuery } from '../../hooks/use-order-api.js';
 import OrderApiState from '../../components/order/OrderApiState.jsx';
 import { isUncertainApiError } from '../../services/api-client.js';
 import AnimatedTabs from '../../components/common/AnimatedTabs.jsx';
+import PaymentPanel from '../../components/order/PaymentPanel.jsx';
 
 const filters = [['all', 'Tất cả'], ['pending', 'Chờ xác nhận'], ['processing', 'Đang chuẩn bị'], ['shipping', 'Đang giao'], ['delivered', 'Đã giao'], ['cancelled', 'Đã hủy']];
 const returnCategories = [['SAFETY_HAZARD', 'Nguy cơ an toàn'], ['DEFECTIVE', 'Lỗi chức năng'], ['TRANSIT_DAMAGE', 'Hư hỏng khi vận chuyển'], ['WRONG_ITEM', 'Giao sai sản phẩm'], ['MISSING_COMPONENT', 'Thiếu phụ kiện'], ['SPEC_MISMATCH', 'Sai thông số cam kết'], ['COSMETIC_DAMAGE', 'Trầy xước nhẹ'], ['PACKAGING_ONLY', 'Chỉ hư bao bì'], ['BUYER_REMORSE', 'Đổi ý sau mua'], ['CUSTOMER_MISUSE', 'Hư hỏng do sử dụng'], ['OTHER', 'Vấn đề khác']];
@@ -16,11 +17,12 @@ const returnStatusLabels = { requested: 'Đã gửi · chờ SALES phân loại'
 const canCancel = canCancelOrder;
 
 // Hiển thị snapshot đơn hàng, trạng thái thanh toán và lịch sử xử lý.
-export function OrderDetailContent({ order }) {
+export function OrderDetailContent({ order, staff = false, onUpdated }) {
   const subtotal = order.totals?.subtotal ?? order.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   return <><div className="oc-detail-grid">
     <section className="oc-card oc-form-section"><h2><Icon name="pin" />Địa chỉ nhận hàng</h2><strong>{order.customer.name}</strong><p>{order.customer.phone}</p><p>{order.customer.address}</p>{order.note && <p className="oc-muted">Ghi chú: {order.note}</p>}</section>
     <section className="oc-card oc-form-section"><h2><Icon name="card" />Thanh toán</h2><strong>{order.method}</strong><p><span className={`oc-payment-state ${order.payment === 'paid' ? 'is-paid' : ''}`}>{paymentLabel(order.payment)}</span></p><small className="oc-muted">Trạng thái thanh toán độc lập với trạng thái đơn.</small></section>
+    <PaymentPanel order={order} staff={staff} onUpdated={onUpdated} />
   </div><section className="oc-card oc-form-section"><h2><Icon name="box" />Sản phẩm trong đơn</h2><ProductLines items={order.items} /><Totals subtotal={subtotal} discount={order.discount} shipping={order.shipping} /></section>
   <section className="oc-card oc-form-section"><h2><Icon name="clock" />Hành trình đơn hàng</h2><ol className="oc-timeline">{order.history.map((entry, index) => <li key={`${entry.status}-${index}`}><span className={`oc-timeline-dot ${entry.status === 'cancelled' ? 'is-cancelled' : ''}`}><Icon name="check" size={13} /></span><div><StatusBadge status={entry.status} /><p>{entry.date} · {entry.actor}</p>{entry.reason && <small>Lý do: {entry.reason}</small>}</div></li>)}</ol></section></>;
 }

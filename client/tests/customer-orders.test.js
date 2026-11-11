@@ -216,6 +216,12 @@ test('session retry coalesces repeated clicks and releases the request after a n
   } finally { globalThis.fetch = savedFetch; }
 });
 
+test('cart and payment return retain a safe login return path', () => {
+  assert.equal(customerReturnPath('/cart'), '/cart');
+  assert.equal(customerReturnPath('/payment/result?vnp_TxnRef=VNPAY-HC123'), '/payment/result?vnp_TxnRef=VNPAY-HC123');
+  assert.equal(customerReturnPath('//example.com/payment/result'), '/orders');
+});
+
 test('unseeded orders render loading, not empty or sample customer data', () => {
   const html = renderToStaticMarkup(createElement(MemoryRouter, { initialEntries: ['/orders'] },
     createElement(AuthContext.Provider, { value: { user: owner, status: 'authenticated' } },

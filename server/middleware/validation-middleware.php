@@ -188,7 +188,7 @@ function validateCheckoutInput(array $input, bool $create = false): array
 {
     allowOrderFields($input, $create ? ['cartVersion', 'addressId', 'paymentMethod', 'voucherCode', 'quoteFingerprint', 'note'] : ['cartVersion', 'addressId', 'paymentMethod', 'voucherCode']);
     $method = $input['paymentMethod'] ?? null;
-    if (!in_array($method, ['COD', 'VNPAY'], true)) {
+    if (!in_array($method, ['COD', 'VNPAY', 'BANK_TRANSFER'], true)) {
         invalidOrderInput('paymentMethod', 'Phương thức thanh toán không hợp lệ.');
     }
     $result = [
