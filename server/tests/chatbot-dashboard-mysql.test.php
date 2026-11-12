@@ -17,6 +17,7 @@ $mode = $argv[1] ?? 'test';
 
 if ($mode === 'init') {
     $pdo->exec(file_get_contents(__DIR__ . '/../db/migrations/018_chatbot_faqs.sql'));
+    $pdo->exec(file_get_contents(__DIR__ . '/../db/migrations/019_wishlists.sql'));
     $pdo->exec("INSERT INTO categories (id, name, slug) VALUES (50, 'Máy giặt', 'may-giat')");
     $pdo->exec("INSERT INTO brands (id, name, is_active) VALUES (50, 'LG', 1), (51, 'Toshiba', 1), (52, 'Hidden', 0)");
     $pdo->exec("INSERT INTO product_attributes (id, category_id, name, attribute_key, data_type, unit) VALUES (500, 50, 'Công suất', 'power_watts', 'number', 'W'), (501, 50, 'Khối lượng giặt', 'capacity_kg', 'number', 'kg')");
@@ -108,4 +109,22 @@ ensureBot($dashboard['decisionTools']['fitChecks'] === 0 && $dashboard['decision
 $february = $reports->dashboard($admin, ['from' => '2020-02-01', 'to' => '2020-02-29']);
 ensureBot($february['sales']['grossSalesVnd'] === 800000 && $february['sales']['placedOrders'] === 0, 'Vietnam-time boundary moves the late completion into February');
 
-echo "PASS: {$passed} chatbot and dashboard MySQL checks.\n";
+// CUS-11 wishlist: active products only, one row per product, move-to-cart through the shared cart service.
+$wishlist = new HomeCare\OrderApi\WishlistService($pdo, new HomeCare\OrderApi\WishlistModel($pdo), new HomeCare\OrderApi\CartService(new HomeCare\OrderApi\OrderModel($pdo), new HomeCare\OrderApi\MysqlCheckoutDependencies()));
+$buyer = ['id' => '7', 'role' => 'CUSTOMER'];
+rejectedWith(fn () => $wishlist->add($buyer, 52), 'PRODUCT_NOT_FOUND');
+rejectedWith(fn () => $wishlist->getWishlist(['id' => '3', 'role' => 'SALES']), 'FORBIDDEN');
+$wishlist->add($buyer, 50);
+$wishlist->add($buyer, 50);
+$saved = $wishlist->getWishlist($buyer);
+ensureBot(count($saved) === 1 && (string) $saved[0]['product_id'] === '50' && (int) $saved[0]['variant_count'] === 1, 'one wishlist row per product even when added twice');
+rejectedWith(fn () => $wishlist->moveToCart($buyer, 50, 501, 1, 'wishlist-move-wrong-sku-key-0001'), 'SKU_PRODUCT_MISMATCH');
+rejectedWith(fn () => $wishlist->moveToCart($buyer, 51, 501, 1, 'wishlist-move-not-saved-key-0001'), 'WISHLIST_ITEM_NOT_FOUND');
+$moved = $wishlist->moveToCart($buyer, 50, 500, 2, 'wishlist-move-valid-key-00000001');
+ensureBot(array_column($moved['cart']['items'], 'quantity', 'skuId') === ['500' => 2], 'move adds the chosen SKU to the cart');
+rejectedWith(fn () => $wishlist->moveToCart($buyer, 50, 500, 5, 'wishlist-move-too-many-key-00001'), 'OUT_OF_STOCK');
+$wishlist->remove($buyer, 50);
+ensureBot($wishlist->getWishlist($buyer) === [], 'removed item disappears');
+$wishlist->remove($buyer, 50);
+
+echo "PASS: {$passed} chatbot, dashboard and wishlist MySQL checks.\n";
