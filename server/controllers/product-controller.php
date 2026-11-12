@@ -35,6 +35,39 @@ function listProducts(): void
         ], JSON_UNESCAPED_UNICODE);
     }
 }
+function searchProducts(): void
+{
+    try {
+        $filters = [
+            'keyword' => trim($_GET['keyword'] ?? ''),
+            'category_id' => $_GET['category_id'] ?? '',
+            'brand_id' => $_GET['brand_id'] ?? '',
+            'min_price' => $_GET['min_price'] ?? '',
+            'max_price' => $_GET['max_price'] ?? '',
+            'warranty_months' => $_GET['warranty_months'] ?? '',
+            'sort' => $_GET['sort'] ?? 'newest',
+            'page' => $_GET['page'] ?? 1,
+            'page_size' => $_GET['page_size'] ?? 12,
+        ];
+
+        $result = getProductsPaginated($filters, true);
+
+        http_response_code(200);
+        echo json_encode([
+            'success' => true,
+            'data' => $result,
+        ], JSON_UNESCAPED_UNICODE);
+
+    } catch (Throwable $e) {
+        error_log($e->getMessage());
+
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Không thể tìm kiếm sản phẩm.',
+        ], JSON_UNESCAPED_UNICODE);
+    }
+}
 
 function showProduct(int $id): void
 {

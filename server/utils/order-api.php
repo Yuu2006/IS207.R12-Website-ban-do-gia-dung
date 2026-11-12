@@ -37,6 +37,10 @@ require_once __DIR__ . '/../routes/payment-routes.php';
 require_once __DIR__ . '/../routes/return-refund-routes.php';
 require_once __DIR__ . '/../routes/report-routes.php';
 require_once __DIR__ . '/../models/catalog-checkout-model.php';
+require_once __DIR__ . '/../models/wishlist-model.php';
+require_once __DIR__ . '/../services/wishlist-service.php';
+require_once __DIR__ . '/../controllers/wishlist-controller.php';
+require_once __DIR__ . '/../routes/wishlist-routes.php';
 
 // CORS credential chỉ cho origin cấu hình; không phản chiếu Origin tùy ý.
 function orderCorsHeaders(string $origin, string $allowedOrigin): array
@@ -112,6 +116,20 @@ function runtimeCartService(): CartServiceInterface
     }
 }
 
+// CUS-11 wishlist; "move to cart" reuses the reviewed cart service so stock/version/idempotency rules stay in one place.
+function runtimeWishlistService(): WishlistService
+{
+    if (getenv('ORDER_STORAGE_MODE') !== 'mysql') throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Dịch vụ danh sách yêu thích chưa sẵn sàng.');
+    try {
+        require_once __DIR__ . '/../config/database.php';
+        $pdo = \db();
+        return new WishlistService($pdo, new WishlistModel($pdo), new CartService(new OrderModel($pdo), new MysqlCheckoutDependencies()));
+    } catch (\PDOException $error) {
+        error_log('Wishlist database unavailable: ' . $error->getCode());
+        throw new ApiException(503, 'SERVICE_UNAVAILABLE', 'Chưa thể kết nối dữ liệu danh sách yêu thích.');
+    }
+}
+
 // Hàm thuần điều phối dùng chung HTTP/tests; principal test chỉ truyền trực tiếp trong process.
 // Return workflow and revenue export require the reviewed MySQL schema; never claim fake success.
 function runtimeReturnRefundService(): ReturnRefundService
@@ -153,6 +171,7 @@ function handleOrderApi(
     ?VnpayPaymentServiceInterface $vnpayPaymentService = null,
     ?ReturnRefundService $returnRefundService = null,
     ?ReportService $reportService = null,
+    ?WishlistService $wishlistService = null,
 ): array {
     try {
         $method = strtoupper($method);
@@ -185,7 +204,8 @@ function handleOrderApi(
         $variantId = null;
         $returnId = null;
         $paymentCode = null;
-        foreach (array_merge(orderRoutes(), checkoutRoutes(), cartRoutes(), paymentRoutes(), returnRefundRoutes(), reportRoutes()) as $route) {
+        $productId = null;
+        foreach (array_merge(orderRoutes(), checkoutRoutes(), cartRoutes(), wishlistRoutes(), paymentRoutes(), returnRefundRoutes(), reportRoutes()) as $route) {
             if (preg_match($route['pattern'], $path, $captures) !== 1) {
                 continue;
             }
@@ -197,6 +217,7 @@ function handleOrderApi(
                     if ($route['schema'] === 'payment-attempt') $paymentCode = $pathValue;
                     elseif (str_starts_with($route['schema'], 'return-')) $returnId = $pathValue;
                     elseif (in_array($route['schema'], ['cart-update', 'cart-remove'], true)) $variantId = $pathValue;
+                    elseif (str_starts_with($route['schema'], 'wishlist-')) $productId = $pathValue;
                     else $orderId = $pathValue;
                 }
                 break;
@@ -216,6 +237,7 @@ function handleOrderApi(
             $orderId = orderDatabaseId($orderId, 'orderId');
         }
         if ($returnId !== null) $returnId = orderDatabaseId($returnId, 'returnId');
+        if ($productId !== null) $productId = orderDatabaseId($productId, 'productId');
         $key = null;
         if ($method === 'GET') {
             $input = match ($matched['schema']) {
@@ -245,13 +267,14 @@ function handleOrderApi(
                 default => validateOrderMutation($body, $matched['schema']),
             };
         }
-        $request = ['principal' => $principal, 'orderId' => $orderId, 'variantId' => $variantId, 'returnId' => $returnId, 'paymentCode' => $paymentCode, 'input' => $input, 'idempotencyKey' => $key];
+        $request = ['principal' => $principal, 'orderId' => $orderId, 'variantId' => $variantId, 'returnId' => $returnId, 'paymentCode' => $paymentCode, 'params' => ['productId' => $productId], 'input' => $input, 'idempotencyKey' => $key];
         $controller = match ($matched['controller']) {
             'order' => new OrderController($orderService ?? runtimeOrderService()),
             'cart' => new CartController($cartService ?? runtimeCartService()),
             'payment' => new VnpayPaymentController($vnpayPaymentService ?? runtimeVnpayPaymentService()),
             'return-refund' => new ReturnRefundController($returnRefundService ?? runtimeReturnRefundService()),
             'report' => new ReportController($reportService ?? runtimeReportService()),
+            'wishlist' => new WishlistController($wishlistService ?? runtimeWishlistService()),
             default => new CheckoutController($checkoutService ?? runtimeCheckoutService()),
         };
         return $controller->{$matched['action']}($request);

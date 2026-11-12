@@ -2,6 +2,7 @@ import {
   ShoppingCart,
   Star,
   ArrowRight,
+  Heart,
 } from "lucide-react";
 
 import { formatPrice } from "../data";
@@ -11,10 +12,14 @@ export default function ProductCard({
   navigate,
   onAddToCart,
   adding = false,
+  favorite = false,
+  onToggleWishlist,
+  wishlistBusy = false,
 }) {
   return (
     <div className="group bg-white rounded-xl border border-[#E5E7EB] overflow-hidden hover:shadow-lg hover:border-[#0F5F73] transition-all">
       {/* IMAGE */}
+      <div className="relative">
       <button
         type="button"
         onClick={() => navigate(product.id)}
@@ -33,6 +38,19 @@ export default function ProductCard({
           </div>
         </div>
       </button>
+      {/* Wishlist heart sits beside (not inside) the image button; shown only where the page wires CUS-11. */}
+      {onToggleWishlist && <button
+        type="button"
+        onClick={() => onToggleWishlist(product)}
+        disabled={wishlistBusy}
+        aria-pressed={favorite}
+        aria-label={favorite ? `Bỏ yêu thích ${product.name}` : `Thêm ${product.name} vào yêu thích`}
+        className={`absolute top-3 right-3 w-9 h-9 rounded-full bg-white shadow flex items-center justify-center transition-colors disabled:opacity-50 ${favorite ? "text-red-500" : "text-gray-500 hover:text-red-500"}`}
+        title={favorite ? "Bỏ yêu thích" : "Thêm vào yêu thích"}
+      >
+        <Heart size={18} fill={favorite ? "currentColor" : "none"} />
+      </button>}
+      </div>
 
       {/* CONTENT */}
       <div className="p-4">

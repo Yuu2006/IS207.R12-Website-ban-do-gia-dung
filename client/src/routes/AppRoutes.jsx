@@ -29,6 +29,7 @@ import InventoryPage from '../pages/warehouse/InventoryPage.jsx';
 import InventoryHistoryPage from '../pages/warehouse/InventoryHistoryPage.jsx';
 import AppShell from '../layouts/AppShell.jsx';
 import ProtectedRoute from './ProtectedRoute.jsx';
+import Wishlist from '../pages/customer/Wishlist.jsx';
 
 const RouteTransitionContext = createContext({ pathname: '/', direction: null });
 
@@ -75,7 +76,7 @@ export default function AppRoutes() {
   // Trang đơn hàng khách tự dựng header storefront và CustomerRoute; nhân viên dùng AppShell; tải dữ liệu qua OrderServiceProvider.
   const orderWorkspace = <OrderWorkspace transitionDirection={direction} />;
   return <RouteTransitionContext.Provider value={{ pathname, direction }}><Routes>
-    <Route element={<PublicLayout />}><Route path="/" element={<HomePage />} /><Route path="/products" element={<ProductListPage />} /><Route path="/products/:id" element={<LiveCatalogProductPage />} /><Route path="/catalog/products/:id" element={<LiveCatalogProductPage />} /><Route path="/compare" element={<ComparePage />} /><Route path="/warranty" element={<WarrantyPage />} /></Route>
+    <Route element={<PublicLayout />}><Route path="/" element={<HomePage />} /><Route path="/products" element={<ProductListPage />} /><Route path="/products/:id" element={<LiveCatalogProductPage />} /><Route path="/catalog/products/:id" element={<LiveCatalogProductPage />} /><Route path="/compare" element={<ComparePage />} /><Route path="/warranty" element={<WarrantyPage />} /><Route element={<ProtectedRoute roles={['CUSTOMER']} />}><Route path="/wishlist" element={<Wishlist />} /></Route></Route>
     <Route path="/login" element={<LoginForm key="login" />} /><Route path="/register" element={<LoginForm key="register" initialScreen="register" />} /><Route path="/internal/login" element={<StaffLogin />} /><Route path="/forgot-password" element={<StaffLogin audience="customer" />} /><Route path="/internal" element={<Navigate to="/internal/login" replace />} />
     {['/cart', '/checkout', '/orders', '/orders/payment-return', '/orders/:orderId', '/payment/result'].map(path => <Route key={path} path={path} element={orderWorkspace} />)}
     <Route element={<ProtectedRoute roles={['SALES', 'ADMIN']} />}><Route element={<AppShell />}><Route path="/sales/orders" element={orderWorkspace} /><Route path="/sales/returns" element={<ReturnManagementPage />} /></Route></Route>
