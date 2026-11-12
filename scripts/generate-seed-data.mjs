@@ -26,7 +26,7 @@ const ago = (m) => `UTC_TIMESTAMP() - INTERVAL ${Math.max(0, Math.round(m))} MIN
 const dayRel = (d) => (d < 0 ? `UTC_TIMESTAMP() - INTERVAL ${-d} DAY` : `UTC_TIMESTAMP() + INTERVAL ${d} DAY`);
 const uid = (email) => `(SELECT id FROM users WHERE email = ${q(email)})`;
 const assert = (c, m) => { if (!c) throw new Error(`Assert failed: ${m}`); };
-const HEAD = (note) => `-- ${note}\n-- FILE SINH TỰ ĐỘNG bởi scripts/generate-seed-data.mjs — đừng sửa tay. Dữ liệu MÔ PHỎNG cho demo.\nUSE household_ecommerce;\n\n`;
+const HEAD = (note) => `-- ${note}\n-- FILE SINH TỰ ĐỘNG bởi scripts/generate-seed-data.mjs — đừng sửa tay. Dữ liệu MÔ PHỎNG cho demo.\n\n`;
 const emit = (name, text) => writeFileSync(join(SEEDS, name), text, 'utf8');
 
 // ---------- ảnh PNG placeholder (không phụ thuộc thư viện) ----------

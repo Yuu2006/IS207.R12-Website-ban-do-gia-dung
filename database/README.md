@@ -23,7 +23,7 @@ cp .env.example .env
 | --- | --- | --- |
 | `DB_HOST` | `db` | Tên service trong Compose. Nếu chạy API **ngoài** Docker, đổi thành `127.0.0.1` |
 | `DB_PORT` | `3306` | Cổng bên trong container. Máy bạn cũng map ra `3306` (xem mục 6 nếu bị trùng) |
-| `DB_NAME` | `household_ecommerce` | Các file seed có `USE household_ecommerce;` — đổi tên thì phải sửa theo |
+| `DB_NAME` | `household_ecommerce` | Chọn schema này khi chạy seed trong Workbench; lệnh Compose tự kết nối vào schema cấu hình trong `.env` |
 | `DB_USER` | `app_user` | Compose tạo user này và cấp toàn quyền trên `DB_NAME` |
 | `DB_PASSWORD` | đặt mật khẩu của bạn | Đừng giữ `change_me` khi đưa lên máy chủ |
 | `DB_ROOT_PASSWORD` | đặt mật khẩu root riêng | Chỉ dùng để quản trị, khác `DB_PASSWORD` |
@@ -31,8 +31,8 @@ cp .env.example .env
 | `APP_ENV` | `development` | `production` tắt mã khôi phục mật khẩu hiển thị trên trang |
 | `APP_URL`, `CLIENT_URL` | `http://localhost:8080`, `http://localhost:5173` | `CLIENT_URL` dùng cho CORS, nhiều origin cách nhau bằng dấu phẩy |
 | `VITE_API_URL` | `http://localhost:8080` | Địa chỉ API mà trình duyệt gọi |
-| `VITE_ORDER_API_MODE` | `mock` | Giữ `mock` cho tới khi adapter checkout production hoàn tất |
-| `ORDER_STORAGE_MODE` | `disabled` | Chỉ đổi sang `mysql` sau khi áp migration `008_order_runtime` và được nhóm review |
+| `VITE_ORDER_API_MODE` | `http` | Gọi API PHP; chỉ dùng `mock` khi cần kiểm tra UI tách biệt |
+| `ORDER_STORAGE_MODE` | `disabled` | Chỉ đổi sang `mysql` sau khi review và áp migrations `008_order_runtime` + `013_checkout_runtime`; VNPay/trả hàng cần thêm 014/015 |
 | `VNPAY_TMN_CODE`, `VNPAY_HASH_SECRET` | lấy từ tài khoản VNPay Sandbox | Để trống nếu chưa test thanh toán; **không** chép khóa thật vào file commit |
 | `VNPAY_RETURN_URL` | `http://localhost:5173/payment/result` | |
 | `MAIL_*` | để trống | Chưa có luồng gửi email |
@@ -66,8 +66,12 @@ Chạy **đúng thứ tự**, mỗi file một lần trên database mới. Migra
 | 5 | `server/db/migrations/010_auth_profile.sql` | Auth/hồ sơ |
 | 6 | `server/db/migrations/011_auth_catalog_completion.sql` | Thứ tự danh mục/banner, login attempts |
 | 7 | `server/db/migrations/012_decision_tools.sql` | Phòng, FitCheck, Care (cần cho seed 010) |
-| 8 | `server/db/seeds/001_auth_demo_users.sql` | 4 tài khoản demo |
-| 9 | `server/db/seeds/003`…`010` | Catalog, đơn hàng, voucher… (bỏ qua `002`, dữ liệu cũ lệch phạm vi) |
+| 8 | `server/db/migrations/013_checkout_runtime.sql` | Cart version, giữ voucher và checkout |
+| 9 | `server/db/migrations/014_vnpay_runtime.sql` | VNPay Sandbox; cần cho luồng thanh toán VNPay |
+| 10 | `server/db/migrations/015_return_refund_reporting.sql` | Quy trình trả hàng/hoàn tiền mô phỏng và báo cáo |
+| 11 | `server/db/migrations/016_care_rule_supplies.sql` | Liên kết quy tắc bảo trì với SKU vật tư; sau migration 012 |
+| 12 | `server/db/seeds/001_auth_demo_users.sql` | 4 tài khoản demo |
+| 13 | `server/db/seeds/003`…`010` | Catalog, đơn hàng, voucher… (bỏ qua `002`, dữ liệu cũ lệch phạm vi) |
 
 Git Bash (từ gốc repo):
 
@@ -76,6 +80,8 @@ for f in database/schema_database.sql \
   server/db/migrations/008_product_attributes.sql server/db/migrations/009_product_attribute_values.sql \
   server/db/migrations/008_order_runtime.sql server/db/migrations/010_auth_profile.sql \
   server/db/migrations/011_auth_catalog_completion.sql server/db/migrations/012_decision_tools.sql \
+  server/db/migrations/013_checkout_runtime.sql server/db/migrations/014_vnpay_runtime.sql \
+  server/db/migrations/015_return_refund_reporting.sql server/db/migrations/016_care_rule_supplies.sql \
   server/db/seeds/001_auth_demo_users.sql server/db/seeds/003_catalog_appliances.sql \
   server/db/seeds/004_catalog_real_brands.sql server/db/seeds/005_catalog_media.sql \
   server/db/seeds/006_customers_addresses.sql server/db/seeds/007_vouchers.sql \
@@ -94,6 +100,8 @@ $files = @(
   'server/db/migrations/008_product_attributes.sql', 'server/db/migrations/009_product_attribute_values.sql',
   'server/db/migrations/008_order_runtime.sql', 'server/db/migrations/010_auth_profile.sql',
   'server/db/migrations/011_auth_catalog_completion.sql', 'server/db/migrations/012_decision_tools.sql',
+  'server/db/migrations/013_checkout_runtime.sql', 'server/db/migrations/014_vnpay_runtime.sql',
+  'server/db/migrations/015_return_refund_reporting.sql', 'server/db/migrations/016_care_rule_supplies.sql',
   'server/db/seeds/001_auth_demo_users.sql', 'server/db/seeds/003_catalog_appliances.sql',
   'server/db/seeds/004_catalog_real_brands.sql', 'server/db/seeds/005_catalog_media.sql',
   'server/db/seeds/006_customers_addresses.sql', 'server/db/seeds/007_vouchers.sql',

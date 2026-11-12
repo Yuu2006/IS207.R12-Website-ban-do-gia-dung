@@ -21,7 +21,7 @@ interface OrderCompletionDependencies
     public function createDevicesAndCare(\PDO $pdo, array $principal, array $order, array $items): void;
 }
 
-// MySQL order domain; cart/voucher/inventory adapters remain explicitly owner-reviewed dependencies.
+// MySQL order domain; checkout and tracked inventory release use the injected runtime adapter.
 final class OrderService implements OrderServiceInterface
 {
     // Dependency wiring is explicit; null keeps default runtime fail-closed until DB is configured.
@@ -135,7 +135,7 @@ final class OrderService implements OrderServiceInterface
             if (!in_array($order['order_status'], ['DELIVERED', 'COMPLETED'], true) || $order['payment_status'] !== 'PAID') throw new ApiException(409, 'RETURN_UNAVAILABLE', 'Chỉ tạo yêu cầu trả hàng cho đơn đã giao và thanh toán.');
             $payments = new PaymentModel($model->pdo);
             $payments->assertSettled($order, $payments->lock($id));
-            return $model->insertReturnRequest($order, $principal, $input['reason']);
+            return $model->insertReturnRequest($order, $principal, $input['issueCategory'], $input['reason']);
         });
     }
 }
