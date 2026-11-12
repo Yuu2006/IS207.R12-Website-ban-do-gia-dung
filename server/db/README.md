@@ -22,6 +22,8 @@ Sau khi nhóm review schema HOME/FIT/TCO/LIFE/CARE, áp **một lần** `migrati
 
 Sau khi review và áp 012, STT 24 cần áp tiếp `migrations/016_care_rule_supplies.sql` một lần để liên kết quy tắc bảo trì với SKU vật tư. Migration 016 không tạo lại hay thay đổi các bảng 012; chỉ thêm bảng nối `care_rule_supplies`. Chưa xác nhận 012/016 trên database local trong lần kiểm tra 06/11/2026; trạng thái database dùng chung chưa được kiểm tra. Không bật luồng hoàn tất đơn tạo thiết bị/lịch hoặc cấu hình SKU vật tư trước khi schema đã sẵn sàng.
 
+STT 15 (chatbot): áp **một lần** `migrations/018_chatbot_faqs.sql` sau 011 để bật FAQ chatbot do ADMIN duyệt (`/admin/chatbot-faqs`). Migration chỉ tạo bảng `chatbot_faqs`, không seed nội dung chính sách; khi chưa áp, gợi ý sản phẩm vẫn chạy nhưng tin nhắn chatbot và trang FAQ trả lỗi 503/500. Dashboard `/admin/reports` (STT 16) không cần migration mới, chỉ cần 008/014/015 (và 012 cho số liệu FitCheck/TCO).
+
 Ví dụ với Compose: `docker compose exec -T db sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < database/schema_database.sql`, lặp lại theo thứ tự trên. Hai file đánh số 008 độc lập nhau; migration mới đánh số từ 012.
 
 `seeds/001_auth_demo_users.sql` tạo 4 tài khoản phát triển (`customer@`, `admin@`, `sales@`, `warehouse@example.test`, mật khẩu `Demo@1234567890!`). Chỉ dùng cho database phát triển.

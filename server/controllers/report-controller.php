@@ -7,6 +7,11 @@ final class ReportController
 {
     public function __construct(private readonly ReportService $service) {}
 
+    public function dashboard(array $request): array
+    {
+        return apiSuccess($this->service->dashboard($request['principal'], $request['input']), 'Đã lấy dashboard.');
+    }
+
     // Return a raw CSV response so the browser downloads the file without JSON wrapping.
     public function revenueCsv(array $request): array
     {

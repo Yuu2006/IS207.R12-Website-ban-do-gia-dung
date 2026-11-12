@@ -22,6 +22,7 @@ import VoucherAdminPage from '../pages/admin/VoucherAdminPage.jsx';
 import UserAdminPage from '../pages/admin/UserAdminPage.jsx';
 import ReportAdminPage from '../pages/admin/ReportAdminPage.jsx';
 import CareRulesPage from '../pages/admin/CareRulesPage.jsx';
+import ChatbotFaqPage from '../pages/admin/ChatbotFaqPage.jsx';
 import MyDevicesPage from '../pages/customer/MyDevicesPage.jsx';
 import ReturnManagementPage from '../pages/sales/ReturnManagementPage.jsx';
 import InventoryPage from '../pages/warehouse/InventoryPage.jsx';
@@ -81,7 +82,7 @@ export default function AppRoutes() {
     <Route element={<ProtectedRoute />}><Route element={<AppShell />}>
       <Route path="/profile" element={<ProfilePage />} />
       <Route element={<ProtectedRoute roles={['CUSTOMER']} />}><Route path="/customer" element={<WorkspacePage />} /><Route path="/addresses" element={<AddressesPage />} /><Route path="/customer/decision-tools" element={<DecisionToolsPage />} /><Route path="/customer/devices" element={<MyDevicesPage />} /></Route>
-      <Route element={<ProtectedRoute roles={['ADMIN']} />}><Route path="/admin" element={<StaffOverviewPage />} /><Route path="/admin/fit-rules" element={<FitRulesPreviewPage />} /><Route path="/admin/products" element={<CatalogAdminPage />} /><Route path="/admin/care-rules" element={<CareRulesPage />} /><Route path="/admin/users" element={<UserAdminPage />} /><Route path="/admin/vouchers" element={<VoucherAdminPage />} /><Route path="/admin/reports" element={<ReportAdminPage />} /></Route>
+      <Route element={<ProtectedRoute roles={['ADMIN']} />}><Route path="/admin" element={<StaffOverviewPage />} /><Route path="/admin/fit-rules" element={<FitRulesPreviewPage />} /><Route path="/admin/products" element={<CatalogAdminPage />} /><Route path="/admin/care-rules" element={<CareRulesPage />} /><Route path="/admin/chatbot-faqs" element={<ChatbotFaqPage />} /><Route path="/admin/users" element={<UserAdminPage />} /><Route path="/admin/vouchers" element={<VoucherAdminPage />} /><Route path="/admin/reports" element={<ReportAdminPage />} /></Route>
       <Route element={<ProtectedRoute roles={['SALES']} />}><Route path="/sales" element={<StaffOverviewPage />} /></Route>
       <Route element={<ProtectedRoute roles={['WAREHOUSE']} />}><Route path="/warehouse" element={<StaffOverviewPage />} /><Route path="/warehouse/returns" element={<ReturnManagementPage />} /></Route>
       <Route element={<ProtectedRoute roles={['WAREHOUSE', 'ADMIN']} />}><Route path="/warehouse/inventory" element={<InventoryPage />} /><Route path="/warehouse/history" element={<InventoryHistoryPage />} /></Route>
