@@ -13,6 +13,8 @@ import {
   Search,
 } from "lucide-react";
 import { useProductList } from "../../hooks/use-product-list";
+import { getProduct } from "../../services/catalog-service.js";
+import { useOrderService } from "../../context/OrderServiceContext.jsx";
 import ProductCard from "../../components/ProductCard";
 
 const ALL_PRICES = [0, Number.MAX_SAFE_INTEGER];
@@ -44,7 +46,15 @@ export default function ProductListPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   // Tải danh sách yêu thích một lần tại trang sản phẩm
-  const wishlist = useOrderQuery((signal) => getWishlist({ signal }), []);
+  const orderService = useOrderService();
+  const [addingProductId, setAddingProductId] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [actionError, setActionError] = useState(false);
+  // Guests and staff have no wishlist: treat 401/403 as an empty list instead of an error banner.
+  const wishlist = useOrderQuery((signal) => getWishlist({ signal }).catch((failure) => {
+    if (failure.status === 401 || failure.status === 403) return [];
+    throw failure;
+  }), []);
 
   const wishlistAction = useOrderAction();
 
@@ -137,8 +147,32 @@ export default function ProductListPage() {
     window.location.href = `/products/${id}`;
   };
 
-  const handleAddToCart = (product) => {
-    console.log("Thêm vào giỏ:", product);
+  // Single-SKU products go straight to the cart (backend rechecks stock); multi-SKU products open the detail page to pick one.
+  const handleAddToCart = async (product) => {
+    setActionMessage("");
+    if (!product.inStock) {
+      setActionError(true);
+      setActionMessage("Sản phẩm hiện đã hết hàng.");
+      return;
+    }
+    if (product.variant_count !== 1) {
+      handleProductClick(product.id);
+      return;
+    }
+    setAddingProductId(product.id);
+    try {
+      const detail = await getProduct(product.id);
+      const variant = detail.variants?.find((item) => Number(item.stock_quantity) > 0);
+      if (!variant) throw new Error("SKU của sản phẩm hiện đã hết hàng.");
+      await orderService.addCartItem(String(variant.id), 1);
+      setActionError(false);
+      setActionMessage(`Đã thêm ${product.name} vào giỏ hàng.`);
+    } catch (failure) {
+      setActionError(true);
+      setActionMessage(failure.message || "Không thể thêm sản phẩm vào giỏ hàng.");
+    } finally {
+      setAddingProductId("");
+    }
   };
   return (
     <main className="min-h-screen bg-[#F7FAFC]">
@@ -434,6 +468,11 @@ export default function ProductListPage() {
               </p>
             )}
 
+            {actionMessage && (
+              <p className={`mb-3 text-sm ${actionError ? "text-red-600" : "text-[#027A48]"}`} role={actionError ? "alert" : "status"}>
+                {actionMessage}
+              </p>
+            )}
             {wishlistAction.error && (
               <p className="mb-3 text-sm text-red-600" role="alert">
                 {wishlistAction.error.message}
@@ -459,6 +498,7 @@ export default function ProductListPage() {
                     product={product}
                     navigate={handleProductClick}
                     onAddToCart={handleAddToCart}
+                    adding={addingProductId === product.id}
                     favorite={favoriteIds.has(String(product.id))}
                     onToggleWishlist={handleToggleWishlist}
                     wishlistBusy={

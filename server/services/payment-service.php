@@ -7,7 +7,7 @@ require_once __DIR__ . '/../config/payment-config.php';
 
 final class PaymentService
 {
-    public function __construct(private readonly OrderModel $orders) {}
+    public function __construct(private readonly OrderModel $orders, private readonly CheckoutDependencies $checkout) {}
 
     public function methods(): array
     {
@@ -141,6 +141,14 @@ final class PaymentService
                 $date = \DateTimeImmutable::createFromFormat('!YmdHis', $params['vnp_PayDate'] ?? '', new \DateTimeZone('Asia/Ho_Chi_Minh'));
                 if (!$date || $date->format('YmdHis') !== ($params['vnp_PayDate'] ?? '') || $date->getTimestamp() < strtotime($payment['created_at'] . ' UTC') || $date->getTimestamp() > time() + 300) { $pdo->rollBack(); return ['RspCode' => '97', 'Message' => 'Invalid payment date']; }
                 $late = $payment['expires_at'] !== null && strtotime($payment['expires_at'] . ' UTC') < $date->getTimestamp();
+                // A late payment must not keep stock reserved while staff reconcile the refund.
+                if ($late && $order['order_status'] === 'PENDING' && $order['inventory_state'] === 'RESERVED') {
+                    $system = ['id' => null, 'role' => 'SYSTEM'];
+                    $this->checkout->release($pdo, $system, $order, $this->orders->itemsFor([(string) $order['id']])[(string) $order['id']] ?? []);
+                    $model->expire($payment);
+                    $this->orders->transition($order, $system, ['expectedVersion' => (int) $order['version'], 'reason' => 'Hết hạn thanh toán VNPay.'], ['from' => 'pending', 'to' => 'cancelled', 'payment' => 'failed', 'refundRequired' => false]);
+                    $order['order_status'] = 'CANCELLED';
+                }
                 $model->settle($order, $payment, ['id' => null, 'role' => 'SYSTEM'], 'VNPAY:' . $reference, 'VNPay Sandbox IPN verified', $late, $date->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s'));
             } else $model->fail($order, $payment, 'VNPay Sandbox response ' . ($params['vnp_ResponseCode'] ?? 'unknown'));
             $pdo->commit();

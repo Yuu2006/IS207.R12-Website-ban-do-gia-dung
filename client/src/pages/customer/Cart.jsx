@@ -1,15 +1,11 @@
 
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { createApiClient } from '../../services/api-client.js';
 import { listProducts, getProduct } from '../../services/catalog-service.js';
-import { mapCart } from '../../services/order-service.js';
 import { useOrderAction, useOrderQuery } from '../../hooks/use-order-api.js';
 import { useOrderService } from '../../context/OrderServiceContext.jsx';
 import { money } from '../../services/order-ui-data.js';
 import OrderApiState from '../../components/order/OrderApiState.jsx';
-
-const request = createApiClient();
 
 // Catalog IDs are resolved through the API so mock storefront IDs cannot create a different purchase.
 export default function Cart() {
@@ -39,85 +35,32 @@ export default function Cart() {
     { enabled: Boolean(productId) && service.mode === 'http' }
   );
 
-  // Cập nhật toàn bộ giỏ hàng thông qua API
-  async function replace(items) {
+  // Each action goes through the cart item API (POST/PATCH/DELETE /cart/items) with the current cart version;
+  // the server rechecks SKU state and stock and rejects a stale version with 409.
+  async function mutate(name, input, call) {
     if (!cart.data || action.busy) return;
-
-    const input = {
-      expectedCartVersion: cart.data.cartVersion,
-      items
-    };
-
-    const result = await action.run(
-      'replace-cart',
-      input,
-      options =>
-        request('/cart', {
-          ...options,
-          method: 'PUT',
-          body: input
-        })
-    );
-
-    if (result) {
-      cart.setData(mapCart(result));
-    }
+    const result = await action.run(name, input, call);
+    if (result) cart.setData(result);
   }
 
-  const lines =
-    cart.data?.items.map(item => ({
-      skuId: String(item.sku_id),
-      quantity: item.quantity
-    })) || [];
-
-  // Thêm sản phẩm vào giỏ hàng
+  // Thêm sản phẩm vào giỏ hàng (trùng SKU thì server cộng dồn số lượng)
   function add(event) {
     event.preventDefault();
-
-    if (
-      !skuId ||
-      !Number.isSafeInteger(quantity) ||
-      quantity < 1 ||
-      quantity > 999
-    ) return;
-
-    const existing = lines.find(item => item.skuId === skuId);
-
-    replace(
-      existing
-        ? lines.map(item =>
-            item.skuId === skuId
-              ? { ...item, quantity: item.quantity + quantity }
-              : item
-          )
-        : [...lines, { skuId, quantity }]
-    );
+    if (!skuId || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 999) return;
+    mutate('addCartItem', { variantId: skuId, quantity }, options => service.addCartItem(skuId, quantity, options));
   }
 
   // Cập nhật số lượng sản phẩm
   function updateQuantity(item, newQuantity) {
-    if (
-      !Number.isSafeInteger(newQuantity) ||
-      newQuantity < 1 ||
-      newQuantity > 999
-    ) return;
-
-    replace(
-      lines.map(line =>
-        line.skuId === String(item.sku_id)
-          ? { ...line, quantity: newQuantity }
-          : line
-      )
-    );
+    if (!Number.isSafeInteger(newQuantity) || newQuantity < 1 || newQuantity > 999 || newQuantity === item.quantity) return;
+    const input = { variantId: String(item.sku_id), quantity: newQuantity, expectedCartVersion: cart.data.cartVersion };
+    mutate('updateCartItem', input, options => service.updateCartItem(input.variantId, input.quantity, input.expectedCartVersion, options));
   }
 
   // Xóa sản phẩm khỏi giỏ hàng
   function removeItem(item) {
-    replace(
-      lines.filter(
-        line => line.skuId !== String(item.sku_id)
-      )
-    );
+    const input = { variantId: String(item.sku_id), expectedCartVersion: cart.data.cartVersion };
+    mutate('removeCartItem', input, options => service.removeCartItem(input.variantId, input.expectedCartVersion, options));
   }
 
   return (

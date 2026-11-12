@@ -1,7 +1,6 @@
 -- Dữ liệu MÔ PHỎNG cho demo: thương hiệu và model hư cấu, thông số không phải của sản phẩm thật.
 -- 10 sản phẩm mỗi nhóm tủ lạnh / máy giặt / máy lạnh; khóa thông số đề xuất để TV4 dùng cho FitCheck/TCO.
 -- Chạy sau 001_auth_demo_users.sql (cần admin@example.test). Chạy lại an toàn: không cộng tồn lần hai.
-USE household_ecommerce;
 
 INSERT INTO brands (name) VALUES ('Nordik'), ('Kazen'), ('Lumina'), ('Sora') ON DUPLICATE KEY UPDATE name = VALUES(name);
 INSERT INTO categories (name, slug) VALUES ('Tủ lạnh', 'tu-lanh'), ('Máy giặt', 'may-giat'), ('Máy lạnh', 'may-lanh') ON DUPLICATE KEY UPDATE name = VALUES(name), is_deleted = 0;

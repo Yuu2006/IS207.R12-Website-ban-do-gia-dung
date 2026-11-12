@@ -3,51 +3,33 @@ declare(strict_types=1);
 
 namespace HomeCare\OrderApi;
 
+// Lỗi public có mã/status; không serialize exception hoặc thông tin SQL.
 final class ApiException extends \RuntimeException
 {
-    public int $status;
-    public string $errorCode;
-    public array $fields;
-
+    // Gắn HTTP status, mã lỗi và lỗi field vào exception public có kiểm soát.
     public function __construct(
-        int $status,
-        string $errorCode,
+        public readonly int $status,
+        public readonly string $errorCode,
         string $message,
-        array $fields = []
+        public readonly array $fields = [],
     ) {
-        $this->status = $status;
-        $this->errorCode = $errorCode;
-        $this->fields = $fields;
-
         parent::__construct($message);
     }
 }
 
+// Đóng dữ liệu service vào envelope thành công, không xuất HTTP trực tiếp.
 function apiSuccess(array $data, string $message = 'Thành công.', int $status = 200): array
 {
-    return [
-        'status' => $status,
-        'headers' => [],
-        'body' => [
-            'success' => true,
-            'message' => $message,
-            'data' => $data,
-        ],
-    ];
+    return ['status' => $status, 'headers' => [], 'body' => [
+        'success' => true, 'message' => $message, 'data' => $data,
+    ]];
 }
 
+// Giữ fields là JSON object kể cả khi không có lỗi field.
 function apiFailure(ApiException $error): array
 {
-    return [
-        'status' => $error->status,
-        'headers' => [],
-        'body' => [
-            'success' => false,
-            'message' => $error->getMessage(),
-            'errors' => [
-                'code' => $error->errorCode,
-                'fields' => (object) $error->fields,
-            ],
-        ],
-    ];
+    return ['status' => $error->status, 'headers' => [], 'body' => [
+        'success' => false, 'message' => $error->getMessage(),
+        'errors' => ['code' => $error->errorCode, 'fields' => (object) $error->fields],
+    ]];
 }

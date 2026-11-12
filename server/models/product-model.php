@@ -303,8 +303,8 @@ function getProductsPaginated(array $filters = [], bool $publicOnly = true): arr
                 MIN(
                     CASE
                         WHEN sale_price IS NOT NULL
-                            AND (sale_starts_at IS NULL OR sale_starts_at <= NOW())
-                            AND (sale_ends_at IS NULL OR sale_ends_at >= NOW())
+                            AND (sale_starts_at IS NULL OR sale_starts_at <= UTC_TIMESTAMP())
+                            AND (sale_ends_at IS NULL OR sale_ends_at >= UTC_TIMESTAMP())
                             AND sale_price < price
                         THEN sale_price
                         ELSE price
@@ -352,7 +352,8 @@ function getProductsPaginated(array $filters = [], bool $publicOnly = true): arr
     $params = [];
 
     if ($publicOnly) {
-        $where .= " AND p.is_active = 1";
+        // Storefront: hide inactive/deleted category or brand and products without a sellable SKU.
+        $where .= " AND p.is_active = 1 AND c.is_active = 1 AND c.is_deleted = 0 AND b.is_active = 1 AND b.is_deleted = 0 AND COALESCE(v.variant_count, 0) > 0";
     } elseif (isset($filters['is_active']) && $filters['is_active'] !== '') {
         $where .= " AND p.is_active = :is_active";
         $params['is_active'] = (int) $filters['is_active'];
@@ -364,7 +365,8 @@ function getProductsPaginated(array $filters = [], bool $publicOnly = true): arr
             OR p.product_code LIKE :keyword_code
         )";
 
-        $keyword = '%' . trim($filters['keyword']) . '%';
+        // Escape LIKE wildcards so "%" and "_" are searched literally (MySQL default escape is backslash).
+        $keyword = '%' . addcslashes(mb_substr(trim((string) $filters['keyword']), 0, 100), '%_\\') . '%';
         $params['keyword_name'] = $keyword;
         $params['keyword_code'] = $keyword;
     }
@@ -374,19 +376,27 @@ function getProductsPaginated(array $filters = [], bool $publicOnly = true): arr
         $params['category_id'] = (int) $filters['category_id'];
     }
 
+    // brand_id accepts one ID or a comma-separated list (the filter panel allows several brands).
     if (!empty($filters['brand_id'])) {
-        $where .= " AND p.brand_id = :brand_id";
-        $params['brand_id'] = (int) $filters['brand_id'];
+        $brandIds = array_values(array_unique(array_filter(array_map('intval', explode(',', (string) $filters['brand_id'])), fn ($id) => $id > 0)));
+        if ($brandIds !== []) {
+            $placeholders = [];
+            foreach ($brandIds as $index => $brandId) {
+                $placeholders[] = ':brand_' . $index;
+                $params['brand_' . $index] = $brandId;
+            }
+            $where .= ' AND p.brand_id IN (' . implode(',', $placeholders) . ')';
+        }
     }
 
     if (isset($filters['min_price']) && $filters['min_price'] !== '') {
         $where .= " AND COALESCE(v.min_price, 0) >= :min_price";
-        $params['min_price'] = $filters['min_price'];
+        $params['min_price'] = max(0, (int) $filters['min_price']);
     }
 
     if (isset($filters['max_price']) && $filters['max_price'] !== '') {
         $where .= " AND COALESCE(v.min_price, 0) <= :max_price";
-        $params['max_price'] = $filters['max_price'];
+        $params['max_price'] = max(0, (int) $filters['max_price']);
     }
 
  if (

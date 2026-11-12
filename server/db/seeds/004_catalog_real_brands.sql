@@ -1,6 +1,5 @@
 -- Seed 004 — 30 sản phẩm thương hiệu thật (model/giá/thông số mô phỏng): 10 tủ lạnh, 10 máy giặt, 10 máy lạnh. Chạy sau 003 (cần admin@example.test và 011).
 -- FILE SINH TỰ ĐỘNG bởi scripts/generate-seed-data.mjs — đừng sửa tay. Dữ liệu MÔ PHỎNG cho demo.
-USE household_ecommerce;
 
 INSERT INTO categories (name, slug) VALUES ('Tủ lạnh', 'tu-lanh'), ('Máy giặt', 'may-giat'), ('Máy lạnh', 'may-lanh') ON DUPLICATE KEY UPDATE name = VALUES(name), is_deleted = 0;
 INSERT INTO brands (name, description) VALUES ('Samsung', 'Thương hiệu điện tử gia dụng Hàn Quốc (dữ liệu mô phỏng cho demo).') ON DUPLICATE KEY UPDATE description = VALUES(description), is_deleted = 0;

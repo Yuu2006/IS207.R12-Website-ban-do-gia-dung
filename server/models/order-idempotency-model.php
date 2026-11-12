@@ -5,13 +5,8 @@ namespace HomeCare\OrderApi;
 
 final class OrderIdempotencyModel
 {
-    private \PDO $pdo;
-
     // One connection and transaction cover key, order, payment, audit and dependency writes.
-    public function __construct(\PDO $pdo)
-    {
-        $this->pdo = $pdo;
-    }
+    public function __construct(private readonly \PDO $pdo) {}
 
     // Insert or lock one unique key before any other row lock; conflict/replay never repeats writes.
     public function run(array $principal, string $operation, string $key, array $input, callable $apply): array

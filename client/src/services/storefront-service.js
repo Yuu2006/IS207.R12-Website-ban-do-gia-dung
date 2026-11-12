@@ -33,6 +33,7 @@ const toCard = (p) => ({
   soldQuantity: Number(p.sold_quantity ?? 0),
 
   inStock: Number(p.total_stock) > 0,
+  variant_count: Number(p.variant_count ?? 0),
   warranty: `${p.warranty_months} tháng`,
 
   image: imageUrl(p.primary_image),
