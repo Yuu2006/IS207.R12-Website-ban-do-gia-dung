@@ -2,7 +2,6 @@
 -- CẦN migration 012_decision_tools.sql đã áp dụng, và seeds 001, 003, 004, 008 (đơn COMPLETED). Viết tay; chạy lại an toàn (khóa UNIQUE / NOT EXISTS).
 -- Dữ liệu MÔ PHỎNG. Khóa quy tắc (rule_key, left_key, right_key) là GIẢ ĐỊNH: ROOM_FIELD dùng tên cột room_profiles,
 -- PRODUCT_ATTRIBUTE dùng attribute_key của seed 003/004. whitelist chính thức còn chờ nhóm chốt (docs/api/DECISION-TOOLS.md).
-USE household_ecommerce;
 
 -- ===== HOME-01: hồ sơ không gian (NULL = chưa biết, khác 0/false) =====
 INSERT INTO room_profiles (user_id, name, placement_width_mm, placement_depth_mm, placement_height_mm, door_width_mm, floor_area_m2, occupant_count, power_available, water_supply, drainage, is_default)

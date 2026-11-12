@@ -20,7 +20,7 @@ export function validateTotals(totals) {
 
 // A return request is separate from order/refund status; never infer approval from creation.
 export function mapReturnRequest(dto) {
-  if (!isId(dto?.id) || !isId(dto.orderId) || !['requested', 'approved', 'rejected', 'received', 'resolved'].includes(dto.status) || typeof dto.reason !== 'string' || !dto.reason.trim() || Number.isNaN(Date.parse(dto.createdAt))) badResponse();
+  if (!isId(dto?.id) || !isId(dto.orderId) || !['requested', 'pending_manager', 'approved', 'rejected', 'refunded'].includes(dto.status) || typeof dto.reason !== 'string' || !dto.reason.trim() || Number.isNaN(Date.parse(dto.createdAt)) || typeof dto.issueCategory !== 'string') badResponse();
   return { ...dto };
 }
 
@@ -33,7 +33,7 @@ export function mapOrder(dto, detail = false) {
   return {
     id: dto.id, code: dto.code, version: dto.version, status: dto.orderStatus, payment: dto.paymentStatus, method: dto.paymentMethod,
     date: dateLabel(dto.createdAt), items: dto.items.map(mapLine), totals, discount: totals.discount, shipping: totals.shipping,
-    note: dto.note || '', refundRequired: Boolean(dto.refundRequired),
+    note: dto.note || '', refundRequired: Boolean(dto.refundRequired), paymentExpiresAt: dto.paymentExpiresAt || null,
     returnRequest: dto.returnRequest == null ? null : mapReturnRequest(dto.returnRequest),
     customer: { name: dto.shippingAddress?.recipientName || dto.customerName || '', phone: dto.shippingAddress?.phone || dto.customerPhone || '', address: dto.shippingAddress?.addressLine || '' },
     history: (dto.history || []).map(entry => {
@@ -45,7 +45,11 @@ export function mapOrder(dto, detail = false) {
 
 export function mapCart(dto) {
   if (!Number.isSafeInteger(dto?.cartVersion) || dto.cartVersion < 1 || !Array.isArray(dto.items)) badResponse();
-  return { cartVersion: dto.cartVersion, items: dto.items.map(mapLine) };
+  return { cartVersion: dto.cartVersion, items: dto.items.map(item => {
+    if (item?.availableQuantity !== undefined && (!Number.isSafeInteger(item.availableQuantity) || item.availableQuantity < 0)) badResponse();
+    if (item?.available !== undefined && typeof item.available !== 'boolean') badResponse();
+    return { ...mapLine(item), available: item.available ?? true, availableQuantity: item.availableQuantity ?? null };
+  }) };
 }
 
 export function mapQuote(dto) {
@@ -59,9 +63,15 @@ function mapPage(dto) {
   return { items: dto.items.map(item => mapOrder(item)), pagination };
 }
 
+export function mapVnpayAttempt(dto) {
+  if (!isId(dto?.orderId) || !isId(dto?.orderCode) || !['pending', 'paid', 'failed'].includes(dto.paymentStatus) || !statuses.includes(dto.orderStatus) || (dto.expiresAt !== null && Number.isNaN(Date.parse(dto.expiresAt)))) badResponse();
+  return { orderId: dto.orderId, orderCode: dto.orderCode, paymentStatus: dto.paymentStatus, orderStatus: dto.orderStatus, expiresAt: dto.expiresAt, refundRequired: Boolean(dto.refundRequired) };
+}
+
 // Không chuyển token/actor/customerId/giá/tồn từ component thành căn cứ xác thực.
 export function createOrderService(request = createApiClient()) {
   const idPath = id => encodeURIComponent(String(id));
+  const pendingCartAdds = new Map();
   const list = async (path, { status, search, page = 1, pageSize = 10, signal } = {}) => {
     const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (status) query.set('status', status);
@@ -77,21 +87,60 @@ export function createOrderService(request = createApiClient()) {
     mode: 'http',
     listCustomerOrders: options => list('/orders', options),
     getCustomerOrder: async (id, options) => mapOrder(await request(`/orders/${idPath(id)}`, options), true),
+    getVnpayAttempt: async (paymentCode, options) => mapVnpayAttempt(await request(`/payments/vnpay/attempts/${idPath(paymentCode)}`, options)),
     listSalesOrders: options => list('/sales/orders', options),
     getSalesOrder: async (id, options) => mapOrder(await request(`/sales/orders/${idPath(id)}`, options), true),
     cancelOrder: async (id, input, options) => mapOrder(await mutation(`/orders/${idPath(id)}/cancel`, 'POST', { expectedVersion: input.expectedVersion, reason: input.reason }, options), true),
     createReturnRequest: async (id, input, options) => {
-      const result = mapReturnRequest(await mutation(`/orders/${idPath(id)}/returns`, 'POST', { expectedVersion: input.expectedVersion, reason: input.reason }, options));
+      const result = mapReturnRequest(await mutation(`/orders/${idPath(id)}/returns`, 'POST', { expectedVersion: input.expectedVersion, issueCategory: input.issueCategory, reason: input.reason }, options));
       if (result.orderId !== String(id)) badResponse();
       return result;
     },
     updateSalesStatus: async (id, input, options) => mapOrder(await mutation(`/sales/orders/${idPath(id)}/status`, 'PATCH', { expectedVersion: input.expectedVersion, toStatus: input.toStatus, ...(input.reason !== undefined ? { reason: input.reason } : {}), ...(input.codCollected !== undefined ? { codCollected: input.codCollected } : {}) }, options), true),
     reorder: async (id, input, options) => mapCart(await mutation(`/orders/${idPath(id)}/reorder`, 'POST', { expectedCartVersion: input.expectedCartVersion }, options)),
     getCart: async options => mapCart(await request('/cart', options)),
+    addCartItem: async (variantId, quantity = 1, options = {}) => {
+      const skuId = String(variantId);
+      if (!/^\d+$/.test(skuId) || !Number.isSafeInteger(quantity) || quantity < 1) throw new ApiError('SKU hoặc số lượng không hợp lệ.', 422, 'INVALID_CART_ITEM');
+      const requestFingerprint = `${skuId}:${quantity}`;
+      let pending = pendingCartAdds.get(requestFingerprint);
+      if (!pending) {
+        const cart = mapCart(await request('/cart', { signal: options.signal }));
+        const requestKey = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+        pending = { expectedCartVersion: cart.cartVersion, idempotencyKey: requestKey };
+        pendingCartAdds.set(requestFingerprint, pending);
+      }
+      try {
+        const result = await mutation('/cart/items', 'POST', { variantId: skuId, quantity, expectedCartVersion: pending.expectedCartVersion }, { ...options, idempotencyKey: pending.idempotencyKey });
+        pendingCartAdds.delete(requestFingerprint);
+        return mapCart(result);
+      } catch (error) {
+        const uncertain = error?.name === 'AbortError' || error?.status === 0 || error?.status >= 500 || error?.code === 'INVALID_API_RESPONSE';
+        if (!uncertain) pendingCartAdds.delete(requestFingerprint);
+        throw error;
+      }
+    },
+    updateCartItem: async (variantId, quantity, expectedCartVersion, options = {}) => {
+      const skuId = String(variantId);
+      if (!/^\d+$/.test(skuId) || !Number.isSafeInteger(quantity) || quantity < 1 || !Number.isSafeInteger(expectedCartVersion) || expectedCartVersion < 1) {
+        throw new ApiError('SKU, số lượng hoặc phiên bản giỏ hàng không hợp lệ.', 422, 'INVALID_CART_ITEM');
+      }
+      return mapCart(await mutation(`/cart/items/${idPath(skuId)}`, 'PATCH', { quantity, expectedCartVersion }, options));
+    },
+    removeCartItem: async (variantId, expectedCartVersion, options = {}) => {
+      const skuId = String(variantId);
+      if (!/^\d+$/.test(skuId) || !Number.isSafeInteger(expectedCartVersion) || expectedCartVersion < 1) {
+        throw new ApiError('SKU hoặc phiên bản giỏ hàng không hợp lệ.', 422, 'INVALID_CART_ITEM');
+      }
+      return mapCart(await mutation(`/cart/items/${idPath(skuId)}`, 'DELETE', { expectedCartVersion }, options));
+    },
     getAddresses: async options => {
-      const result = await request('/addresses', options);
-      if (!Array.isArray(result?.items) || !result.items.every(item => isId(item.id) && typeof item.recipientName === 'string' && typeof item.phone === 'string' && typeof item.addressLine === 'string')) badResponse();
-      return result.items;
+      const result = await request('/users/me/addresses', options);
+      if (!Array.isArray(result) || !result.every(item => isId(item.id) && typeof item.recipientName === 'string' && typeof item.phone === 'string' && typeof item.addressLine === 'string' && typeof item.isDefault === 'boolean')) badResponse();
+      return result.map(address => ({
+        ...address,
+        addressLine: [address.addressLine, address.ward, address.district, address.province].filter(value => typeof value === 'string' && value.trim()).join(', '),
+      }));
     },
     quoteCheckout: async (input, options) => mapQuote(await request('/checkout/quote', { ...options, method: 'POST', body: checkoutBody(input) })),
     createOrder: async (input, options) => {

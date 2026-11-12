@@ -1,6 +1,5 @@
 -- Seed 006 — 8 khách demo (mật khẩu chung Demo@1234567890!) và địa chỉ. Cần 001 và migration 010 (phone UNIQUE).
 -- FILE SINH TỰ ĐỘNG bởi scripts/generate-seed-data.mjs — đừng sửa tay. Dữ liệu MÔ PHỎNG cho demo.
-USE household_ecommerce;
 
 INSERT INTO users (full_name, email, phone, password_hash, role, status) VALUES
     ('Trần Thị Lan', 'lan.tran@example.test', '0902345678', '$2y$10$KkT8yurULCYRqY29j/rVcugGKg57g8LIftRaQId.pugTgOyQ779yq', 'CUSTOMER', 'ACTIVE'),

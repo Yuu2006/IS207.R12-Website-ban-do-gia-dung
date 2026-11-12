@@ -1,11 +1,13 @@
-import { Routes, Route, Outlet, Navigate, Link } from 'react-router-dom';
+import { Routes, Route, Outlet, Navigate, Link, useLocation, useNavigationType } from 'react-router-dom';
+import { createContext, useContext, useLayoutEffect, useRef, useState } from 'react';
 import Header from '../components/Header.jsx';
 import Footer from '../components/Footer.jsx';
 import ChatbotWidget from '../components/chatbot/ChatbotWidget.jsx';
 import HomePage from '../pages/public/HomePage.jsx';
 import ProductListPage from '../pages/public/ProductListPage.jsx';
-import ProductDetailPage from '../pages/public/ProductDetailPage.jsx';
+import LiveCatalogProductPage from '../pages/public/LiveCatalogProductPage.jsx';
 import ComparePage from '../pages/public/ComparePage.jsx';
+import WarrantyPage from '../pages/public/WarrantyPage.jsx';
 import LoginForm from '../pages/login-form/LoginForm.jsx';
 import StaffLogin from '../pages/staff-login/StaffLogin.jsx';
 import OrderWorkspace from '../pages/customer/OrderWorkspace.jsx';
@@ -19,30 +21,72 @@ import StaffOverviewPage from '../pages/auth/StaffOverviewPage.jsx';
 import VoucherAdminPage from '../pages/admin/VoucherAdminPage.jsx';
 import UserAdminPage from '../pages/admin/UserAdminPage.jsx';
 import ReportAdminPage from '../pages/admin/ReportAdminPage.jsx';
+import CareRulesPage from '../pages/admin/CareRulesPage.jsx';
+import ChatbotFaqPage from '../pages/admin/ChatbotFaqPage.jsx';
+import MyDevicesPage from '../pages/customer/MyDevicesPage.jsx';
+import ReturnManagementPage from '../pages/sales/ReturnManagementPage.jsx';
 import InventoryPage from '../pages/warehouse/InventoryPage.jsx';
 import InventoryHistoryPage from '../pages/warehouse/InventoryHistoryPage.jsx';
 import AppShell from '../layouts/AppShell.jsx';
 import ProtectedRoute from './ProtectedRoute.jsx';
 
-function PublicLayout() { return <><Header /><Outlet /><Footer /><ChatbotWidget /></>; }
+const RouteTransitionContext = createContext({ pathname: '/', direction: null });
+
+const storefrontPathOrder = [
+  pathname => pathname === '/',
+  pathname => pathname.startsWith('/products') || pathname.startsWith('/catalog/products'),
+  pathname => pathname === '/compare',
+  pathname => pathname.startsWith('/warranty'),
+  pathname => pathname === '/checkout' || pathname === '/orders' || pathname.startsWith('/orders/'),
+];
+
+function storefrontPathIndex(pathname) {
+  return storefrontPathOrder.findIndex(matches => matches(pathname));
+}
+
+function PublicRouteTransition() {
+  const { pathname, direction } = useContext(RouteTransitionContext);
+  return <div key={pathname} className={`hc-route-transition${direction ? ` hc-route-transition--${direction}` : ''}`}><Outlet /></div>;
+}
+
+function PublicLayout() { return <><Header /><PublicRouteTransition /><Footer /><ChatbotWidget /></>; }
 
 // Giữ route đã tích hợp và đặt guard theo role trước mọi workspace.
 export default function AppRoutes() {
+  const { pathname } = useLocation();
+  const navigationType = useNavigationType();
+  const previousPath = useRef(pathname);
+  const [transition, setTransition] = useState({ pathname, direction: null });
+
+  useLayoutEffect(() => {
+    if (previousPath.current === pathname) return;
+
+    const previousIndex = storefrontPathIndex(previousPath.current);
+    const nextIndex = storefrontPathIndex(pathname);
+    const direction = previousIndex !== -1 && nextIndex !== -1 && previousIndex !== nextIndex
+      ? nextIndex > previousIndex ? 'forward' : 'backward'
+      : navigationType === 'POP' ? 'backward' : 'forward';
+
+    previousPath.current = pathname;
+    setTransition({ pathname, direction });
+  }, [navigationType, pathname]);
+
+  const direction = transition.pathname === pathname ? transition.direction : null;
   // Trang đơn hàng khách tự dựng header storefront và CustomerRoute; nhân viên dùng AppShell; tải dữ liệu qua OrderServiceProvider.
-  const orderWorkspace = <OrderWorkspace />;
-  return <Routes>
-    <Route element={<PublicLayout />}><Route path="/" element={<HomePage />} /><Route path="/products" element={<ProductListPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/compare" element={<ComparePage />} /></Route>
+  const orderWorkspace = <OrderWorkspace transitionDirection={direction} />;
+  return <RouteTransitionContext.Provider value={{ pathname, direction }}><Routes>
+    <Route element={<PublicLayout />}><Route path="/" element={<HomePage />} /><Route path="/products" element={<ProductListPage />} /><Route path="/products/:id" element={<LiveCatalogProductPage />} /><Route path="/catalog/products/:id" element={<LiveCatalogProductPage />} /><Route path="/compare" element={<ComparePage />} /><Route path="/warranty" element={<WarrantyPage />} /></Route>
     <Route path="/login" element={<LoginForm key="login" />} /><Route path="/register" element={<LoginForm key="register" initialScreen="register" />} /><Route path="/internal/login" element={<StaffLogin />} /><Route path="/forgot-password" element={<StaffLogin audience="customer" />} /><Route path="/internal" element={<Navigate to="/internal/login" replace />} />
-    {['/cart', '/checkout', '/orders', '/orders/:orderId', '/payment/result'].map(path => <Route key={path} path={path} element={orderWorkspace} />)}
-    <Route element={<ProtectedRoute roles={['SALES', 'ADMIN']} />}><Route element={<AppShell />}><Route path="/sales/orders" element={orderWorkspace} /><Route path="/sales/returns" element={<WorkspacePage />} /></Route></Route>
+    {['/cart', '/checkout', '/orders', '/orders/payment-return', '/orders/:orderId', '/payment/result'].map(path => <Route key={path} path={path} element={orderWorkspace} />)}
+    <Route element={<ProtectedRoute roles={['SALES', 'ADMIN']} />}><Route element={<AppShell />}><Route path="/sales/orders" element={orderWorkspace} /><Route path="/sales/returns" element={<ReturnManagementPage />} /></Route></Route>
     <Route element={<ProtectedRoute />}><Route element={<AppShell />}>
       <Route path="/profile" element={<ProfilePage />} />
-      <Route element={<ProtectedRoute roles={['CUSTOMER']} />}><Route path="/customer" element={<WorkspacePage />} /><Route path="/addresses" element={<AddressesPage />} /><Route path="/customer/decision-tools" element={<DecisionToolsPage />} /></Route>
-      <Route element={<ProtectedRoute roles={['ADMIN']} />}><Route path="/admin" element={<StaffOverviewPage />} /><Route path="/admin/fit-rules" element={<FitRulesPreviewPage />} /><Route path="/admin/products" element={<CatalogAdminPage />} /><Route path="/admin/users" element={<UserAdminPage />} /><Route path="/admin/vouchers" element={<VoucherAdminPage />} /><Route path="/admin/reports" element={<ReportAdminPage />} /></Route>
+      <Route element={<ProtectedRoute roles={['CUSTOMER']} />}><Route path="/customer" element={<WorkspacePage />} /><Route path="/addresses" element={<AddressesPage />} /><Route path="/customer/decision-tools" element={<DecisionToolsPage />} /><Route path="/customer/devices" element={<MyDevicesPage />} /></Route>
+      <Route element={<ProtectedRoute roles={['ADMIN']} />}><Route path="/admin" element={<StaffOverviewPage />} /><Route path="/admin/fit-rules" element={<FitRulesPreviewPage />} /><Route path="/admin/products" element={<CatalogAdminPage />} /><Route path="/admin/care-rules" element={<CareRulesPage />} /><Route path="/admin/chatbot-faqs" element={<ChatbotFaqPage />} /><Route path="/admin/users" element={<UserAdminPage />} /><Route path="/admin/vouchers" element={<VoucherAdminPage />} /><Route path="/admin/reports" element={<ReportAdminPage />} /></Route>
       <Route element={<ProtectedRoute roles={['SALES']} />}><Route path="/sales" element={<StaffOverviewPage />} /></Route>
-      <Route element={<ProtectedRoute roles={['WAREHOUSE']} />}><Route path="/warehouse" element={<StaffOverviewPage />} /></Route>
+      <Route element={<ProtectedRoute roles={['WAREHOUSE']} />}><Route path="/warehouse" element={<StaffOverviewPage />} /><Route path="/warehouse/returns" element={<ReturnManagementPage />} /></Route>
       <Route element={<ProtectedRoute roles={['WAREHOUSE', 'ADMIN']} />}><Route path="/warehouse/inventory" element={<InventoryPage />} /><Route path="/warehouse/history" element={<InventoryHistoryPage />} /></Route>
     </Route></Route>
     <Route path="*" element={<div className="hc-status"><h1>Không tìm thấy trang</h1><Link to="/">Về trang chủ</Link></div>} />
-  </Routes>;
+  </Routes></RouteTransitionContext.Provider>;
 }

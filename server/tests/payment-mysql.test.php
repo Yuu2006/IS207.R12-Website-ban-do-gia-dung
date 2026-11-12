@@ -2,7 +2,7 @@
 declare(strict_types=1);
 if (PHP_SAPI !== 'cli' || getenv('ORDER_MYSQL_TEST') !== 'isolated' || getenv('DB_HOST') !== '127.0.0.1' || getenv('DB_PORT') === '3306' || !preg_match('/^homecare_order_test_[0-9]+$/D', getenv('DB_NAME') ?: '')) exit(1);
 require_once __DIR__ . '/../utils/order-api.php';
-use HomeCare\OrderApi\{ApiException, OrderModel, CheckoutService, CatalogCheckoutDependencies, OrderService, PaymentService};
+use HomeCare\OrderApi\{ApiException, OrderModel, CheckoutService, CatalogCheckoutDependencies, MysqlCheckoutDependencies, OrderService, PaymentService};
 use function HomeCare\OrderApi\{vnpaySignature, orderCanonicalHash};
 
 $pdo = new PDO('mysql:host=127.0.0.1;port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_NAME') . ';charset=utf8mb4', 'root', '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
@@ -13,7 +13,7 @@ putenv('VNPAY_TMN_CODE=TESTCODE'); putenv('VNPAY_HASH_SECRET=isolated-test-secre
 putenv('STORE_NAME=Original test merchant');
 $actor = ['id' => '1', 'role' => 'CUSTOMER']; $staff = ['id' => '3', 'role' => 'SALES'];
 $admin = ['id' => '4', 'role' => 'ADMIN'];
-$model = new OrderModel($pdo); $deps = new CatalogCheckoutDependencies(); $checkout = new CheckoutService($model, $deps); $orders = new OrderService($model, $deps); $payments = new PaymentService($model);
+$model = new OrderModel($pdo); $deps = new CatalogCheckoutDependencies(); $runtime = new MysqlCheckoutDependencies(); $checkout = new CheckoutService($model, $runtime); $orders = new OrderService($model, $runtime); $payments = new PaymentService($model, $runtime);
 function verify(bool $condition, string $message): void { if (!$condition) throw new RuntimeException($message); }
 function reject(callable $run, string $code): void { try { $run(); } catch (ApiException $e) { verify($e->errorCode === $code, "Expected $code, got {$e->errorCode}"); return; } throw new RuntimeException("Expected $code"); }
 function value(string $sql, array $args = []): mixed { global $pdo; $q=$pdo->prepare($sql); $q->execute($args); return $q->fetchColumn(); }
@@ -22,7 +22,7 @@ verify(vnpaySignature(['vnp_TxnRef'=>'TEST-1','vnp_OrderInfo'=>'Thanh toan don h
 function newOrder(string $method = 'BANK_TRANSFER'): array {
     global $deps, $pdo, $actor, $checkout;
     $cart = $deps->cart($pdo, $actor);
-    $deps->replaceCart($pdo, $actor, ['expectedCartVersion' => $cart['cartVersion'], 'items' => [['skuId' => '1', 'quantity' => 1]]], 'payment-cart-' . bin2hex(random_bytes(12)));
+    $deps->replaceCart($pdo, $actor, ['expectedCartVersion' => $cart['cartVersion'], 'items' => [(object) ['skuId' => '1', 'quantity' => 1]]], 'payment-cart-' . bin2hex(random_bytes(12)));
     $cart = $deps->cart($pdo, $actor);
     $input = ['cartVersion' => $cart['cartVersion'], 'addressId' => (string) value('SELECT id FROM addresses WHERE user_id = 1 LIMIT 1'), 'paymentMethod' => $method, 'voucherCode' => null];
     $quote = $checkout->quoteCheckout($actor, $input);
@@ -131,7 +131,7 @@ verify($payments->ipn(signedIpn($pending,'900002'))['RspCode']==='02' && $paymen
 $expired = newOrder('VNPAY')['order'];
 $before = (int) value('SELECT stock_quantity FROM product_variants WHERE id=1');
 $pdo->prepare("UPDATE payments SET expires_at = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 MINUTE) WHERE order_id = ?")->execute([$expired['id']]);
-verify($payments->expirePendingVnpay($deps) === 1 && $payments->expirePendingVnpay($deps) === 0, 'Expiry worker is not idempotent');
+verify($payments->expirePendingVnpay($runtime) === 1 && $payments->expirePendingVnpay($runtime) === 0, 'Expiry worker is not idempotent');
 verify((int) value('SELECT stock_quantity FROM product_variants WHERE id=1') === $before + 1, 'Expiry did not release stock once');
 verify(value('SELECT order_status FROM orders WHERE id=?',[$expired['id']]) === 'CANCELLED','Expiry did not cancel waiting order');
 

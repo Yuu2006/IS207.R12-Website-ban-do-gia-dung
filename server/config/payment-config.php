@@ -13,6 +13,17 @@ function bankTransferConfig(): array
     return ['bankBin' => $bin, 'accountNo' => $account, 'accountName' => $name];
 }
 
+// Shipping policy is store configuration; checkout never accepts a fee from the client.
+function checkoutShippingFee(int $subtotal): int
+{
+    $fee = getenv('CHECKOUT_SHIPPING_VND');
+    if ($fee === false || !preg_match('/^\d{1,9}$/D', $fee)) throw new ApiException(503, 'SHIPPING_NOT_CONFIGURED', 'Cửa hàng chưa cấu hình phí giao hàng.');
+    $threshold = getenv('CHECKOUT_FREE_SHIPPING_MIN_VND');
+    if ($threshold === false || $threshold === '') return (int) $fee;
+    if (!preg_match('/^\d{1,12}$/D', $threshold)) throw new ApiException(503, 'SHIPPING_NOT_CONFIGURED', 'Cấu hình phí giao hàng cần kiểm tra.');
+    return $subtotal >= (int) $threshold ? 0 : (int) $fee;
+}
+
 function vnpayConfig(): array
 {
     $code = getenv('VNPAY_TMN_CODE') ?: '';

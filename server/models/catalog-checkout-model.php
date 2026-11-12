@@ -44,14 +44,7 @@ final class CatalogCheckoutDependencies implements CheckoutDependencies
             if ($voucher['max_discount'] !== null) $discount = min($discount, orderMoney($voucher['max_discount']));
             $discount = min($subtotal, $discount);
         }
-        $fee = getenv('CHECKOUT_SHIPPING_VND');
-        if ($fee === false || !preg_match('/^\d{1,9}$/D', $fee)) throw new ApiException(503, 'SHIPPING_NOT_CONFIGURED', 'Cửa hàng chưa cấu hình phí giao hàng.');
-        $shipping = (int) $fee;
-        $threshold = getenv('CHECKOUT_FREE_SHIPPING_MIN_VND');
-        if ($threshold !== false && $threshold !== '') {
-            if (!preg_match('/^\d{1,12}$/D', $threshold)) throw new ApiException(503, 'SHIPPING_NOT_CONFIGURED', 'Cấu hình phí giao hàng cần kiểm tra.');
-            if ($subtotal >= (int) $threshold) $shipping = 0;
-        }
+        $shipping = checkoutShippingFee($subtotal);
         return ['cartId' => (string) $cart['id'], 'cartVersion' => (int) $cart['version'], 'voucherId' => $voucher ? (string) $voucher['id'] : null,
             'items' => $items, 'shippingAddress' => ['recipientName' => $address['recipient_name'], 'phone' => $address['phone'], 'addressLine' => implode(', ', array_filter([$address['address_line'], $address['ward'], $address['district'], $address['province']]))],
             'totals' => ['subtotal' => $subtotal, 'discount' => $discount, 'shipping' => $shipping, 'total' => $subtotal - $discount + $shipping]];
@@ -91,6 +84,8 @@ final class CatalogCheckoutDependencies implements CheckoutDependencies
         allowOrderFields($input, ['expectedCartVersion', 'items']);
         $version = orderPositiveInteger($input['expectedCartVersion'] ?? null, 'expectedCartVersion');
         if (!is_array($input['items'] ?? null) || !array_is_list($input['items']) || count($input['items']) > 100) throw new ApiException(422, 'INVALID_CART', 'Giỏ hàng tối đa 100 SKU.');
+        // parseOrderJson keeps nested JSON objects as stdClass.
+        $input['items'] = array_map(fn ($item) => $item instanceof \stdClass ? get_object_vars($item) : $item, $input['items']);
         $lines = [];
         foreach ($input['items'] as $item) {
             if (!is_array($item)) throw new ApiException(422, 'INVALID_CART', 'Dòng giỏ hàng không hợp lệ.');

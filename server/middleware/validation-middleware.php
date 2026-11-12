@@ -119,6 +119,70 @@ function validateOrderList(array $query, bool $sales = false): array
     return $result;
 }
 
+// Return desk filters are fixed allowlists; unknown query input cannot change ownership or staff role.
+function validateReturnList(array $query): array
+{
+    allowOrderFields($query, ['status', 'severity', 'search', 'page', 'pageSize']);
+    $pagination = validateOrderList(array_intersect_key($query, array_flip(['page', 'pageSize'])));
+    $statuses = ['requested', 'pending_manager', 'approved', 'rejected', 'refunded'];
+    $severities = ['minor', 'major', 'critical'];
+    $status = $query['status'] ?? '';
+    $severity = $query['severity'] ?? '';
+    if (!is_string($status) || ($status !== '' && !in_array($status, $statuses, true))) invalidOrderInput('status', 'Trạng thái yêu cầu trả hàng không hợp lệ.');
+    if (!is_string($severity) || ($severity !== '' && !in_array($severity, $severities, true))) invalidOrderInput('severity', 'Mức độ sự cố không hợp lệ.');
+    return ['page' => $pagination['page'], 'pageSize' => $pagination['pageSize'], 'status' => $status, 'severity' => $severity, 'search' => orderText($query['search'] ?? '', 'search', 0, 100)];
+}
+
+// Revenue dates are inclusive local calendar dates and are converted to UTC by the report model.
+function validateRevenueRange(array $query): array
+{
+    allowOrderFields($query, ['from', 'to']);
+    $result = [];
+    foreach (['from', 'to'] as $field) {
+        $value = $query[$field] ?? null;
+        if (!is_string($value) || preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value) !== 1) invalidOrderInput($field, 'Ngày phải theo định dạng YYYY-MM-DD.');
+        $date = \DateTimeImmutable::createFromFormat('!Y-m-d', $value, new \DateTimeZone('Asia/Ho_Chi_Minh'));
+        $errors = \DateTimeImmutable::getLastErrors();
+        if (!$date || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0)) || $date->format('Y-m-d') !== $value) invalidOrderInput($field, 'Ngày không hợp lệ.');
+        $result[$field] = $value;
+    }
+    $start = new \DateTimeImmutable($result['from'], new \DateTimeZone('Asia/Ho_Chi_Minh'));
+    $end = new \DateTimeImmutable($result['to'], new \DateTimeZone('Asia/Ho_Chi_Minh'));
+    if ($end < $start) invalidOrderInput('to', 'Ngày kết thúc phải bằng hoặc sau ngày bắt đầu.');
+    if ((int) $start->diff($end)->format('%a') > 365) invalidOrderInput('to', 'Khoảng báo cáo tối đa là 366 ngày.');
+    return $result;
+}
+
+// Staff actions record a required rationale and accept only the MVP severity/decision values.
+function validateReturnMutation(array $input, string $operation): array
+{
+    if ($operation === 'return-triage') {
+        allowOrderFields($input, ['severity', 'note']);
+        $severity = $input['severity'] ?? null;
+        if (!is_string($severity) || !in_array($severity, ['MINOR', 'MAJOR', 'CRITICAL'], true)) invalidOrderInput('severity', 'Mức độ phải là MINOR, MAJOR hoặc CRITICAL.');
+        return ['severity' => $severity, 'note' => orderText($input['note'] ?? '', 'note', 1, 500)];
+    }
+    if ($operation === 'return-decision') {
+        allowOrderFields($input, ['decision', 'reason']);
+        $decision = $input['decision'] ?? null;
+        if (!is_string($decision) || !in_array($decision, ['APPROVE', 'REJECT'], true)) invalidOrderInput('decision', 'Quyết định phải là APPROVE hoặc REJECT.');
+        return ['decision' => $decision, 'reason' => orderText($input['reason'] ?? '', 'reason', 1, 500)];
+    }
+    allowOrderFields($input, ['checklist']);
+    $checklist = $input['checklist'] ?? null;
+    if (!$checklist instanceof \stdClass) invalidOrderInput('checklist', 'Checklist nhận hàng không hợp lệ.');
+    $values = get_object_vars($checklist);
+    allowOrderFields($values, ['packageReceived', 'orderMatched', 'allItemsPresent', 'conditionAssessed', 'notes']);
+    foreach (['packageReceived', 'orderMatched', 'allItemsPresent', 'conditionAssessed'] as $field) {
+        if (!array_key_exists($field, $values) || !is_bool($values[$field])) invalidOrderInput('checklist.' . $field, 'Mỗi mục checklist phải được xác nhận rõ ràng.');
+    }
+    return ['checklist' => [
+        'packageReceived' => $values['packageReceived'], 'orderMatched' => $values['orderMatched'],
+        'allItemsPresent' => $values['allItemsPresent'], 'conditionAssessed' => $values['conditionAssessed'],
+        'notes' => orderText($values['notes'] ?? '', 'checklist.notes', 1, 500),
+    ]];
+}
+
 // Chuẩn hóa quote/create, loại đầu vào giá/tồn/actor không thuộc contract.
 function validateCheckoutInput(array $input, bool $create = false): array
 {
@@ -140,12 +204,51 @@ function validateCheckoutInput(array $input, bool $create = false): array
     return $result;
 }
 
+// Validate an add-to-cart request; price, stock, customer and cart state remain server-owned.
+function validateCartAdd(array $input): array
+{
+    allowOrderFields($input, ['variantId', 'quantity', 'expectedCartVersion']);
+    $quantity = orderPositiveInteger($input['quantity'] ?? null, 'quantity');
+    if ($quantity > 4294967295) invalidOrderInput('quantity', 'Số lượng vượt giới hạn lưu trữ.');
+    return [
+        'variantId' => orderDatabaseId($input['variantId'] ?? null, 'variantId'),
+        'quantity' => $quantity,
+        'expectedCartVersion' => orderPositiveInteger($input['expectedCartVersion'] ?? null, 'expectedCartVersion'),
+    ];
+}
+
+// Validate an absolute quantity update; cart ownership/version and available stock stay server-owned.
+function validateCartUpdate(array $input): array
+{
+    allowOrderFields($input, ['quantity', 'expectedCartVersion']);
+    $quantity = orderPositiveInteger($input['quantity'] ?? null, 'quantity');
+    if ($quantity > 4294967295) invalidOrderInput('quantity', 'Số lượng vượt giới hạn lưu trữ.');
+    return [
+        'quantity' => $quantity,
+        'expectedCartVersion' => orderPositiveInteger($input['expectedCartVersion'] ?? null, 'expectedCartVersion'),
+    ];
+}
+
+// Validate removal against the cart version; the SKU may already be inactive or out of stock.
+function validateCartRemove(array $input): array
+{
+    allowOrderFields($input, ['expectedCartVersion']);
+    return ['expectedCartVersion' => orderPositiveInteger($input['expectedCartVersion'] ?? null, 'expectedCartVersion')];
+}
+
 // Chuẩn hóa payload ghi; state/owner/version thật phải kiểm tra lại từ database.
 function validateOrderMutation(array $input, string $operation): array
 {
     if ($operation === 'return') {
-        allowOrderFields($input, ['expectedVersion', 'reason']);
-        return ['expectedVersion' => orderPositiveInteger($input['expectedVersion'] ?? null, 'expectedVersion'), 'reason' => orderText($input['reason'] ?? '', 'reason', 1, 500)];
+        allowOrderFields($input, ['expectedVersion', 'issueCategory', 'reason']);
+        $category = $input['issueCategory'] ?? null;
+        $categories = ['SAFETY_HAZARD', 'DEFECTIVE', 'TRANSIT_DAMAGE', 'WRONG_ITEM', 'MISSING_COMPONENT', 'SPEC_MISMATCH', 'COSMETIC_DAMAGE', 'PACKAGING_ONLY', 'BUYER_REMORSE', 'CUSTOMER_MISUSE', 'OTHER'];
+        if (!is_string($category) || !in_array($category, $categories, true)) invalidOrderInput('issueCategory', 'Hãy chọn nhóm vấn đề phù hợp.');
+        return [
+            'expectedVersion' => orderPositiveInteger($input['expectedVersion'] ?? null, 'expectedVersion'),
+            'issueCategory' => $category,
+            'reason' => orderText($input['reason'] ?? '', 'reason', 1, 500),
+        ];
     }
     if ($operation === 'reorder') {
         allowOrderFields($input, ['expectedCartVersion']);
