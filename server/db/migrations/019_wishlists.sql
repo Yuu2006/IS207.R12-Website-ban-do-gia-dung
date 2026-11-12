@@ -1,4 +1,4 @@
--- Migration 015: Wishlist (CUS-11)
+-- Migration 019: Wishlist (CUS-11). Áp một lần sau baseline; trước đây PR21 đặt tên 015 (trùng số).
 -- Mỗi khách hàng chỉ có một mục yêu thích cho mỗi sản phẩm.
 CREATE TABLE IF NOT EXISTS wishlists (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

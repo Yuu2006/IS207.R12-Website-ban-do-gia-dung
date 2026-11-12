@@ -3,32 +3,32 @@ declare(strict_types=1);
 
 namespace HomeCare\OrderApi;
 
+// Keep response formatting out of the cart service and HTTP router.
 final class CartController
 {
-    private CartServiceInterface $service;
+    public function __construct(private readonly CartServiceInterface $service) {}
 
-    public function __construct(CartServiceInterface $service)
-    {
-        $this->service = $service;
-    }
-
-    // GET /cart
+    // Return the authenticated customer's current cart contract.
     public function getCart(array $request): array
     {
-        return apiSuccess(
-            $this->service->getCart($request['principal'])
-        );
+        return apiSuccess($this->service->getCart($request['principal']));
     }
 
-    // PUT /cart
-    public function replaceCart(array $request): array
+    // Add one selected SKU using the authenticated customer's cart version.
+    public function addItem(array $request): array
     {
-        return apiSuccess(
-            $this->service->replaceCart(
-                $request['principal'],
-                $request['input'],
-                $request['idempotencyKey']
-            )
-        );
+        return apiSuccess($this->service->addItem($request['principal'], $request['input'], $request['idempotencyKey']));
+    }
+
+    // Set one owned cart line to an absolute quantity; the service rechecks current stock and version.
+    public function updateItem(array $request): array
+    {
+        return apiSuccess($this->service->updateItem($request['principal'], $request['variantId'], $request['input'], $request['idempotencyKey']));
+    }
+
+    // Remove one SKU line from the authenticated customer's cart.
+    public function removeItem(array $request): array
+    {
+        return apiSuccess($this->service->removeItem($request['principal'], $request['variantId'], $request['input'], $request['idempotencyKey']));
     }
 }

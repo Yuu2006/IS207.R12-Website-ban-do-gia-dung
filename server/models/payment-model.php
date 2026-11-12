@@ -2,21 +2,26 @@
 declare(strict_types=1);
 
 namespace HomeCare\OrderApi;
+
 final class PaymentModel
 {
-    private \PDO $pdo;
-
     // Use the order transaction; never call a payment provider in an open transaction.
-    public function __construct(\PDO $pdo)
-    {
-        $this->pdo = $pdo;
-    }
+    public function __construct(private readonly \PDO $pdo) {}
+
     // Lock payments after order and in increasing ID order, before cart/voucher/SKU.
     public function lock(string $orderId): array
     {
         $statement = $this->pdo->prepare('SELECT * FROM payments WHERE order_id = ? AND is_deleted = 0 ORDER BY id FOR UPDATE');
         $statement->execute([$orderId]);
         return $statement->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    public function findOwnedVnpayAttempt(string $paymentCode, string $customerId): ?array
+    {
+        $statement = $this->pdo->prepare('SELECT p.order_id, p.status, p.expires_at, o.order_code, o.order_status, o.refund_required FROM payments p JOIN orders o ON o.id = p.order_id WHERE p.payment_code = ? AND p.payment_method = ? AND p.is_deleted = 0 AND o.customer_id = ? AND o.is_deleted = 0 LIMIT 1');
+        $statement->execute([$paymentCode, 'VNPAY', $customerId]);
+        $row = $statement->fetch(\PDO::FETCH_ASSOC);
+        return $row ?: null;
     }
 
     // A paid order header alone is not evidence of a valid payment ledger.

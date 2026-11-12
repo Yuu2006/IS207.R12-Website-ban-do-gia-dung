@@ -16,6 +16,7 @@ const originalStorage = globalThis.sessionStorage;
 const originalFetch = globalThis.fetch;
 let vite;
 let productionVite;
+let defaultVite;
 let Workspace;
 let AuthContext;
 let SharedAuthContext;
@@ -26,6 +27,10 @@ let productionOrderProvider;
 let productionOrderHook;
 let orderHook;
 let ApiState;
+let AppRoutes;
+let SharedAuthProvider;
+let defaultOrderProvider;
+let defaultOrderHook;
 
 // Dùng SSR để kiểm tra component thật mà không thêm test runner hoặc trình duyệt vào repo.
 before(async () => {
@@ -40,19 +45,23 @@ before(async () => {
   Workspace = (await vite.ssrLoadModule('/src/pages/customer/OrderWorkspace.jsx')).default;
   AuthContext = (await vite.ssrLoadModule('/src/context/CustomerAuthContext.jsx')).CustomerAuthContext;
   SharedAuthContext = (await vite.ssrLoadModule('/src/context/auth-context.js')).AuthContext;
+  SharedAuthProvider = (await vite.ssrLoadModule('/src/context/AuthContext.jsx')).AuthProvider;
   ServiceContext = (await vite.ssrLoadModule('/src/context/OrderServiceContext.jsx')).OrderServiceContext;
   ({ OrderServiceProvider: orderProvider, useOrderService: orderHook } = await vite.ssrLoadModule('/src/context/OrderServiceContext.jsx'));
   ApiState = (await vite.ssrLoadModule('/src/components/order/OrderApiState.jsx')).default;
+  AppRoutes = (await vite.ssrLoadModule('/src/routes/AppRoutes.jsx')).default;
   mockService = (await vite.ssrLoadModule('/src/services/order-mock-service.js')).createMockOrderService({ getCustomer: async () => owner, delayMs: 0 });
   productionVite = await createServer({ ...config, define: { 'import.meta.env.DEV': 'false', 'import.meta.env.VITE_ORDER_API_MODE': '"mock"' } });
   ({ OrderServiceProvider: productionOrderProvider, useOrderService: productionOrderHook } = await productionVite.ssrLoadModule('/src/context/OrderServiceContext.jsx'));
+  defaultVite = await createServer({ ...config, define: { 'import.meta.env.DEV': 'true', 'import.meta.env.VITE_ORDER_API_MODE': 'undefined' } });
+  ({ OrderServiceProvider: defaultOrderProvider, useOrderService: defaultOrderHook } = await defaultVite.ssrLoadModule('/src/context/OrderServiceContext.jsx'));
 });
 
 after(async () => {
   globalThis.fetch = originalFetch;
   if (originalStorage === undefined) delete globalThis.sessionStorage;
   else globalThis.sessionStorage = originalStorage;
-  await Promise.all([vite?.close(), productionVite?.close()]);
+  await Promise.all([vite?.close(), productionVite?.close(), defaultVite?.close()]);
 });
 
 function renderWorkspace(path, user = owner, status = 'authenticated') {
@@ -114,6 +123,29 @@ test('customer page uses storefront header/footer with status tabs and no worksp
   assert.match(html, /aria-label="Mở menu"/);
 });
 
+test('warranty route renders a real public page with working navigation, not a 404 or repair form', () => {
+  const html = renderToStaticMarkup(createElement(MemoryRouter, { initialEntries: ['/warranty'] },
+    createElement(SharedAuthContext.Provider, { value: { user: null, loading: false, error: '' } },
+      // App.jsx always mounts OrderServiceProvider above the routes; the public chatbot uses it for "Thêm giỏ".
+      createElement(orderProvider, null, createElement(AppRoutes)))));
+  assert.match(html, /Thông tin bảo hành/);
+  assert.match(html, /href="\/orders"/);
+  assert.match(html, /href="\/products"/);
+  assert.match(html, /id="prepare"/);
+  assert.match(html, /cskh@homecare.vn/);
+  assert.doesNotMatch(html, /Không tìm thấy trang|Bảo hành &amp; Sửa chữa|Yêu cầu sửa chữa|Đặt lịch kỹ thuật viên|<form/);
+  assert.doesNotMatch(html, /href="#(?:repair|technician|tracking|register-warranty|warranty|history)"/);
+});
+
+test('session failure is identified before order loading and never reveals customer data', () => {
+  const html = renderWorkspace('/orders', null, 'error');
+  assert.match(html, /Chưa thể kiểm tra đăng nhập/);
+  assert.match(html, /Đơn hàng chỉ hiển thị sau khi xác minh tài khoản/);
+  assert.match(html, /href="\/login"/);
+  assert.match(html, /Thử lại/);
+  assert.doesNotMatch(html, /HC2026100001|Hành trình đơn hàng|class="oc-order-card"/);
+});
+
 test('another account sees empty state, not the fixture customer or order IDs', () => {
   const html = renderWorkspace('/orders', other);
   assert.match(html, /Bạn chưa có đơn hàng/);
@@ -155,6 +187,34 @@ test('development provider uses mock but production forces HTTP even when env re
   function ProductionMode() { return createElement('span', null, productionOrderHook().mode); }
   assert.equal(renderToStaticMarkup(createElement(orderProvider, null, createElement(DevMode))), '<span>mock</span>');
   assert.equal(renderToStaticMarkup(createElement(productionOrderProvider, null, createElement(ProductionMode))), '<span>http</span>');
+});
+
+test('development defaults to real HTTP when no mock flag is configured', () => {
+  function DefaultMode() { return createElement('span', null, defaultOrderHook().mode); }
+  assert.equal(renderToStaticMarkup(createElement(defaultOrderProvider, null, createElement(DefaultMode))), '<span>http</span>');
+});
+
+test('session retry coalesces repeated clicks and releases the request after a network failure', async () => {
+  const { useAuth } = await vite.ssrLoadModule('/src/context/auth-context.js');
+  let auth;
+  let release;
+  let calls = 0;
+  function Probe() { auth = useAuth(); return null; }
+  renderToStaticMarkup(createElement(SharedAuthProvider, null, createElement(Probe)));
+  const savedFetch = globalThis.fetch;
+  globalThis.fetch = () => { calls++; return new Promise((resolve, reject) => { release = { resolve, reject }; }); };
+  try {
+    const first = auth.refreshSession();
+    const repeated = auth.refreshSession();
+    assert.equal(calls, 1);
+    const failures = Promise.all([assert.rejects(first, /Không thể kết nối/), assert.rejects(repeated, /Không thể kết nối/)]);
+    release.reject(new Error('Network unavailable'));
+    await failures;
+    const retry = auth.refreshSession();
+    assert.equal(calls, 2);
+    release.resolve(new Response(JSON.stringify({ success: true, data: { user: null, expiresAt: null, csrfToken: 'test-token' } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    assert.equal((await retry).user, null);
+  } finally { globalThis.fetch = savedFetch; }
 });
 
 test('cart and payment return retain a safe login return path', () => {

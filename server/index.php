@@ -2,10 +2,11 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/utils/response.php';
-require_once __DIR__ . '/utils/api-response.php';
+require_once __DIR__ . '/utils/order-api.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/routes/auth-routes.php';
 require_once __DIR__ . '/routes/user-routes.php';
+require_once __DIR__ . '/routes/admin-user-routes.php';
 
 use HomeCare\OrderApi\ApiException as OrderApiException;
 use function HomeCare\OrderApi\apiFailure;
@@ -43,12 +44,21 @@ try {
 
     startAppSession();
     $readOnly = in_array($method, ['GET', 'HEAD'], true);
-    $isAuth = str_starts_with($path, '/auth/') || str_starts_with($path, '/users/');
+    $isAdminUsers = $path === '/admin/users' || str_starts_with($path, '/admin/users/');
+    $isAuth = str_starts_with($path, '/auth/') || str_starts_with($path, '/users/') || $isAdminUsers;
     $isCatalog = str_starts_with($path, '/api/');
     // Order API tự kiểm tra CSRF sau xác thực (401 trước 403) theo contract riêng.
     if (($isAuth || $isCatalog) && !$readOnly && !hash_equals($_SESSION['csrfToken'], $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '')) throw new ApiException('CSRF token chưa hợp lệ. Hãy tải lại phiên đăng nhập.', 403);
 
     // Chỉ chạm MySQL khi cần; principal được đối chiếu mỗi request để hủy phiên hết hạn/bị khóa/đổi mật khẩu.
+    // Phiên chưa từng đăng nhập không cần DB để xác nhận anonymous; tuyệt đối không fallback ở phiên có principal.
+    if ($method === 'GET' && $path === '/auth/me' && currentPrincipal() === null) {
+        respondJson(['user' => null, 'expiresAt' => null, 'csrfToken' => $_SESSION['csrfToken']]);
+        exit;
+    }
+    if ((str_starts_with($path, '/users/') || $isAdminUsers) && currentPrincipal() === null) {
+        throw new ApiException('Yêu cầu đăng nhập.', 401);
+    }
     $model = null;
     $auth = null;
     if ($isAuth || currentPrincipal()) {
@@ -68,20 +78,20 @@ try {
             $input = get_object_vars($decoded);
         }
         if (dispatchAuthRoute($method, $path, $input, $auth) || dispatchUserRoute($method, $path, $input, currentPrincipal(), new UserService($model))) exit;
+        if ($isAdminUsers && dispatchAdminUserRoute($method, $path, $readOnly ? $_GET : $input, currentPrincipal(), new AdminUserService(new AdminUserModel(db())))) exit;
         throw new ApiException('Endpoint chưa tồn tại.', 404);
     }
 
     // Catalog/kho/upload tự xuất response và gọi requireAdmin()/requireSessionRole().
     if ($isCatalog) {
-        $catalogRoutes = ['product' => 'handleProductRoutes', 'category' => 'handleCategoryRoutes', 'brand' => 'handleBrandRoutes', 'product-attribute' => 'handleProductAttributeRoutes', 'inventory-movement' => 'handleInventoryMovementRoutes', 'inventory' => 'handleInventoryRoutes', 'banner' => 'handleBannerRoutes', 'upload' => 'handleUploadRoutes', 'catalog-admin' => 'handleCatalogAdminRoutes', 'fit-rule' => 'handleFitRuleRoutes'];
+        $catalogRoutes = ['product' => 'handleProductRoutes', 'category' => 'handleCategoryRoutes', 'brand' => 'handleBrandRoutes', 'product-attribute' => 'handleProductAttributeRoutes', 'tco' => 'handleTcoRoutes', 'care' => 'handleCareRoutes', 'chatbot' => 'handleChatbotRoutes', 'inventory-movement' => 'handleInventoryMovementRoutes', 'inventory' => 'handleInventoryRoutes', 'banner' => 'handleBannerRoutes', 'upload' => 'handleUploadRoutes', 'catalog-admin' => 'handleCatalogAdminRoutes', 'fit-rule' => 'handleFitRuleRoutes', 'room-fit' => 'handleRoomFitRoutes'];
         foreach ($catalogRoutes as $file => $handler) {
             require_once __DIR__ . "/routes/{$file}-routes.php";
             if ($handler($method, $path)) exit;
         }
         throw new ApiException('Endpoint chưa tồn tại.', 404);
     }
-// Chỉ nạp module Order khi request thực sự đi vào nhánh Order.
-require_once __DIR__ . '/utils/order-api.php';
+
     // Order API nhận bản sao phiên theo contract của nó; đóng session để request đơn không khóa nhau.
     $principal = currentPrincipal();
     $orderSession = ['csrfToken' => $_SESSION['csrfToken']];
@@ -91,10 +101,19 @@ require_once __DIR__ . '/utils/order-api.php';
     $response = handleOrderApi($method, $path, $_GET, $raw === false ? '' : $raw, function_exists('getallheaders') ? getallheaders() : [], $orderSession);
     http_response_code($response['status']);
     foreach ($response['headers'] as $name => $value) header($name . ': ' . $value);
+    if (array_key_exists('rawBody', $response)) {
+        echo $response['rawBody'];
+        exit;
+    }
     echo json_encode($response['body'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 } catch (ApiException $error) {
     http_response_code($error->status);
     echo json_encode(['success' => false, 'message' => $error->getMessage(), 'errors' => (object) $error->errors], JSON_UNESCAPED_UNICODE);
+} catch (PDOException $error) {
+    error_log('API database failed: ' . $error->getCode());
+    $unavailable = in_array((int) ($error->errorInfo[1] ?? 0), [1045, 1049, 1054, 1146, 2002, 2003, 2005, 2006, 2013], true);
+    http_response_code($unavailable ? 503 : 500);
+    echo json_encode(['success' => false, 'message' => $unavailable ? 'Dịch vụ dữ liệu chưa sẵn sàng. Vui lòng thử lại sau.' : 'Máy chủ không thể xử lý yêu cầu.', 'errors' => (object) []], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $error) {
     error_log('API failed: ' . get_class($error));
     http_response_code(500);

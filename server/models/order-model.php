@@ -2,14 +2,12 @@
 declare(strict_types=1);
 
 namespace HomeCare\OrderApi;
+
 final class OrderModel
 {
-    private \PDO $pdo;
+    // All access uses one native-prepared PDO connection; no HTTP or stock arithmetic here.
+    public function __construct(public readonly \PDO $pdo) {}
 
-    public function __construct(\PDO $pdo)
-    {
-        $this->pdo = $pdo;
-    }
     // Refuse a stale role/disabled account even when a server session still exists.
     public function requireActor(array $principal, array $roles): void
     {
@@ -159,6 +157,10 @@ final class OrderModel
                 return ['fromStatus' => $from, 'toStatus' => $to, 'actorId' => $entry['changed_by'] === null ? null : (string) $entry['changed_by'],
                     'actorRole' => $entry['actor_role'], 'reason' => $entry['note'], 'createdAt' => orderIsoDate($entry['changed_at'])];
             }, $statement->fetchAll(\PDO::FETCH_ASSOC));
+            $payment = $this->pdo->prepare("SELECT expires_at FROM payments WHERE order_id = ? AND payment_method = 'VNPAY' AND is_deleted = 0 ORDER BY id LIMIT 1");
+            $payment->execute([$row['id']]);
+            $expiresAt = $payment->fetchColumn();
+            $result['paymentExpiresAt'] = $expiresAt === false || $expiresAt === null ? null : orderIsoDate($expiresAt);
             $result['returnRequest'] = $this->returnRequest((string) $row['id']);
         }
         return $result;
@@ -184,18 +186,41 @@ final class OrderModel
     // Separate return lifecycle: this read never changes order/payment/stock.
     public function returnRequest(string $orderId): ?array
     {
-        $statement = $this->pdo->prepare('SELECT * FROM order_return_requests WHERE order_id = ?');
+        $statement = $this->pdo->prepare('SELECT id, order_id, status, issue_category, severity, reason, decision_reason, created_at, updated_at FROM order_return_requests WHERE order_id = ? AND is_deleted = 0');
         $statement->execute([$orderId]);
         $row = $statement->fetch(\PDO::FETCH_ASSOC);
-        return $row ? ['id' => (string) $row['id'], 'orderId' => (string) $row['order_id'], 'status' => strtolower($row['status']), 'reason' => $row['reason'], 'createdAt' => orderIsoDate($row['created_at'])] : null;
+        return $row ? [
+            'id' => (string) $row['id'], 'orderId' => (string) $row['order_id'], 'status' => strtolower($row['status']),
+            'issueCategory' => $row['issue_category'], 'severity' => $row['severity'] === null ? null : strtolower($row['severity']),
+            'reason' => $row['reason'], 'decisionReason' => $row['decision_reason'],
+            'createdAt' => orderIsoDate($row['created_at']), 'updatedAt' => orderIsoDate($row['updated_at']),
+        ] : null;
     }
 
     // Exactly one request per order until a team-approved adjudication/reopen policy is added.
-    public function insertReturnRequest(array $order, array $actor, string $reason): array
+    public function insertReturnRequest(array $order, array $actor, string $issueCategory, string $reason): array
     {
         if ($this->returnRequest((string) $order['id'])) throw new ApiException(409, 'RETURN_REQUEST_EXISTS', 'Đơn đã có yêu cầu trả hàng.');
-        $statement = $this->pdo->prepare('INSERT INTO order_return_requests (order_id, customer_id, reason, created_at) VALUES (?, ?, ?, UTC_TIMESTAMP())');
-        $statement->execute([$order['id'], $actor['id'], $reason]);
-        return $this->returnRequest((string) $order['id']);
+        $statement = $this->pdo->prepare('INSERT INTO order_return_requests (order_id, customer_id, issue_category, reason, created_at, updated_at) VALUES (?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP())');
+        $statement->execute([$order['id'], $actor['id'], $issueCategory, $reason]);
+        $return = $this->returnRequest((string) $order['id']);
+        $this->appendReturnHistory((string) $return['id'], null, 'REQUESTED', 'CUSTOMER_REQUESTED', $actor, $reason, ['issueCategory' => $issueCategory]);
+        return $return;
+    }
+
+    // Keep return decisions auditable with the actor role as it existed for this event.
+    public function appendReturnHistory(string $returnId, ?string $from, string $to, string $action, array $actor, ?string $note, ?array $details = null): void
+    {
+        $statement = $this->pdo->prepare('INSERT INTO order_return_status_history (return_request_id, from_status, to_status, action, actor_id, actor_role, note, details, changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())');
+        $statement->execute([
+            $returnId,
+            $from,
+            $to,
+            $action,
+            $actor['id'],
+            $actor['role'],
+            $note,
+            $details === null ? null : json_encode($details, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+        ]);
     }
 }

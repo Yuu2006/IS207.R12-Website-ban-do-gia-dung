@@ -1,4 +1,6 @@
 .env
+client/.env.local
+client/.env.*.local
 node_modules/
 dist/
 vendor/
