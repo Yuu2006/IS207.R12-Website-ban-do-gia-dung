@@ -24,6 +24,8 @@ Sau khi review và áp 012, STT 24 cần áp tiếp `migrations/016_care_rule_su
 
 STT 15 (chatbot): áp **một lần** `migrations/018_chatbot_faqs.sql` sau 011 để bật FAQ chatbot do ADMIN duyệt (`/admin/chatbot-faqs`). Migration chỉ tạo bảng `chatbot_faqs`, không seed nội dung chính sách; khi chưa áp, gợi ý sản phẩm vẫn chạy nhưng tin nhắn chatbot và trang FAQ trả lỗi 503/500. Dashboard `/admin/reports` (STT 16) không cần migration mới, chỉ cần 008/014/015 (và 012 cho số liệu FitCheck/TCO).
 
+STT 10 (wishlist): áp **một lần** `migrations/019_wishlists.sql` sau baseline. Giới hạn voucher theo khách (`vouchers.per_customer_limit`) đã có từ migration 014, không cần migration riêng.
+
 Ví dụ với Compose: `docker compose exec -T db sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < database/schema_database.sql`, lặp lại theo thứ tự trên. Hai file đánh số 008 độc lập nhau; migration mới đánh số từ 012.
 
 `seeds/001_auth_demo_users.sql` tạo 4 tài khoản phát triển (`customer@`, `admin@`, `sales@`, `warehouse@example.test`, mật khẩu `Demo@1234567890!`). Chỉ dùng cho database phát triển.
