@@ -126,7 +126,8 @@ test('customer page uses storefront header/footer with status tabs and no worksp
 test('warranty route renders a real public page with working navigation, not a 404 or repair form', () => {
   const html = renderToStaticMarkup(createElement(MemoryRouter, { initialEntries: ['/warranty'] },
     createElement(SharedAuthContext.Provider, { value: { user: null, loading: false, error: '' } },
-      createElement(AppRoutes))));
+      // App.jsx always mounts OrderServiceProvider above the routes; the public chatbot uses it for "Thêm giỏ".
+      createElement(orderProvider, null, createElement(AppRoutes)))));
   assert.match(html, /Thông tin bảo hành/);
   assert.match(html, /href="\/orders"/);
   assert.match(html, /href="\/products"/);
