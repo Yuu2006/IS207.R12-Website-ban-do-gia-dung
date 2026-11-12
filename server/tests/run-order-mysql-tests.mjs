@@ -10,10 +10,11 @@ import { createServer } from 'node:net';
 // A brand-new loopback MySQL instance only. Never connect to the user's running DB service.
 const php = process.env.PHP_BIN || 'php';
 const mysqld = process.env.MYSQLD_BIN || 'mysqld';
-const phpArgs = process.env.PHP_EXTENSION_DIR ? ['-n', '-d', `extension_dir=${process.env.PHP_EXTENSION_DIR}`, '-d', 'extension=php_pdo_mysql.dll'] : [];
+const phpArgs = process.env.PHP_EXTENSION_DIR ? ['-n', '-d', `extension_dir=${process.env.PHP_EXTENSION_DIR}`, '-d', 'extension=php_pdo_mysql.dll', '-d', 'extension=php_mbstring.dll'] : [];
 const suite = fileURLToPath(new URL('./order-mysql.test.php', import.meta.url));
 const tcoSuite = fileURLToPath(new URL('./tco-mysql.test.php', import.meta.url));
 const careSuite = fileURLToPath(new URL('./care-mysql.test.php', import.meta.url));
+const chatbotSuite = fileURLToPath(new URL('./chatbot-dashboard-mysql.test.php', import.meta.url));
 const tempParent = await realpath(tmpdir());
 const root = await mkdtemp(join(tempParent, 'homecare-order-mysql-'));
 const portProbe = createServer();
@@ -34,6 +35,7 @@ const run = (binary, args, allowedFailure = false) => new Promise((resolve, reje
 const call = (...args) => run(php, [...phpArgs, suite, ...args]);
 const callTco = (...args) => run(php, [...phpArgs, tcoSuite, ...args]);
 const callCare = (...args) => run(php, [...phpArgs, careSuite, ...args]);
+const callChatbot = (...args) => run(php, [...phpArgs, chatbotSuite, ...args]);
 let server;
 let log = '';
 try {
@@ -103,7 +105,10 @@ try {
     else { assert.equal(results.filter(result => result.ok).length, 1); assert.equal(results.filter(result => result.code === 'ORDER_VERSION_CONFLICT').length, 1); }
     console.log((await paymentCall('verify-refund-race', JSON.stringify(refundOrder))).output.trim());
   }
-  console.log('PASS: isolated MySQL integration, payment ledger, care and two-process races.');
+  // Runs last: its order fixtures would change the order suites' exact row counts.
+  console.log((await callChatbot('init')).output.trim());
+  console.log((await callChatbot('test')).output.trim());
+  console.log('PASS: isolated MySQL integration, payment ledger, care, chatbot/dashboard and two-process races.');
 } finally {
   if (server?.pid && server.exitCode === null) {
     const stopped = once(server, 'exit');

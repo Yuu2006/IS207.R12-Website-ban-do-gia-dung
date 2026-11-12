@@ -1,10 +1,10 @@
 # DASH-01 / RPT-03 — dashboard contract để TV2/TV3 duyệt
 
-Trạng thái 04/11/2026: **dashboard tổng hợp vẫn là đề xuất, chưa được TV2/TV3 xác nhận và chưa có endpoint**. React preview tại `client/src/pages/admin/DashboardPreviewPage.jsx` hiển thị dấu `—`, không tạo số liệu giả; hiện chưa gắn route hay menu. Route `/admin` dùng trang tổng quan `StaffOverviewPage`. Task 30 đã bổ sung CSV giao dịch riêng theo quy tắc bên dưới; không coi CSV là endpoint dashboard.
+Trạng thái 12/11/2026 (STT 16): **đã triển khai `GET /admin/dashboard`** (ADMIN, Order API) và nối vào trang `/admin/reports`. Doanh thu dùng đúng mốc ghi nhận của CSV Task 30 (đã đối chiếu: cùng kỳ thì `netRevenueVnd` = NET_TOTAL của CSV). `careCompletionRate` vẫn `null` và `dataStatus: "PARTIAL"` vì cách tính lịch hoãn/hoàn tất muộn chưa được TV2/TV3 chốt. `DashboardPreviewPage.jsx` không còn được dùng.
 
-## Endpoint dự kiến
+## Endpoint
 
-`GET /api/admin/dashboard?from=2026-10-01&to=2026-10-19&timezone=Asia/Ho_Chi_Minh` — ADMIN; ngày `from` gồm đầu ngày, `to` gồm hết ngày địa phương; backend đổi sang khoảng UTC `[from, toExclusive)`. Giới hạn kỳ tối đa 366 ngày, validate `from <= to`. Response: `period`, `sales`, `ordersByStatus`, `topProducts`, `lowStock`, `decisionTools`, `dataStatus`. Mỗi chỉ số không có nguồn đủ tin cậy trả `value: null` và `dataStatus: "UNAVAILABLE"`, không trả 0.
+`GET /admin/dashboard?from=2026-10-01&to=2026-10-19` — ADMIN (SALES/CUSTOMER → 403, chưa đăng nhập → 401); timezone cố định `Asia/Ho_Chi_Minh`; ngày `from` gồm đầu ngày, `to` gồm hết ngày địa phương; backend đổi sang khoảng UTC `[from, toExclusive)`. Giới hạn kỳ tối đa 366 ngày, validate `from <= to`. Response: `period`, `sales`, `ordersByStatus`, `topProducts`, `lowStock`, `decisionTools`, `dataStatus`. Mỗi chỉ số không có nguồn đủ tin cậy trả `value: null` và `dataStatus: "UNAVAILABLE"`, không trả 0.
 
 ```json
 {
@@ -51,3 +51,28 @@ Ví dụ chỉ mô tả shape khi nguồn dữ liệu chưa sẵn sàng, **khôn
 ### CSV giao dịch Task 30 hiện có
 
 `GET /admin/reports/revenue.csv?from=YYYY-MM-DD&to=YYYY-MM-DD` chỉ dành cho ADMIN. Ngày bao gồm cả hai đầu theo `Asia/Ho_Chi_Minh`, tối đa 366 ngày. Một dòng SALE dương được ghi vào lần đầu lịch sử đơn chuyển `COMPLETED`, nếu thanh toán đã xác nhận `PAID` (bao gồm đơn đã hoàn sau đó); mỗi khoản hoàn mô phỏng tạo một dòng REFUND âm theo thời gian ghi sổ; NET_TOTAL bằng tổng SALE trừ REFUND trong kỳ. Refund hiện hoàn toàn bộ `orders.total_amount`, gồm phí giao hàng, sau SALES phân loại, ADMIN duyệt mức MAJOR/CRITICAL và WAREHOUSE xác nhận đủ checklist. Đây là sổ mô phỏng; không gọi ngân hàng và không tự nhập hàng trả lại vào tồn. Schema/route cần migration `015_return_refund_reporting.sql`.
+
+### Response đã triển khai
+
+```json
+{
+  "period": { "from": "2026-10-01", "to": "2026-10-31", "timezone": "Asia/Ho_Chi_Minh" },
+  "sales": { "grossSalesVnd": 1000000, "refundsVnd": 0, "netRevenueVnd": 1000000, "saleOrders": 1, "refundCount": 0,
+    "averageOrderValueVnd": 1000000, "placedOrders": 3, "completedOrders": 2, "purchasingCustomers": 1, "soldUnits": 2 },
+  "ordersByStatus": [{ "status": "completed", "orders": 2 }, { "status": "cancelled", "orders": 1 }],
+  "topProducts": [{ "productId": "50", "productName": "LG washer", "soldUnits": 2, "revenueVnd": 1000000 }],
+  "lowStock": { "total": 25, "items": [{ "variantId": "500", "sku": "BOT-50-A", "productName": "LG washer", "variantName": "Trắng", "stockQuantity": 3, "threshold": 5 }] },
+  "decisionTools": { "fitChecks": 0, "notFitRate": null, "tcoCalculations": 0, "careCompletionRate": null },
+  "dataStatus": "PARTIAL",
+  "generatedAt": "2026-11-12T15:00:00Z"
+}
+```
+
+- `grossSalesVnd`/`saleOrders`: đơn có lần **đầu** chuyển `COMPLETED` trong kỳ, hiện vẫn `COMPLETED`, thanh toán `PAID`/`REFUNDED` (giống dòng SALE của CSV). `refundsVnd`: ledger `order_simulated_refunds` ghi sổ trong kỳ. `averageOrderValueVnd` = gross / saleOrders, làm tròn nửa lên; `null` khi không có đơn.
+- `completedOrders`, `purchasingCustomers`, `soldUnits`, `topProducts`: đơn hoàn tất trong kỳ (mọi trạng thái thanh toán), top 5 theo số lượng rồi `product_id`; tên là snapshot trên dòng đơn.
+- `placedOrders`, `ordersByStatus`: đơn đặt trong kỳ, nhóm theo trạng thái hiện tại; tổng các nhóm = `placedOrders`.
+- `lowStock`: snapshot hiện tại, tối đa 10 SKU tồn thấp nhất + tổng số.
+- `decisionTools`: đếm `decision_events` trong kỳ; `notFitRate` là tỷ lệ 0–1 (4 chữ số), `null` khi không có lượt; tất cả `null` nếu chưa áp migration 012.
+- Lỗi: ngày sai định dạng, `to < from`, kỳ > 366 ngày → 422.
+
+Kiểm thử: `server/tests/chatbot-dashboard-mysql.test.php` (đơn hoàn tất, đơn hủy, đơn hoàn tất qua nửa đêm giờ Việt Nam sang tháng sau, top sản phẩm, SKU inactive không cảnh báo, kỳ rỗng → tỷ lệ `null`, CUSTOMER bị 403).

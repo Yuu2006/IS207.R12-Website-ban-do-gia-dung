@@ -302,3 +302,10 @@
 
 .ad-stack { display: flex; flex-direction: column; gap: 16px; }
 .ad-stack .hc-soon { margin-right: 8px; }
+
+/* Dashboard: thanh tỷ lệ trạng thái đơn và danh sách chỉ số dạng hàng. */
+.ad-status-bars { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.ad-status-bars li { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(0, 2fr) auto; align-items: center; gap: 12px; font-size: 13px; }
+.ad-status-bars li:not(:has(.ad-status-track)) { grid-template-columns: 1fr auto; }
+.ad-status-track { height: 8px; overflow: hidden; border-radius: 999px; background: #eef2f6; }
+.ad-status-track > span { display: block; height: 100%; border-radius: inherit; background: #0f5f73; }
