@@ -1,6 +1,6 @@
 # BOT-01..06 — thiết kế chatbot theo quy tắc và API contract
 
-Trạng thái 06/11/2026: **STT 24 bổ sung tra cứu catalog chatbot có dữ liệu thật**: `GET /api/chatbot/catalog-search` tìm SKU đang bán và trả giá/tồn hiện tại; widget gọi qua frontend service và mở trang chi tiết catalog thật. Widget hiện không dùng dữ liệu demo và không lưu hội thoại sau khi đóng trang. Đây chỉ là tra cứu catalog theo từ khóa; compare/FAQ/rule engine và luồng BOT-01..06 đầy đủ vẫn chưa triển khai. MVP dùng quy tắc, không dùng LLM.
+Trạng thái 12/11/2026 (STT 15): **đã triển khai chatbot theo quy tắc + FAQ do ADMIN duyệt**. `POST /api/chatbot/messages` phân loại `RECOMMEND`/`COMPARE`/`FAQ`/`UNKNOWN` bằng từ khóa (không LLM, không `eval`), tách slot danh mục/ngân sách/thương hiệu/tiêu chí/diện tích phòng, chấm điểm sản phẩm đang bán và trả 3–5 gợi ý kèm một điểm phù hợp + một đánh đổi. Widget hiển thị thẻ có nút Xem / So sánh (2–4 sản phẩm cùng danh mục → `/compare`) / FitCheck / Thêm giỏ (backend giỏ kiểm SKU và tồn). ADMIN quản lý FAQ tại `/admin/chatbot-faqs` (migration `018_chatbot_faqs.sql`). `GET /api/chatbot/catalog-search` (06/11) vẫn giữ nguyên. Nội dung chính sách **không** được seed: nhóm phải nhập và duyệt.
 
 ## 1. Luồng và tiêu chí trả lời
 
@@ -65,7 +65,7 @@ Ví dụ response:
 
 Các ca hồi quy của endpoint tra cứu gồm: ký tự `%`/`_` được tìm như ký tự thường; SKU, sản phẩm, thương hiệu và danh mục đã vô hiệu hóa không xuất hiện; giới hạn từ khóa và số kết quả; category ID không hợp lệ; giá/tồn được đọc từ MySQL. MySQL integration suite dùng một database local cô lập mới, không kết nối DB đang chạy của người dùng.
 
-Các endpoint chatbot tổng quát và quản trị FAQ phía dưới vẫn là **đề xuất, chưa triển khai**.
+Các endpoint dưới đây **đã triển khai** (12/11/2026). Bảng `chatbot_intent_rules` ở §3 chưa làm: quy tắc ý định nằm trong whitelist code `server/services/chatbot-rules.php`.
 
 | Method/path | Quyền | Mục đích |
 | --- | --- | --- |
@@ -121,3 +121,25 @@ Response mẫu về **shape**, không phải lời khuyên từ catalog:
 - FAQ chưa được ADMIN duyệt, nội dung chính sách hết hiệu lực, câu hỏi không match, hai intent cùng match.
 - Mọi câu trả lời có câu hỏi mở; không khẳng định nhu cầu phù hợp khi quy tắc/giá trị thiếu; không bịa số liệu, tồn hay chính sách.
 - Đóng/mở UI không mất hội thoại trong tab hiện tại, mobile bảng có cuộn ngang, bàn phím thao tác được; sau khi nối API phải có loading/error/retry thật.
+
+## 6. Hành vi đã triển khai (STT 15)
+
+| Method/path | Quyền | Ghi chú |
+| --- | --- | --- |
+| `POST /api/chatbot/messages` | Public (cần CSRF của phiên) | Body `{ message: 1–500 ký tự, context?: <context trả về ở lượt trước> }`. Trường lạ, context sai kiểu/khóa → 422. |
+| `GET /api/chatbot/quick-questions` | Public | Tối đa 6 câu hỏi của FAQ `ACTIVE`. |
+| `GET /api/admin/chatbot/faqs` | ADMIN | Danh sách mọi trạng thái, có người/thời điểm cập nhật và `version`. |
+| `POST /api/admin/chatbot/faqs` | ADMIN | `{ question ≤200, answer ≤2000, keywords "a, b" (1–20 từ, 2–50 ký tự), status DRAFT/ACTIVE/INACTIVE, sortOrder 0–1000 }` → 201. |
+| `PATCH /api/admin/chatbot/faqs/{id}` | ADMIN | Như POST + `expectedVersion`; sai version → 409, không có id → 404. |
+
+Response tin nhắn: `intent`, `state` (`ANSWERED`, `NEEDS_CLARIFICATION`, `NO_DATA`), `reply`, `followUpQuestion` (luôn có), `context` (slot để gửi lại lượt sau), `recommendations[]`, `faq` (khi trả lời FAQ: `id`, `question`, `updatedAt`), và với gợi ý: `categoryId`, `categoryName`, `checkedAt`.
+Mỗi phần tử `recommendations[]`: `productId`, `productName`, `brandName`, `imageUrl`, `warrantyMonths`, `variantId`, `sku`, `variantName`, `currentPrice` (VND nguyên), `stockQuantity`, `availability`, `score`, `reason`, `tradeoff`, `href`.
+
+Quy tắc chấm điểm (`chatbotRank`):
+- Ứng viên: product + category + brand + SKU đều active, chưa soft delete. Mỗi sản phẩm chọn một SKU: trong ngân sách và còn hàng trước, rồi rẻ nhất.
+- Loại khỏi danh sách: giá ngoài khoảng ngân sách; máy lạnh có `room_area_max_m2` nhỏ hơn diện tích khách nêu.
+- Tiêu chí theo danh mục (whitelist): tiết kiệm điện → `energy_kwh_year` (tủ lạnh) / `power_watts` (máy giặt, máy lạnh), thấp tốt hơn; dung tích/công suất lớn → `capacity_liters` / `capacity_kg` / `cooling_btu`; tiết kiệm nước → `water_liters_cycle`; `inverter`. Giá trị có dữ liệu được 0,5–2 điểm theo vị trí trong nhóm; **thiếu dữ liệu = 0 điểm và thành đánh đổi** “Chưa có dữ liệu …”.
+- Đúng thương hiệu +2, trong ngân sách +1, còn hàng +1; hòa điểm xếp theo giá rồi ID.
+- Câu chỉ khớp FAQ (không có slot sản phẩm) trả nguyên văn câu trả lời FAQ `ACTIVE`; hai FAQ khớp ngang nhau → không đoán. Câu không khớp gì → `UNKNOWN`, không lặp lại gợi ý cũ. Đổi danh mục thì bỏ ngân sách/thương hiệu/tiêu chí của danh mục trước.
+
+Kiểm thử: `server/tests/chatbot-rules.test.php` (quy tắc thuần) và `server/tests/chatbot-dashboard-mysql.test.php` (chạy trong `run-order-mysql-tests.mjs`): chỉ gợi ý sản phẩm active, giá/tồn từ MySQL, context nhiều lượt, FAQ DRAFT không được trả lời, xung đột version 409, input lạ 422.
