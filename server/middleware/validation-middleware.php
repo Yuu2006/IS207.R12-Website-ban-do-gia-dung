@@ -239,6 +239,19 @@ function validateCartRemove(array $input): array
 // Chuẩn hóa payload ghi; state/owner/version thật phải kiểm tra lại từ database.
 function validateOrderMutation(array $input, string $operation): array
 {
+    // CUS-11 wishlist payloads; ownership and product state are rechecked in the service.
+    if ($operation === 'wishlist-add') {
+        allowOrderFields($input, ['productId']);
+        return ['productId' => orderDatabaseId($input['productId'] ?? null, 'productId')];
+    }
+    if ($operation === 'wishlist-delete') {
+        allowOrderFields($input, []);
+        return [];
+    }
+    if ($operation === 'wishlist-move') {
+        allowOrderFields($input, ['skuId', 'quantity']);
+        return ['skuId' => orderDatabaseId($input['skuId'] ?? null, 'skuId'), 'quantity' => orderPositiveInteger($input['quantity'] ?? null, 'quantity')];
+    }
     if ($operation === 'return') {
         allowOrderFields($input, ['expectedVersion', 'issueCategory', 'reason']);
         $category = $input['issueCategory'] ?? null;

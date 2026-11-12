@@ -65,3 +65,16 @@ POST `/api/inventory/movements` `{ sku, movement_type: import|export, quantity >
 ## Kiểm thử
 
 `node --test scripts/catalog-inventory-api.test.mjs` (PHP + MySQL thử nghiệm đã seed 001 + 003): quyền kho 401/403, lọc sắp hết, lý do bắt buộc, CSRF, chứng từ trùng 409, chặn tồn âm, `performed_by_name`; SKU tồn 0, chặn `stock_quantity`, giá khuyến mãi ≥ giá, số thực, SKU trùng/đổi mã, khung thời gian sai, SKU ngừng bán ẩn khỏi storefront; thuộc tính sai khóa/trùng; ảnh URL ngoài bị chặn, upload PNG thật pass, file PHP giả PNG bị chặn, WAREHOUSE không upload ảnh catalog; thư viện ảnh (đại diện tự động, đổi đại diện, thứ tự, xóa mềm và thay thế); phân trang lịch sử; sản phẩm ngừng bán ẩn khỏi API công khai; xóa mềm SKU (chặn khi còn tồn hoặc là SKU cuối, 403 WAREHOUSE/CSRF); giá tạo sản phẩm không float; hai lần xuất đồng thời không âm tồn; đầu vào điều chỉnh sai; cảnh báo bỏ SKU ngừng bán; danh mục 2 cấp/thứ tự, mô tả thương hiệu, thứ tự banner. Test để lại ảnh 1×1 trong `server/uploads/products/` (đã gitignore).
+
+## Tìm kiếm sản phẩm và danh sách yêu thích (STT 10–11)
+
+`GET /api/products/search` — Public. Query: `keyword` (tên/mã sản phẩm, tối đa 100 ký tự, `%`/`_` tìm như ký tự thường), `category_id`, `brand_id` (một ID hoặc danh sách `1,2`), `min_price`, `max_price` (VND nguyên, so với giá bán hiện hành thấp nhất), `warranty_months` (danh sách), `sort` (`newest`, `price_asc`, `price_desc`, `best_selling`, `rating_desc`), `page`, `page_size` (1–100). Chỉ trả sản phẩm active có danh mục, thương hiệu active và ít nhất một SKU đang bán. Response: `{ items: [...], pagination: { page, page_size, total_items, total_pages } }`; mỗi item có `variant_count`, `min_price`, `total_stock`, `sold_quantity`, `review_count`, `rating_average`, `primary_image`.
+
+Wishlist (Order API, chỉ CUSTOMER, cần CSRF + `Idempotency-Key` cho thao tác ghi; migration `019_wishlists.sql`):
+
+| Method/path | Body | Ghi chú |
+| --- | --- | --- |
+| `GET /wishlist` | — | Mỗi sản phẩm một dòng: `wishlist_id`, `product_id`, `name`, `product_code`, `image_url`, `min_price`, `total_stock`, `variant_count`. |
+| `POST /wishlist` | `{ productId }` | Sản phẩm không tồn tại/ngừng bán → 404 `PRODUCT_NOT_FOUND`; thêm lại không tạo dòng trùng. |
+| `DELETE /wishlist/{productId}` | `{}` | Xóa mềm; xóa lặp không lỗi. |
+| `POST /wishlist/{productId}/move-to-cart` | `{ skuId, quantity }` | SKU phải thuộc sản phẩm đã lưu (422 `SKU_PRODUCT_MISMATCH`); thêm vào giỏ qua `POST /cart/items` nên kiểm tồn/version như giỏ hàng (409 `OUT_OF_STOCK`). |
