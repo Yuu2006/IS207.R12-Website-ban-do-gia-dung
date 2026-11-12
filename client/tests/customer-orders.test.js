@@ -119,7 +119,8 @@ test('customer page uses storefront header/footer with status tabs and no worksp
   assert.equal((html.match(/class="oc-card oc-order-card"/g) || []).length, 4);
   assert.doesNotMatch(html, /oc-nav-indicator|oc-announcement|Không gian nhân viên|href="\/sales\/orders"/);
   assert.doesNotMatch(html, />Thanh toán<\/a>/);
-  assert.match(html, /aria-label="Giỏ hàng và thanh toán"/);
+  assert.match(html, /aria-label="Giỏ hàng"[^>]*href="\/cart"/);
+  assert.match(html, /href="\/wishlist"/);
   assert.match(html, /aria-label="Mở menu"/);
 });
 
