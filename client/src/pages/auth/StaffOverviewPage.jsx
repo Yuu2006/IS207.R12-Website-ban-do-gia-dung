@@ -79,10 +79,10 @@ function SalesOrderChart() {
       orders.listSalesOrders({ status: 'preparing', pageSize: 1, signal }),
       ...['requested', 'pending_manager', 'approved', 'refunded'].map(status => returns.list({ status, pageSize: 1, signal })),
     ]).then(([completed, preparing, requested, manager, approved, refunded]) => setData([
-      ['Đã hoàn thành', total(completed)],
-      ['Đang chuẩn bị', total(preparing)],
-      ['Yêu cầu hoàn tiền', total(requested) + total(manager) + total(approved)],
-      ['Đã hoàn tiền', total(refunded)],
+      ['Đã hoàn thành', total(completed), 'done'],
+      ['Đang chuẩn bị', total(preparing), 'preparing'],
+      ['Yêu cầu hoàn tiền', total(requested) + total(manager) + total(approved), 'requested'],
+      ['Đã hoàn tiền', total(refunded), 'refunded'],
     ])).catch(err => { if (!signal.aborted) setError(err.message || 'Không tải được số liệu.'); });
     return () => controller.abort();
   }, [orders, attempt]);
@@ -91,9 +91,9 @@ function SalesOrderChart() {
     {error && <p className="hc-error" role="alert">{error} <button className="hc-text-button" type="button" onClick={() => setAttempt(current => current + 1)}>Thử lại</button></p>}
     {!data && !error && <p className="hc-muted" role="status">Đang tải biểu đồ…</p>}
     {data && <ul className="ad-hbars" aria-label="Số đơn theo nhóm xử lý">
-      {data.map(([label, value]) => <li key={label}>
+      {data.map(([label, value, tone]) => <li key={label}>
         <span className="ad-hbar-label">{label}</span>
-        <span className="ad-hbar-track"><span className="ad-hbar-fill" style={{ width: `${(value / max) * 100}%` }} /></span>
+        <span className="ad-hbar-track"><span className={`ad-hbar-fill ad-hbar-fill--${tone}`} style={{ width: `${(value / max) * 100}%` }} /></span>
         <b className="ad-hbar-value">{value}</b>
       </li>)}
     </ul>}
