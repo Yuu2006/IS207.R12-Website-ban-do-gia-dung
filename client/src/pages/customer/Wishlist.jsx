@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getProduct } from '../../services/catalog-service.js';
 import {
@@ -10,6 +10,10 @@ import { useOrderAction, useOrderQuery } from '../../hooks/use-order-api.js';
 import { money } from '../../services/order-ui-data.js';
 import OrderApiState from '../../components/order/OrderApiState.jsx';
 import { createApiClient } from '../../services/api-client.js';
+import { API_URL } from '../../services/http-client.js';
+
+// Catalog stores uploads as relative paths; prefix the API host so the image loads from the storefront origin.
+const imageSource = value => !value ? '' : /^https?:\/\//i.test(value) ? value : `${API_URL}${value.startsWith('/') ? value : `/${value}`}`;
 
 const request = createApiClient();
 
@@ -19,6 +23,8 @@ export default function Wishlist() {
     const [variants, setVariants] = useState({});
 
     const action = useOrderAction();
+
+    useEffect(() => { document.title = 'Sản phẩm yêu thích · HomeCare'; }, []);
 
     const wishlist = useOrderQuery(
         signal => getWishlist({ signal }),
@@ -122,9 +128,15 @@ export default function Wishlist() {
 
                                 <p>{item.product_code}</p>
 
+                                <p>
+                                    {Number(item.variant_count) > 0 ? `Từ ${money(item.min_price)}` : 'Chưa có phiên bản đang bán'}
+                                    {' · '}
+                                    {Number(item.total_stock) > 0 ? `Còn ${item.total_stock}` : 'Hết hàng'}
+                                </p>
+
                                 {item.image_url && (
                                     <img
-                                        src={item.image_url}
+                                        src={imageSource(item.image_url)}
                                         alt={item.name}
                                         width="100"
                                     />
