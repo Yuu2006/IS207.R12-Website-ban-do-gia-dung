@@ -20,6 +20,8 @@ services:
     working_dir: /var/www/html
     volumes:
       - ./server:/var/www/html
+      # Baseline cho server/db/setup.php (chỉ đọc).
+      - ./database:/var/www/database:ro
     environment:
       DB_HOST: db
       DB_PORT: 3306
