@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { LowStockCard, useLowStock } from '../../components/admin/LowStockAlert.jsx';
 import { Card, ChartPending, DataTable, KpiCard, PageHead } from '../../components/admin/ui.jsx';
 import { useAuth } from '../../context/auth-context.js';
+import { useOrderService } from '../../context/OrderServiceContext.jsx';
+import { createReturnRefundService } from '../../services/return-refund-service.js';
 import { listMovements } from '../../services/catalog-service.js';
 
 // created_at lưu UTC (không kèm múi giờ); hiển thị theo giờ máy.
@@ -36,6 +38,29 @@ function RecentMovements() {
   </section>;
 }
 
+// Hai chỉ số của SALES lấy từ tổng số bản ghi của API danh sách (pageSize=1 để chỉ tải một dòng).
+function SalesKpis() {
+  const orders = useOrderService();
+  const [counts, setCounts] = useState(null);
+  const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setCounts(null); setError('');
+    Promise.all([
+      orders.listSalesOrders({ status: 'pending', pageSize: 1, signal: controller.signal }),
+      createReturnRefundService().list({ status: 'requested', pageSize: 1, signal: controller.signal }),
+    ]).then(([newOrders, returns]) => setCounts({ orders: newOrders.pagination.totalItems, returns: returns.pagination.totalItems }))
+      .catch(err => { if (!controller.signal.aborted) setError(err.message || 'Không tải được số liệu.'); });
+    return () => controller.abort();
+  }, [orders, attempt]);
+  return <>
+    <KpiCard label="Đơn hàng mới" value={counts?.orders}>{counts?.orders > 0 && <Link className="ad-link" to="/sales/orders">Xử lý ngay</Link>}</KpiCard>
+    <KpiCard label="Yêu cầu trả hàng chờ phân loại" value={counts?.returns}>{counts?.returns > 0 && <Link className="ad-link" to="/sales/returns">Phân loại</Link>}</KpiCard>
+    {error && <p className="hc-error" role="alert">{error} <button className="hc-text-button" type="button" onClick={() => setAttempt(current => current + 1)}>Thử lại</button></p>}
+  </>;
+}
+
 // Tổng quan ADMIN/WAREHOUSE/SALES theo template: chỉ số, biểu đồ, cảnh báo tồn kho, hoạt động kho. Số liệu đơn hàng/doanh thu/voucher chưa có API nên giữ "—".
 export default function StaffOverviewPage() {
   const { user } = useAuth();
@@ -57,7 +82,7 @@ export default function StaffOverviewPage() {
     </PageHead>
     <div className="ad-kpis" aria-label="Chỉ số chính">
       {admin && <><KpiCard label="Doanh thu hôm nay" pending /><KpiCard label="Đơn hàng mới" pending />{stockKpi}<KpiCard label="Voucher đang chạy" pending /></>}
-      {sales && <><KpiCard label="Đơn hàng mới" pending /><KpiCard label="Yêu cầu trả hàng" pending /></>}
+      {sales && <SalesKpis />}
       {!admin && !sales && <>{stockKpi}{outKpi}</>}
     </div>
     {admin && <div className="ad-cols">
