@@ -55,6 +55,7 @@ services:
       - ./client:/app
     environment:
       VITE_API_URL: http://localhost:8080
+      VITE_USE_POLLING: "true"
     ports:
       - "5173:5173"
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
