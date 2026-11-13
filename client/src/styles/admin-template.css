@@ -309,3 +309,13 @@
 .ad-status-bars li:not(:has(.ad-status-track)) { grid-template-columns: 1fr auto; }
 .ad-status-track { height: 8px; overflow: hidden; border-radius: 999px; background: #eef2f6; }
 .ad-status-track > span { display: block; height: 100%; border-radius: inherit; background: #0f5f73; }
+
+/* Biểu đồ cột ngang một màu (tổng quan SALES). Cột có bo 4px ở đầu và neo vào đường nền. */
+.ad-hbars { list-style: none; margin: 0; padding: 0 4px 4px; display: grid; gap: 14px; }
+.ad-hbars li { display: grid; grid-template-columns: minmax(120px, 160px) 1fr 48px; align-items: center; gap: 12px; }
+.ad-hbar-label { color: var(--text-muted); font-size: 14px; }
+.ad-hbar-track { height: 16px; border-left: 1px solid var(--hc-border); }
+.ad-hbar-fill { display: block; height: 100%; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--hc-primary); transition: width var(--hc-motion-duration) var(--hc-motion-ease); }
+.ad-hbar-value { text-align: right; font-size: 16px; }
+@media (max-width: 480px) { .ad-hbars li { grid-template-columns: 1fr 48px; } .ad-hbar-track { grid-column: 1 / -1; grid-row: 2; } }
+@media (prefers-reduced-motion: reduce) { .ad-hbar-fill { transition: none; } }

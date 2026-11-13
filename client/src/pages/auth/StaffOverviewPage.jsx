@@ -61,6 +61,45 @@ function SalesKpis() {
   </>;
 }
 
+// Biểu đồ cột ngang một màu: mỗi nhóm có nhãn và số ngay trên cột nên không phụ thuộc vào màu.
+// "Yêu cầu hoàn tiền" = yêu cầu trả hàng chưa xong (chờ phân loại, chờ quản lý duyệt, đã duyệt chờ nhận hàng); từ chối không tính.
+function SalesOrderChart() {
+  const orders = useOrderService();
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    const { signal } = controller;
+    const returns = createReturnRefundService();
+    const total = result => result.pagination.totalItems;
+    setData(null); setError('');
+    Promise.all([
+      orders.listSalesOrders({ status: 'completed', pageSize: 1, signal }),
+      orders.listSalesOrders({ status: 'preparing', pageSize: 1, signal }),
+      ...['requested', 'pending_manager', 'approved', 'refunded'].map(status => returns.list({ status, pageSize: 1, signal })),
+    ]).then(([completed, preparing, requested, manager, approved, refunded]) => setData([
+      ['Đã hoàn thành', total(completed)],
+      ['Đang chuẩn bị', total(preparing)],
+      ['Yêu cầu hoàn tiền', total(requested) + total(manager) + total(approved)],
+      ['Đã hoàn tiền', total(refunded)],
+    ])).catch(err => { if (!signal.aborted) setError(err.message || 'Không tải được số liệu.'); });
+    return () => controller.abort();
+  }, [orders, attempt]);
+  const max = Math.max(1, ...(data ?? []).map(([, value]) => value));
+  return <Card title="Đơn hàng theo nhóm xử lý" subtitle="Hoàn thành, đang chuẩn bị, yêu cầu hoàn tiền, đã hoàn tiền">
+    {error && <p className="hc-error" role="alert">{error} <button className="hc-text-button" type="button" onClick={() => setAttempt(current => current + 1)}>Thử lại</button></p>}
+    {!data && !error && <p className="hc-muted" role="status">Đang tải biểu đồ…</p>}
+    {data && <ul className="ad-hbars" aria-label="Số đơn theo nhóm xử lý">
+      {data.map(([label, value]) => <li key={label}>
+        <span className="ad-hbar-label">{label}</span>
+        <span className="ad-hbar-track"><span className="ad-hbar-fill" style={{ width: `${(value / max) * 100}%` }} /></span>
+        <b className="ad-hbar-value">{value}</b>
+      </li>)}
+    </ul>}
+  </Card>;
+}
+
 // Tổng quan ADMIN/WAREHOUSE/SALES theo template: chỉ số, biểu đồ, cảnh báo tồn kho, hoạt động kho. Số liệu đơn hàng/doanh thu/voucher chưa có API nên giữ "—".
 export default function StaffOverviewPage() {
   const { user } = useAuth();
@@ -95,6 +134,7 @@ export default function StaffOverviewPage() {
       <Card title="Doanh thu theo danh mục" subtitle="Tủ lạnh, máy giặt, máy lạnh"><ChartPending /></Card>
     </div>}
     {user.role === 'WAREHOUSE' && <LowStockCard state={lowStock} />}
+    {sales && <SalesOrderChart />}
     {!sales && <RecentMovements />}
   </section>;
 }
