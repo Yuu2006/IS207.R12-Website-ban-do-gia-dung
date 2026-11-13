@@ -320,6 +320,6 @@
 @media (max-width: 480px) { .ad-hbars li { grid-template-columns: 1fr 48px; } .ad-hbar-track { grid-column: 1 / -1; grid-row: 2; } }
 @media (prefers-reduced-motion: reduce) { .ad-hbar-fill { transition: none; } }
 .ad-hbar-fill--done { background: #16a34a; }
-.ad-hbar-fill--preparing { background: #ca8a04; }
+.ad-hbar-fill--pending { background: #ca8a04; }
 .ad-hbar-fill--requested { background: #dc2626; }
 .ad-hbar-fill--refunded { background: #2563eb; }

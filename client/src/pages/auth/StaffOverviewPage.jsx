@@ -76,18 +76,18 @@ function SalesOrderChart() {
     setData(null); setError('');
     Promise.all([
       orders.listSalesOrders({ status: 'completed', pageSize: 1, signal }),
-      orders.listSalesOrders({ status: 'preparing', pageSize: 1, signal }),
+      orders.listSalesOrders({ status: 'pending', pageSize: 1, signal }),
       ...['requested', 'pending_manager', 'approved', 'refunded'].map(status => returns.list({ status, pageSize: 1, signal })),
-    ]).then(([completed, preparing, requested, manager, approved, refunded]) => setData([
+    ]).then(([completed, pending, requested, manager, approved, refunded]) => setData([
       ['Đã hoàn thành', total(completed), 'done'],
-      ['Đang chuẩn bị', total(preparing), 'preparing'],
+      ['Chờ xác nhận', total(pending), 'pending'],
       ['Yêu cầu hoàn tiền', total(requested) + total(manager) + total(approved), 'requested'],
       ['Đã hoàn tiền', total(refunded), 'refunded'],
     ])).catch(err => { if (!signal.aborted) setError(err.message || 'Không tải được số liệu.'); });
     return () => controller.abort();
   }, [orders, attempt]);
   const max = Math.max(1, ...(data ?? []).map(([, value]) => value));
-  return <Card title="Đơn hàng theo nhóm xử lý" subtitle="Hoàn thành, đang chuẩn bị, yêu cầu hoàn tiền, đã hoàn tiền">
+  return <Card title="Đơn hàng theo nhóm xử lý" subtitle="Hoàn thành, chờ xác nhận, yêu cầu hoàn tiền, đã hoàn tiền">
     {error && <p className="hc-error" role="alert">{error} <button className="hc-text-button" type="button" onClick={() => setAttempt(current => current + 1)}>Thử lại</button></p>}
     {!data && !error && <p className="hc-muted" role="status">Đang tải biểu đồ…</p>}
     {data && <ul className="ad-hbars" aria-label="Số đơn theo nhóm xử lý">
