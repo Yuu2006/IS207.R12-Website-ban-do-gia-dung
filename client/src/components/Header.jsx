@@ -6,6 +6,7 @@ import {
   X,
   LogOut,
   ArrowLeftRight,
+  Heart,
 } from "lucide-react";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -124,10 +125,22 @@ export default function Header() {
             <span>Tìm kiếm</span>
           </Link>
 
+          {/* Wishlist (CUS-11) is customer-only; guests are sent to login by the route guard. Staff accounts have no wishlist. */}
+          {(!user || user.role === "CUSTOMER") && <Link
+            to="/wishlist"
+            aria-label="Sản phẩm yêu thích"
+            title="Sản phẩm yêu thích"
+            aria-current={location.pathname === "/wishlist" ? "page" : undefined}
+            className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E7EB] text-[#667085] transition-colors hover:border-[#0F5F73] hover:text-[#0F5F73]"
+          >
+            <Heart size={17} />
+          </Link>}
+
           <Link
-            to="/checkout#order-summary"
-            aria-label="Giỏ hàng và thanh toán"
+            to="/cart"
+            aria-label="Giỏ hàng"
             title="Mở giỏ hàng"
+            aria-current={location.pathname === "/cart" ? "page" : undefined}
             className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E7EB] text-[#667085] transition-colors hover:border-[#0F5F73] hover:text-[#0F5F73]"
           >
             <ShoppingCart size={17} />
