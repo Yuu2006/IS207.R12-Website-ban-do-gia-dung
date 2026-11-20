@@ -6,8 +6,42 @@ import {
 } from "lucide-react";
 
 import { formatPrice } from "../data";
+import { Badge } from "./ui/Badge.jsx";
+import { Button } from "./ui/Button.jsx";
+import { Icon } from "./ui/Icon.jsx";
+import css from "./ProductCard.module.css";
+
+// mode="admin": `product` là dòng API quản trị (product_code, primary_image, min_price, total_stock, variant_count, is_active).
+function AdminProductCard({ product, onEdit, onToggleActive, busy }) {
+  const active = Number(product.is_active) === 1;
+  const stock = Number(product.total_stock);
+  return (
+    <article className={`ds-card ds-card--raised ${css.admin}`}>
+      <div className={css.media}>
+        {product.primary_image
+          ? <img src={product.primary_image} alt="" loading="lazy" onError={(event) => { event.currentTarget.hidden = true; }} />
+          : <Icon name="package" size={40} />}
+        <Badge className={css.status} tone={active ? "success" : "neutral"}>{active ? "Đang hoạt động" : "Ngừng hoạt động"}</Badge>
+      </div>
+      <div className="ds-card__body">
+        <h3 className="ds-card__title" title={product.name}>{product.name}</h3>
+        <p className="ds-card__sub"><code>{product.product_code}</code></p>
+        <p className={css.price}>{Number(product.variant_count) > 1 ? "Từ " : ""}{formatPrice(Number(product.min_price))}</p>
+        <p className={stock === 0 ? css.low : css.stock}>Tồn kho: {stock}{Number(product.variant_count) > 1 ? ` · ${product.variant_count} biến thể` : ""}</p>
+      </div>
+      <div className="ds-card__footer">
+        <Button variant="outline" size="sm" icon="edit" onClick={() => onEdit(product)} aria-label={`Sửa ${product.name}`}>Sửa</Button>
+        <Button variant="ghost" size="sm" icon={active ? "eye-off" : "eye"} disabled={busy} onClick={() => onToggleActive(product)} aria-label={`${active ? "Ẩn" : "Hiện"} ${product.name}`}>{active ? "Ẩn" : "Hiện"}</Button>
+      </div>
+    </article>
+  );
+}
 
 export default function ProductCard({
+  mode = "customer",
+  onEdit,
+  onToggleActive,
+  busy = false,
   product,
   navigate,
   onAddToCart,
@@ -16,6 +50,7 @@ export default function ProductCard({
   onToggleWishlist,
   wishlistBusy = false,
 }) {
+  if (mode === "admin") return <AdminProductCard product={product} onEdit={onEdit} onToggleActive={onToggleActive} busy={busy} />;
   return (
     <div className="group bg-white rounded-xl border border-[#E5E7EB] overflow-hidden hover:shadow-lg hover:border-[#0F5F73] transition-all">
       {/* IMAGE */}

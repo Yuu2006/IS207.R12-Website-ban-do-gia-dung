@@ -1,0 +1,31 @@
+/* Teal First Project Design System: chỉ biến CSS, không có quy tắc toàn cục cho body/h1-h4 để không đổi giao diện các trang khác. Font tải ở index.html. */
+:root{
+--teal-50:#EEF7FA;--teal-100:#D6EBF1;--teal-200:#AED6E2;--teal-300:#7FBBCD;--teal-400:#4B9CB5;--teal-500:#2C83A0;--teal-600:#176B87;--teal-700:#125670;--teal-800:#0F445A;--teal-900:#0B3345;
+--coral-100:#FDE3DD;--coral-300:#F9AE9F;--coral-500:#F2765E;--coral-700:#B83E26;
+--amber-100:#FDF0D5;--amber-300:#F8D08A;--amber-500:#F4A94E;--amber-700:#8A5A06;
+--gray-0:#FFFFFF;--gray-50:#F6F9FA;--gray-100:#EDF2F4;--gray-200:#DCE4E8;--gray-300:#C3CFD5;--gray-400:#9AABB3;--gray-500:#70838D;--gray-600:#52646D;--gray-700:#3B4A52;--gray-800:#26323A;--gray-900:#162027;
+--success-100:#E1F4EA;--success-500:#2E9E6B;--success-700:#1C7048;
+--warning-100:#FDF1D8;--warning-500:#E8A22B;--warning-700:#8A5A06;
+--danger-100:#FBE4E3;--danger-500:#D9534F;--danger-700:#A4302C;
+--info-100:var(--teal-100);--info-500:var(--teal-500);--info-700:var(--teal-700);
+--brand:var(--teal-600);--brand-hover:var(--teal-700);--brand-active:var(--teal-800);--brand-soft:var(--teal-50);--brand-soft-2:var(--teal-100);--accent-warm:var(--amber-500);
+--text-strong:var(--gray-900);--text-body:var(--gray-700);--text-muted:var(--gray-600);--text-subtle:var(--gray-500);--text-on-brand:#FFFFFF;--text-link:var(--teal-600);--text-link-hover:var(--teal-800);
+--surface-page:var(--gray-50);--surface-card:#FFFFFF;--surface-sunken:var(--gray-100);--surface-brand:var(--teal-600);--surface-brand-soft:var(--teal-50);--surface-inverse:var(--gray-900);--surface-overlay:rgba(11,51,69,.48);
+--border-subtle:var(--gray-200);--border-default:var(--gray-300);--border-strong:var(--gray-400);--border-brand:var(--teal-600);--border-focus:var(--teal-400);
+}
+:root{
+--font-display:'Nunito','Be Vietnam Pro',system-ui,sans-serif;--font-body:'Be Vietnam Pro','Nunito',system-ui,-apple-system,'Segoe UI',sans-serif;--font-mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace;
+--text-xs:12px;--text-sm:14px;--text-md:16px;--text-lg:18px;--text-xl:20px;--text-2xl:24px;--text-3xl:30px;--text-4xl:38px;--text-5xl:48px;
+--leading-tight:1.2;--leading-snug:1.35;--leading-normal:1.55;--leading-relaxed:1.7;
+--weight-regular:400;--weight-medium:500;--weight-semibold:600;--weight-bold:700;--weight-extrabold:800;
+--tracking-tight:-0.01em;--tracking-normal:0;--tracking-wide:.04em;
+}
+:root{
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-10:40px;--space-12:48px;--space-16:64px;--space-20:80px;
+--radius-xs:4px;--radius-sm:8px;--radius-md:12px;--radius-lg:16px;--radius-xl:24px;--radius-pill:999px;
+--shadow-xs:0 1px 2px rgba(15,68,90,.08);--shadow-sm:0 2px 6px rgba(15,68,90,.10);--shadow-md:0 8px 20px -4px rgba(15,68,90,.14);--shadow-lg:0 20px 40px -12px rgba(15,68,90,.24);
+--shadow-focus:0 0 0 3px rgba(23,107,135,.30);--shadow-focus-danger:0 0 0 3px rgba(217,83,79,.30);
+--ease-out:cubic-bezier(.22,.8,.3,1);/* @kind other */--ease-in-out:cubic-bezier(.65,0,.35,1);/* @kind other */--dur-fast:120ms;/* @kind other */--dur-base:200ms;/* @kind other */--dur-slow:320ms;/* @kind other */
+--control-sm:32px;--control-md:40px;--control-lg:48px;
+--z-dropdown:10;/* @kind other */--z-overlay:100;/* @kind other */--z-toast:200;/* @kind other */
+}

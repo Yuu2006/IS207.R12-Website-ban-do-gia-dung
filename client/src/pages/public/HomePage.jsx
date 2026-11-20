@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowRight,
   Star,
@@ -8,13 +8,22 @@ import {
   Award,
   ChevronRight,
   ArrowLeftRight,
+  Menu,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { listProducts, getProduct } from "../../services/catalog-service.js";
+import { listProducts, getProduct, categories as categoryApi } from "../../services/catalog-service.js";
 import { API_URL } from "../../services/http-client.js";
 import { useOrderService } from "../../context/OrderServiceContext.jsx";
 import ProductCard from "../../components/ProductCard";
+
+// Danh mục nổi bật hiện thành lưới ở trang chủ (theo slug, thứ tự cố định); còn lại nằm trong "Tất cả danh mục".
+const FEATURED = [
+  ["may-giat", "🧺"], ["may-nuoc-nong", "🚿"], ["tivi", "📺"], ["may-loc-nuoc", "💧"],
+  ["tu-dong", "🥶"], ["quat", "🌀"], ["loa-dan-am-thanh", "🔊"], ["bep-tu", "🍳"],
+  ["tu-lanh", "🧊"], ["may-lanh", "❄️"], ["may-say-quan-ao", "👕"], ["robot-hut-bui", "🤖"],
+  ["noi-com-dien", "🍚"], ["ghe-massage", "💆"], ["may-loc-khong-khi", "🍃"],
+];
 
 const reviews = [
   {
@@ -48,6 +57,14 @@ export default function HomePage() {
   const [cartMessage, setCartMessage] = useState("");
   const [cartError, setCartError] = useState(false);
   const [addingProductId, setAddingProductId] = useState("");
+  const [allCategories, setAllCategories] = useState([]);
+  const [showAllCategories, setShowAllCategories] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    categoryApi.list().then((rows) => { if (active && Array.isArray(rows)) setAllCategories(rows); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -73,15 +90,13 @@ export default function HomePage() {
 
   const featured = products.slice(0, 4);
   const bestsellers = products.slice(4, 8);
-  const categories = useMemo(() => {
-    const grouped = new Map();
-    products.forEach((product) => {
-      const key = String(product.category_id);
-      if (!grouped.has(key)) grouped.set(key, { id: key, name: product.category_name, count: 0, icon: /tủ lạnh/i.test(product.category_name) ? "🧊" : /máy giặt/i.test(product.category_name) ? "🧺" : /lạnh|điều hòa/i.test(product.category_name) ? "❄️" : "📦" });
-      grouped.get(key).count += 1;
-    });
-    return [...grouped.values()].sort((left, right) => left.name.localeCompare(right.name, "vi"));
-  }, [products]);
+  const featuredCategories = FEATURED
+    .map(([slug, icon]) => ({ category: allCategories.find((item) => item.slug === slug), icon }))
+    .filter((item) => item.category);
+  const groups = allCategories
+    .filter((item) => !item.parent_id)
+    .map((group) => ({ ...group, items: allCategories.filter((item) => item.parent_id === group.id) }))
+    .filter((group) => group.items.length);
 
   const goProducts = () => {
     navigate("/products");
@@ -285,31 +300,62 @@ export default function HomePage() {
             onClick={goProducts}
             className="flex items-center gap-1 text-sm font-medium text-[#0F5F73] hover:underline"
           >
-            Xem tất cả
+            Xem tất cả sản phẩm
             <ChevronRight size={14} />
           </button>
         </div>
 
-        <div className="grid grid-cols-4 gap-3 sm:grid-cols-4 lg:grid-cols-8">
-          {categories.map((category) => (
+        <div className="rounded-2xl bg-white p-4 shadow-sm">
+          <div className="grid grid-cols-4 gap-y-5 lg:grid-cols-8">
+            {featuredCategories.map(({ category, icon }) => (
+              <button
+                key={category.id}
+                onClick={() => navigate(`/products?category=${category.id}`)}
+                className="group flex flex-col items-center gap-2 px-1"
+              >
+                <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F1F7F9] text-3xl transition-transform group-hover:scale-110">
+                  {icon}
+                </span>
+                <span className="text-center text-sm leading-tight text-[#1F2937] transition-colors group-hover:text-[#0F5F73]">
+                  {category.name}
+                </span>
+              </button>
+            ))}
             <button
-              key={category.id}
-              onClick={goProducts}
-              className="group flex flex-col items-center gap-2 rounded-2xl border border-[#E5E7EB] bg-white p-3 transition-all hover:border-[#0F5F73] hover:shadow-md"
+              onClick={() => setShowAllCategories((open) => !open)}
+              aria-expanded={showAllCategories}
+              className="group flex flex-col items-center gap-2 px-1"
             >
-              <span className="text-2xl">
-                {category.icon}
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F1F7F9] text-[#0F5F73]">
+                <Menu size={28} />
               </span>
-
-              <span className="text-center text-xs font-medium leading-tight text-[#1F2937] transition-colors group-hover:text-[#0F5F73]">
-                {category.name}
-              </span>
-
-              <span className="text-xs text-[#667085]">
-                {category.count}
+              <span className="text-center text-sm leading-tight text-[#1F2937] transition-colors group-hover:text-[#0F5F73]">
+                Tất cả danh mục
               </span>
             </button>
-          ))}
+          </div>
+
+          {showAllCategories && (
+            <div className="mt-5 grid gap-5 border-t border-[#E5E7EB] pt-5 sm:grid-cols-2 lg:grid-cols-3">
+              {groups.map((group) => (
+                <div key={group.id}>
+                  <div className="mb-2 text-sm font-semibold text-[#1F2937]">{group.name}</div>
+                  <ul className="space-y-1">
+                    {group.items.map((category) => (
+                      <li key={category.id}>
+                        <Link
+                          to={`/products?category=${category.id}`}
+                          className="text-sm text-[#667085] hover:text-[#0F5F73] hover:underline"
+                        >
+                          {category.name}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

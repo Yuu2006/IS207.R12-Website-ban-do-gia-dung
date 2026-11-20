@@ -1,0 +1,8 @@
+.admin { font-family: var(--font-body); }
+.admin :global(.ds-card__footer) { margin-top: auto; }
+.media { position: relative; aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center; background: var(--brand-soft-2); color: var(--teal-500); overflow: hidden; }
+.media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.status { position: absolute; top: var(--space-3); left: var(--space-3); box-shadow: var(--shadow-xs); }
+.price { margin: 0; font: var(--weight-extrabold) var(--text-lg) / var(--leading-snug) var(--font-display); color: var(--brand); }
+.stock, .low { margin: 0; font-size: var(--text-sm); color: var(--text-muted); }
+.low { color: var(--danger-700); font-weight: var(--weight-semibold); }
