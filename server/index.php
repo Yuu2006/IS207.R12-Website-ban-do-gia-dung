@@ -20,6 +20,8 @@ ini_set('display_errors', '0');
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
+// Allows the local regression client to refuse writes against any other installation.
+if (getenv('APP_ENV') === 'development' && getenv('WEEK4_DEMO') === '1' && getenv('DB_NAME') === 'homecare_week4_demo') header('X-HomeCare-Demo: week4');
 
 // Một router cho mọi module: auth/users (TV1) → catalog/kho /api/* (TV2) → đơn hàng (TV3).
 try {
@@ -84,7 +86,7 @@ try {
 
     // Catalog/kho/upload tự xuất response và gọi requireAdmin()/requireSessionRole().
     if ($isCatalog) {
-        $catalogRoutes = ['product' => 'handleProductRoutes', 'category' => 'handleCategoryRoutes', 'brand' => 'handleBrandRoutes', 'product-attribute' => 'handleProductAttributeRoutes', 'tco' => 'handleTcoRoutes', 'care' => 'handleCareRoutes', 'chatbot' => 'handleChatbotRoutes', 'inventory-movement' => 'handleInventoryMovementRoutes', 'inventory' => 'handleInventoryRoutes', 'banner' => 'handleBannerRoutes', 'upload' => 'handleUploadRoutes', 'catalog-admin' => 'handleCatalogAdminRoutes', 'fit-rule' => 'handleFitRuleRoutes', 'room-fit' => 'handleRoomFitRoutes'];
+        $catalogRoutes = ['product' => 'handleProductRoutes', 'category' => 'handleCategoryRoutes', 'brand' => 'handleBrandRoutes', 'product-attribute' => 'handleProductAttributeRoutes', 'tco' => 'handleTcoRoutes', 'care' => 'handleCareRoutes', 'chatbot' => 'handleChatbotRoutes', 'inventory-movement' => 'handleInventoryMovementRoutes', 'inventory' => 'handleInventoryRoutes', 'banner' => 'handleBannerRoutes', 'upload' => 'handleUploadRoutes', 'catalog-admin' => 'handleCatalogAdminRoutes', 'fit-rule' => 'handleFitRuleRoutes', 'room-fit' => 'handleRoomFitRoutes', 'installation-checklist' => 'handleInstallationChecklistRoutes'];
         foreach ($catalogRoutes as $file => $handler) {
             require_once __DIR__ . "/routes/{$file}-routes.php";
             if ($handler($method, $path)) exit;

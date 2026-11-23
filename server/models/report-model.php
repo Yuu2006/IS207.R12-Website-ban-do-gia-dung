@@ -57,7 +57,15 @@ final class ReportModel
         $lowStock = $all("SELECT v.id, v.sku, v.variant_name, p.name AS product_name, v.stock_quantity, v.low_stock_threshold {$lowStockWhere} ORDER BY v.stock_quantity, v.id LIMIT 10");
         $lowStockTotal = (int) ($one("SELECT COUNT(*) AS total {$lowStockWhere}")['total'] ?? 0);
 
-        $decision = ['fitChecks' => null, 'notFitRate' => null, 'tcoCalculations' => null, 'careCompletionRate' => null];
+        $decision = ['fitChecks' => null, 'notFitRate' => null, 'tcoCalculations' => null, 'careCompleted' => null, 'carePostponed' => null, 'installationChecklistsCompleted' => null, 'careCompletionRate' => null];
+        $metricSources = [
+            'fitChecks' => ['source' => 'decision_events:FIT_CHECK', 'timeBasis' => 'created_at', 'status' => 'UNAVAILABLE'],
+            'tcoCalculations' => ['source' => 'decision_events:TCO', 'timeBasis' => 'created_at', 'status' => 'UNAVAILABLE'],
+            'careCompleted' => ['source' => 'care_tasks:COMPLETED', 'timeBasis' => 'completed_at', 'status' => 'UNAVAILABLE'],
+            'carePostponed' => ['source' => 'care_tasks:POSTPONED (trạng thái hiện tại)', 'timeBasis' => 'updated_at', 'status' => 'UNAVAILABLE'],
+            'installationChecklistsCompleted' => ['source' => 'installation_checklists (FIT-02)', 'timeBasis' => 'first_completed_at', 'status' => 'UNAVAILABLE'],
+            'careCompletionRate' => ['source' => null, 'status' => 'UNAVAILABLE', 'reason' => 'Chờ TV2/TV3 chốt mẫu số và cách tính lịch hoãn/hoàn tất muộn.'],
+        ];
         try {
             $events = $one("SELECT SUM(event_type = 'FIT_CHECK') AS fit_checks, SUM(event_type = 'FIT_CHECK' AND fit_result = 'NOT_FIT') AS not_fit, SUM(event_type = 'TCO') AS tco
                 FROM decision_events WHERE created_at >= ? AND created_at < ?", [$fromUtc, $toUtc]);
@@ -65,10 +73,21 @@ final class ReportModel
             $decision['fitChecks'] = $fitChecks;
             $decision['notFitRate'] = $fitChecks === 0 ? null : round((int) $events['not_fit'] / $fitChecks, 4);
             $decision['tcoCalculations'] = (int) ($events['tco'] ?? 0);
+            $metricSources['fitChecks']['status'] = $metricSources['tcoCalculations']['status'] = 'AVAILABLE';
         } catch (\PDOException $error) {
             // decision_events exists only after migration 012; without it these metrics stay unavailable.
             if ($error->getCode() !== '42S02') throw $error;
         }
+
+        try {
+            $decision['careCompleted'] = (int) ($one("SELECT COUNT(*) AS total FROM care_tasks WHERE status = 'COMPLETED' AND completed_at >= ? AND completed_at < ?", [$fromUtc, $toUtc])['total'] ?? 0);
+            $decision['carePostponed'] = (int) ($one("SELECT COUNT(*) AS total FROM care_tasks WHERE status = 'POSTPONED' AND updated_at >= ? AND updated_at < ?", [$fromUtc, $toUtc])['total'] ?? 0);
+            $metricSources['careCompleted']['status'] = $metricSources['carePostponed']['status'] = 'AVAILABLE';
+        } catch (\PDOException $error) { if ($error->getCode() !== '42S02') throw $error; }
+        try {
+            $decision['installationChecklistsCompleted'] = (int) ($one('SELECT COUNT(*) AS total FROM installation_checklists WHERE first_completed_at >= ? AND first_completed_at < ?', [$fromUtc, $toUtc])['total'] ?? 0);
+            $metricSources['installationChecklistsCompleted']['status'] = 'AVAILABLE';
+        } catch (\PDOException $error) { if ($error->getCode() !== '42S02') throw $error; }
 
         $gross = orderMoney($sales['gross'] ?? 0);
         $refunded = orderMoney($refunds['amount'] ?? 0);
@@ -87,6 +106,7 @@ final class ReportModel
             'topProducts' => array_map(static fn (array $row): array => ['productId' => (string) $row['product_id'], 'productName' => $row['product_name'], 'soldUnits' => (int) $row['units'], 'revenueVnd' => orderMoney($row['revenue'])], $top),
             'lowStock' => ['total' => $lowStockTotal, 'items' => array_map(static fn (array $row): array => ['variantId' => (string) $row['id'], 'sku' => $row['sku'], 'productName' => $row['product_name'], 'variantName' => $row['variant_name'], 'stockQuantity' => (int) $row['stock_quantity'], 'threshold' => (int) $row['low_stock_threshold']], $lowStock)],
             'decisionTools' => $decision,
+            'metricSources' => $metricSources,
             // Care completion rate still waits for TV2/TV3 to confirm how postponed/late tasks count.
             'dataStatus' => 'PARTIAL',
             'generatedAt' => gmdate('Y-m-d\TH:i:s\Z'),

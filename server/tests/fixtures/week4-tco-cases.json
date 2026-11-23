@@ -1,0 +1,6 @@
+[
+  {"name":"washer-one-year","years":1,"power":"2250","powerUnit":"W","water":"81","waterUnit":"L","hours":"1.50","uses":5,"annualConsumables":"100000","annualMaintenance":"50000","expected":{"electricity":"2632500.00","water":"526500.00","total":"4309000.00"}},
+  {"name":"washer-metric-three-years","years":3,"power":"2.2500","powerUnit":"kW","water":"0.0810","waterUnit":"m³","hours":"1.50","uses":5,"annualConsumables":"100000","annualMaintenance":"50000","expected":{"electricity":"7897500.00","water":"1579500.00","total":"10927000.00"}},
+  {"name":"annual-fridge-five-years","years":5,"annualKwh":"460","hours":"0","uses":0,"annualConsumables":"100000","annualMaintenance":"50000","expected":{"electricity":"6900000.00","water":"0.00","total":"8650000.00"}},
+  {"name":"round-money-only","years":1,"power":"1","powerUnit":"W","water":"1","waterUnit":"L","hours":"0.01","uses":1,"annualConsumables":"0","annualMaintenance":"0","expected":{"electricity":"1.56","water":"1300.00","total":"1001301.56"}}
+]

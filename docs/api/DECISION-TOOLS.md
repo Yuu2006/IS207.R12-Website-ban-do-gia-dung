@@ -1,5 +1,7 @@
 # HOME-01 / FIT-01 / TCO-01 / LIFE-01 / CARE-01 — schema và API contract
 
+Bổ sung tuần 4: compare và công cụ TCO dùng chung `components/decision/TcoComparison.jsx`/API TCO; làm tròn tiền sau khi nhân lượng điện/nước chưa làm tròn, có fixture độc lập Decimal và kiểm đơn vị/thời gian không hợp lệ. Thông số có unit trống trong DB giữ unknown. Hoãn bảo trì chỉ nhận ngày sau hạn hiện tại. FIT-02 có [API/lưu lịch sử checklist giao/lắp](INSTALLATION-CHECKLIST.md) qua migration 021; lượt hoàn tất đầu tiên đi vào dashboard. Bằng chứng và giới hạn: [STT 31–32](../guide/WEEK-4-HANDOFF.md).
+
 Trạng thái 11/11/2026: CRUD quy tắc FitCheck cho ADMIN, hồ sơ phòng và FitCheck cho CUSTOMER đã có FE/API, cần áp `012_decision_tools.sql` rồi `013_fit_rule_versions.sql`. TCO-01 và STT 24 (LIFE-01/CARE-01/ADM-CARE-01) cũng đã có FE/API: bridge tạo thiết bị/lịch cùng transaction hoàn tất đơn, API theo quyền sở hữu, cấu hình chu kỳ ADMIN và liên kết SKU vật tư; cần áp 012 và `016_care_rule_supplies.sql` trước khi dùng với MySQL. Màn hình quản trị lấy field từ catalog, không dùng dữ liệu minh họa. Ba mức kết quả FitCheck được giữ trong contract; thay đổi rule không sửa snapshot phiên bản cũ.
 
 ## 1. Quy ước chung

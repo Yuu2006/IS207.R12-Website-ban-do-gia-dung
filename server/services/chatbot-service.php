@@ -96,6 +96,7 @@ final class ChatbotService
         foreach ($slots['criteria'] as $criterion) if (isset($labels[$criterion])) $conditions[] = $labels[$criterion];
         $reply = 'Đây là ' . count($items) . " {$rules['label']} đang bán phù hợp nhất" . ($conditions ? ' với ' . implode(', ', $conditions) : '') . '. Mỗi thẻ nêu một điểm phù hợp và một đánh đổi; giá, tồn lấy từ catalog lúc trả lời.';
         if (count($items) < 3) $reply .= ' Chỉ có ' . count($items) . ' sản phẩm thỏa điều kiện.';
+        if (in_array('energy', $slots['criteria'], true) && ($rules['energy'][0] ?? '') === 'power_watts') $reply .= ' Công suất W là mức định mức, chưa đủ để kết luận điện năng tiêu thụ hoặc hiệu suất; cần đối chiếu kWh và cùng kịch bản sử dụng trong TCO.';
         $followUp = $slots['budgetMax'] === null ? 'Ngân sách tối đa của bạn khoảng bao nhiêu?' : ($slots['criteria'] === [] ? 'Bạn ưu tiên tiết kiệm điện hay dung tích/công suất lớn?' : 'Bạn muốn so sánh 2–4 mẫu nào trong số này?');
         return $this->answer('RECOMMEND', 'ANSWERED', $reply, $followUp, $nextContext, ['categoryId' => (string) $category['id'], 'categoryName' => $category['name'], 'recommendations' => $items, 'checkedAt' => gmdate('Y-m-d\TH:i:s\Z')]);
     }
