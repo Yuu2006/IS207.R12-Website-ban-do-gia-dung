@@ -6,7 +6,7 @@ Cập nhật 12/11/2026. Bảng xem [ERD.md](ERD.md) mục 2; API xem [docs/api/
 
 | Bảng | Vai trò | Ràng buộc chính |
 | --- | --- | --- |
-| `categories` | Danh mục (cây qua `parent_id`), `slug` duy nhất, `sort_order` | MVP dùng 3 danh mục: `tu-lanh`, `may-giat`, `may-lanh` |
+| `categories` | Danh mục (cây qua `parent_id`), `slug` duy nhất, `sort_order` | 3 danh mục lõi `tu-lanh`, `may-giat`, `may-lanh` (có thuộc tính FitCheck/TCO); seed 012 thêm 5 nhóm cha (`nhom-*`, `parent_id` NULL) và 92 danh mục con chỉ mang `specifications` JSON, không có thuộc tính động. Lọc theo `category_id` là khớp đúng danh mục, chọn nhóm cha không gộp sản phẩm con |
 | `brands` | Thương hiệu, `logo_url`, `description` | — |
 | `products` | Sản phẩm chung: `product_code`, `slug` duy nhất, `warranty_months`, mô tả | Thuộc đúng một danh mục và một thương hiệu |
 | `product_variants` | **SKU — đơn vị bán và tồn kho**: `sku` duy nhất, `price`, `sale_price` + khung thời gian, `stock_quantity`, `low_stock_threshold` | Giỏ, đơn, kho, voucher đều tham chiếu SKU, không tham chiếu sản phẩm |

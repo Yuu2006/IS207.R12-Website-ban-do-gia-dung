@@ -43,7 +43,7 @@ function setupSeeds(): array
         ['name' => '001_auth_demo_users'], ['name' => '003_catalog_appliances'], ['name' => '004_catalog_real_brands'],
         ['name' => '005_catalog_media'], ['name' => '006_customers_addresses'], ['name' => '007_vouchers'],
         ['name' => '008_orders_payments'], ['name' => '009_reviews_audit'], ['name' => '010_decision_tools'],
-        ['name' => '011_catalog_real_images', 'optional' => true],
+        ['name' => '011_catalog_real_images', 'optional' => true], ['name' => '012_catalog_expansion'],
     ];
 }
 

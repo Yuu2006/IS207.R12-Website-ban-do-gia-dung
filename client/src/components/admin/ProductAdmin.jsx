@@ -4,13 +4,13 @@ import { Link } from 'react-router-dom';
 import { formatPrice } from '../../data.js';
 import { addProductImage, createCategoryAttribute, deleteProductImage, deleteVariant, getProductAttributes, listProductImages, listProducts, listVariants, products, saveProductAttributes, saveVariant, updateProductImage, uploadImage } from '../../services/catalog-service.js';
 import { toMoneyValue } from '../../utils/money-input.js';
+import { slugify } from '../../utils/slugify.js';
 import ConfirmDialog from './ConfirmDialog.jsx';
 import Modal from './Modal.jsx';
 import { AdminField } from './SimpleCrud.jsx';
 import { Chips, DataTable, EmptyCard, SearchBox } from './ui.jsx';
 
 const toLocal = value => (value || '').slice(0, 16).replace(' ', 'T');
-const slugify = text => text.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 function useForm(initial) {
   const [values, setValues] = useState(initial);
@@ -179,7 +179,8 @@ function ImagePanel({ product, onChanged }) {
 }
 
 // PRD-03/04: tạo/sửa/ngừng bán sản phẩm, ảnh đại diện; sản phẩm đã có đơn chỉ vô hiệu hóa (xóa mềm).
-export default function ProductAdmin({ categoryOptions, brandOptions, adding }) {
+// listless + editTarget: dùng làm hộp thoại Sửa cho lưới sản phẩm mới (danh sách và bộ lọc của nó tắt); onChanged báo lưới tải lại.
+export default function ProductAdmin({ categoryOptions, brandOptions, adding, listless = false, editTarget = null, onChanged }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState('');
   const [filters, setFilters] = useState({ keyword: '', category_id: '', is_active: '' });
@@ -189,15 +190,17 @@ export default function ProductAdmin({ categoryOptions, brandOptions, adding }) 
   const [deleting, setDeleting] = useState(null);
   const form = useForm({});
   const [version, setVersion] = useState(0);
-  const reload = () => setVersion(current => current + 1);
+  const reload = () => { setVersion(current => current + 1); onChanged?.(); };
   // Debounce tìm kiếm và bỏ phản hồi cũ khi bộ lọc đổi trước khi request trước trả về.
   useEffect(() => {
+    if (listless) return undefined;
     let active = true;
     const timer = setTimeout(() => listProducts(filters).then(data => { if (active) { setItems(data); setError(''); } }).catch(err => { if (active) setError(err.message); }), 300);
     return () => { active = false; clearTimeout(timer); };
   }, [filters, version]);
 
-  useEffect(() => { if (adding) open(null); }, [adding]); // nút "Thêm sản phẩm" ở tiêu đề trang
+  useEffect(() => { if (adding) open(null); }, [adding]);
+  useEffect(() => { if (editTarget) open(editTarget); }, [editTarget]); // nút "Thêm sản phẩm" ở tiêu đề trang
 
   function open(item) {
     setSelected(item ?? 'new'); setNotice(''); setError(''); form.setErrors({});
@@ -262,6 +265,7 @@ export default function ProductAdmin({ categoryOptions, brandOptions, adding }) 
       {selected !== 'new' && selected.id && <><VariantPanel product={selected} /><ImagePanel product={selected} onChanged={reload} /><SpecPanel product={selected} /></>}
     </Modal>}
     {deleting && <ConfirmDialog title="Xóa sản phẩm này?" description="Sản phẩm bị gỡ khỏi catalog và cửa hàng; dữ liệu đơn hàng cũ được giữ nguyên. Chỉ muốn tạm ngừng bán thì bỏ chọn Đang bán." summary={deleting.name} detail={deleting.product_code} badge={deleting.total_stock === undefined ? undefined : `Còn ${deleting.total_stock} trong kho`} confirmLabel="Xóa sản phẩm" busy={busy} error={error} onConfirm={removeProduct} onCancel={() => { setDeleting(null); setError(''); }} />}
+    {!listless && <>
     <div className="ad-filters" role="search">
       <SearchBox label="Tìm sản phẩm" placeholder="Tìm theo tên hoặc mã sản phẩm" value={filters.keyword} onChange={keyword => setFilters(current => ({ ...current, keyword }))} />
       <select className="ad-select" aria-label="Danh mục" value={filters.category_id} onChange={event => setFilters(current => ({ ...current, category_id: event.target.value }))}><option value="">Tất cả danh mục</option>{categoryOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>
@@ -269,5 +273,6 @@ export default function ProductAdmin({ categoryOptions, brandOptions, adding }) 
     <Chips label="Trạng thái bán" options={statusOptions} value={filters.is_active} onChange={is_active => setFilters(current => ({ ...current, is_active }))} />
     {!items ? !error && <p role="status" className="hc-muted">Đang tải sản phẩm…</p> : items.length === 0 ? <EmptyCard>Không có sản phẩm phù hợp.</EmptyCard>
       : <div><DataTable label="Danh sách sản phẩm" cols={columns} rows={items} rowKey={item => item.id} /><p className="ad-foot">Hiển thị {items.length} sản phẩm</p></div>}
+    </>}
   </>;
 }
