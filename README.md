@@ -65,6 +65,8 @@ Ví dụ: `feature/product-filter`, `feature/vnpay-payment`, `feature/repair-tra
 11. Dashboard / Reports / Audit Log
 
 ## Khởi chạy dự án
+
+Bàn giao và hồi quy tuần 4 (STT 31–32): [hướng dẫn chạy demo riêng, kiểm thử, tài khoản và giới hạn](docs/guide/WEEK-4-HANDOFF.md). Migration mới: **021_installation_checklists.sql** cho FIT-02; chỉ áp phần còn thiếu sau backup/review. `node server/tests/run-order-mysql-tests.mjs --docker` chạy MySQL cô lập, không cần cài PHP/MySQL trên host.
 1. Copy `.env.example` thành `.env`.
 2. Chạy `docker compose up -d --build`.
 3. Frontend: `cd client && npm install && npm run dev`.

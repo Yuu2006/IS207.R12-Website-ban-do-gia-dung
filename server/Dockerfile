@@ -1,9 +1,9 @@
 FROM php:8.3-apache
 COPY upload.ini /usr/local/etc/php/conf.d/upload.ini
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libpng-dev libjpeg62-turbo-dev libwebp-dev \
+    && apt-get install -y --no-install-recommends libpng-dev libjpeg62-turbo-dev libwebp-dev libonig-dev \
     && docker-php-ext-configure gd --with-jpeg --with-webp \
-    && docker-php-ext-install pdo pdo_mysql gd \
+    && docker-php-ext-install pdo pdo_mysql gd mbstring \
     && rm -rf /var/lib/apt/lists/*
 
 RUN a2enmod rewrite headers

@@ -69,3 +69,7 @@
 .dt-check-head span { font-weight: 600; }
 .dt-check p { margin: 4px 0; color: #344054; font-size: 12px; }
 .dt-check small { color: #667085; font-size: 12px; }
+.dt-installation fieldset { border: 0; padding: 0; margin: 16px 0; display: grid; gap: 14px; }
+.dt-installation-item { display: flex; align-items: flex-start; gap: 10px; line-height: 1.6; }
+.dt-installation-item input { margin-top: 5px; flex-shrink: 0; width: 18px; height: 18px; accent-color: #0f5f73; }
+.dt-installation details { margin-top: 16px; }

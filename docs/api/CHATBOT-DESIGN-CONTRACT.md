@@ -1,5 +1,7 @@
 # BOT-01..06 — thiết kế chatbot theo quy tắc và API contract
 
+Hồi quy tuần 4: `ChatbotModel` kiểm kiểu/đơn vị với `spec-fields.php`, chuẩn hóa kW → W và m³ → L trước khi chấm điểm; field sai unit/type hoặc thiếu giá trị giữ unknown, không tự bịa số. Gợi ý theo công suất định mức bổ sung giải thích W chưa chứng minh điện năng/hiệu suất. PHP image cần `mbstring` (Dockerfile đã bổ sung). Xem [bàn giao/hồi quy](../guide/WEEK-4-HANDOFF.md).
+
 Trạng thái 12/11/2026 (STT 15): **đã triển khai chatbot theo quy tắc + FAQ do ADMIN duyệt**. `POST /api/chatbot/messages` phân loại `RECOMMEND`/`COMPARE`/`FAQ`/`UNKNOWN` bằng từ khóa (không LLM, không `eval`), tách slot danh mục/ngân sách/thương hiệu/tiêu chí/diện tích phòng, chấm điểm sản phẩm đang bán và trả 3–5 gợi ý kèm một điểm phù hợp + một đánh đổi. Widget hiển thị thẻ có nút Xem / So sánh (2–4 sản phẩm cùng danh mục → `/compare`) / FitCheck / Thêm giỏ (backend giỏ kiểm SKU và tồn). ADMIN quản lý FAQ tại `/admin/chatbot-faqs` (migration `018_chatbot_faqs.sql`). `GET /api/chatbot/catalog-search` (06/11) vẫn giữ nguyên. Nội dung chính sách **không** được seed: nhóm phải nhập và duyệt.
 
 ## 1. Luồng và tiêu chí trả lời

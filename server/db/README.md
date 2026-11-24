@@ -63,12 +63,13 @@ Script dùng đúng thứ tự này; khi áp thủ công (Workbench, `mysql < fi
 | 13 | `migrations/018_chatbot_faqs.sql` | FAQ chatbot do ADMIN duyệt |
 | 14 | `migrations/019_wishlists.sql` | Danh sách yêu thích |
 | 15 | `migrations/020_query_indexes.sql` | Index cho dashboard/CSV (đã kiểm bằng EXPLAIN) |
+| 16 | `migrations/021_installation_checklists.sql` | FIT-02: checklist khách/sản phẩm/phòng, version, lịch sử/replay và mốc hoàn tất đầu tiên; cần 012 |
 
 Seed (chỉ database phát triển): `001_auth_demo_users`, rồi `003` → `010`, `011_catalog_real_images` nếu có, rồi `012_catalog_expansion` (5 nhóm + 92 danh mục + 552 sản phẩm đồ gia dụng theo Điện Máy Xanh, sinh bởi `scripts/generate-catalog-expansion.mjs`). Bỏ qua `002_demo_data.sql` (dữ liệu cũ, không còn dùng). Seed 011 thay ảnh placeholder bằng URL ảnh model thật gần nhất (Điện Máy Xanh, chỉ cho demo); chạy sau 005 và không ghi đè ảnh admin đã tải lên.
 
 `seeds/001_auth_demo_users.sql` tạo 4 tài khoản phát triển (`customer@`, `admin@`, `sales@`, `warehouse@example.test`, mật khẩu `Demo@1234567890!`). Không dùng trên production. Không cần seed để đăng ký tài khoản khách thật tại `/register`; DB chưa có đơn sẽ hiển thị trạng thái trống.
 
-Migration mới đánh số từ **021** và phải được thêm vào `setupMigrations()` trong `setup.php` kèm dấu hiệu nhận biết (`probe`); `server/tests/db-setup.test.php` báo lỗi nếu có file migration chưa được liệt kê.
+Migration mới đánh số từ **022** và phải được thêm vào `setupMigrations()` trong `setup.php` kèm dấu hiệu nhận biết (`probe`); `server/tests/db-setup.test.php` báo lỗi nếu có file migration chưa được liệt kê. 021 chỉ thêm bảng, không chuyển đổi/xóa dữ liệu cũ; xem [FIT-02](../../docs/api/INSTALLATION-CHECKLIST.md).
 
 ## Tạo database HomeCare mới trên Windows (không dùng Docker)
 
@@ -112,6 +113,8 @@ Kiểm tra `http://localhost:8080/auth/me`: trả 200 với `user:null` khi chư
 - Compose mount `server/db` vào `/docker-entrypoint-initdb.d`, nhưng MySQL chỉ chạy file `.sql` ở cấp trên cùng khi volume còn trống, nên migration/seed trong thư mục con **không** tự chạy. Dùng `setup.php`; không xóa volume để ép chạy init.
 
 ## Kiểm thử cô lập
+
+- `node server/tests/run-order-mysql-tests.mjs --docker`: chỉ cần Node và Docker Desktop đang chạy; build PHP từ Dockerfile (có pdo_mysql/mbstring), tạo MySQL/PHP riêng không mở cổng và dọn đúng container/volume thử nghiệm. Không dùng Compose/DB đồ án. Bao gồm tuần 4/checklist và kiểm tra đồng thời cùng/khác key.
 
 - `php server/tests/db-setup.test.php`: kiểm bộ tách câu SQL và việc mọi file migration đều có trong `setup.php`. Không cần DB.
 - `node server/tests/run-order-mysql-tests.mjs` (cần `PHP_BIN`, `PHP_EXTENSION_DIR` với pdo_mysql/mbstring, `MYSQLD_BIN`): tạo datadir MySQL mới ngoài repo trên cổng ngẫu nhiên khác 3306, áp baseline và migration cần cho từng bộ test (đơn, thanh toán, TCO, bảo trì, chatbot, dashboard, wishlist), rồi dừng và xóa đúng datadir đó. Không kết nối hay reset MySQL đang chạy.

@@ -1,5 +1,13 @@
 # DASH-01 / RPT-03 — dashboard contract để TV2/TV3 duyệt
 
+## Bổ sung tuần 4 (23/11/2026)
+
+`decisionTools` thêm các số đếm có nguồn: `careCompleted` đếm `care_tasks.status=COMPLETED` theo `completed_at` trong kỳ UTC; `carePostponed` đếm các lịch **hiện còn POSTPONED** và `updated_at` trong kỳ (không gọi đây là số lần hoãn lịch sử); `installationChecklistsCompleted` đếm FIT-02 theo `installation_checklists.first_completed_at` (migration 021). Một checklist/customer/product/room chỉ được đếm ở lần hoàn tất đầu tiên, bỏ check rồi hoàn tất lại không tăng lượt. Không dùng checklist nhận hàng trả để thay FIT-02.
+
+`metricSources` ghi source, timeBasis, status AVAILABLE/UNAVAILABLE và reason nếu chưa chốt. Thiếu bảng chưa áp migration trả null/UNAVAILABLE, không giả thành 0; có nguồn nhưng kỳ không có dữ liệu trả 0. `careCompletionRate` vẫn null vì chưa có chốt của TV2/TV3; các số đếm thô không đồng nghĩa với tỷ lệ SLA. UI `/admin/reports` hiện số đếm và cho ADMIN mở nguồn/mốc. Dữ liệu cũ được xóa khỏi UI khi đổi kỳ đang tải, không gắn KPI kỳ cũ vào nhãn kỳ mới.
+
+Hồi quy `week4-mysql.test.php` kiểm biên 16:59:59/17:00:00 UTC (nửa đêm Việt Nam), đếm request lặp, source khi thiếu/có 021 và CSV NET_TOTAL khớp dashboard. Hướng dẫn chạy/dữ liệu demo tại [bàn giao tuần 4](../guide/WEEK-4-HANDOFF.md).
+
 Trạng thái 12/11/2026 (STT 16): **đã triển khai `GET /admin/dashboard`** (ADMIN, Order API) và nối vào trang `/admin/reports`. Doanh thu dùng đúng mốc ghi nhận của CSV Task 30 (đã đối chiếu: cùng kỳ thì `netRevenueVnd` = NET_TOTAL của CSV). `careCompletionRate` vẫn `null` và `dataStatus: "PARTIAL"` vì cách tính lịch hoãn/hoàn tất muộn chưa được TV2/TV3 chốt. `DashboardPreviewPage.jsx` không còn được dùng.
 
 ## Endpoint

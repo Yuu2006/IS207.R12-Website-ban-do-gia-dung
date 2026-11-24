@@ -109,6 +109,13 @@ tcoEnsure($fridgeResult['electricity'] === '4140000.00', 'Annual kWh must not be
 tcoEnsure($fridgeResult['water'] === '0.00', 'Known refrigerator category water cost must be explicit zero.');
 $fridgeZeroUse = TcoCalculator::calculate($fridge, $zeroUseRequest);
 tcoEnsure($fridgeZeroUse['electricity'] === $fridgeResult['electricity'], 'Annual kWh must remain independent of the weekly use count, including zero.');
+$wrongPeriod = $fridge;
+$wrongPeriod['attribute_units']['energy_kwh_year'] = 'kWh/day';
+tcoEnsure(TcoCalculator::calculate($wrongPeriod, $normalized)['electricity'] === null, 'Daily kWh cannot be labelled annual consumption.');
+$wrongPeriod = $washer;
+$wrongPeriod['attribute_units'] = ['power_watts' => 'W/year', 'water_liters_cycle' => 'L/year'];
+$wrongPeriodResult = TcoCalculator::calculate($wrongPeriod, $normalized);
+tcoEnsure($wrongPeriodResult['electricity'] === null && $wrongPeriodResult['water'] === null, 'Unsupported time bases must not be silently stripped.');
 
 $missingCosts = $normalized;
 $missingCosts['annualCostsByProduct'][20]['maintenanceVndPerYear'] = null;
@@ -126,4 +133,16 @@ tcoEnsure(tcoWasRejected(tcoRequest(['annualCosts' => [
     ['productId' => 21, 'consumablesVndPerYear' => '0', 'maintenanceVndPerYear' => '0'],
 ]])), 'Negative annual assumptions must be rejected.');
 
-echo "PASS: TCO exact arithmetic, unit conversion, missing values, and request validation.\n";
+foreach (json_decode(file_get_contents(__DIR__ . '/fixtures/week4-tco-cases.json'), true, 32, JSON_THROW_ON_ERROR) as $case) {
+    $product = $washer;
+    $product['attributes'] = isset($case['annualKwh']) ? ['energy_kwh_year' => $case['annualKwh']] : ['power_watts' => $case['power'], 'water_liters_cycle' => $case['water']];
+    $product['category_slug'] = isset($case['annualKwh']) ? 'tu-lanh' : 'may-giat';
+    $product['defined_attributes'] = array_fill_keys(array_keys($product['attributes']), true);
+    $product['attribute_units'] = isset($case['annualKwh']) ? ['energy_kwh_year' => 'kWh/năm'] : ['power_watts' => $case['powerUnit'], 'water_liters_cycle' => $case['waterUnit']];
+    $input = tcoRequest(['years' => $case['years'], 'usesPerWeek' => $case['uses'], 'hoursPerUse' => $case['hours']]);
+    $input['annualCosts'][0]['consumablesVndPerYear'] = $case['annualConsumables'];
+    $input['annualCosts'][0]['maintenanceVndPerYear'] = $case['annualMaintenance'];
+    $result = TcoCalculator::calculate($product, TcoCalculator::validateRequest($input));
+    foreach ($case['expected'] as $key => $value) tcoEnsure($result[$key] === $value, 'Independent fixture mismatch: ' . $case['name'] . '/' . $key);
+}
+echo "PASS: TCO exact arithmetic, independent fixtures, unit conversion, missing values, and request validation.\n";

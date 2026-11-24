@@ -43,7 +43,7 @@ class RoomFitModel
 
     public function activeProductCategory(int $productId): ?int
     {
-        $query = $this->pdo->prepare('SELECT category_id FROM products WHERE id = ? AND is_active = 1 AND is_deleted = 0');
+        $query = $this->pdo->prepare('SELECT p.category_id FROM products p JOIN categories c ON c.id = p.category_id AND c.is_active = 1 AND c.is_deleted = 0 JOIN brands b ON b.id = p.brand_id AND b.is_active = 1 AND b.is_deleted = 0 WHERE p.id = ? AND p.is_active = 1 AND p.is_deleted = 0');
         $query->execute([$productId]);
         $value = $query->fetchColumn();
         return $value === false ? null : (int) $value;
@@ -67,5 +67,8 @@ class RoomFitModel
     public function recordFitCheck(string $requestKey, int $userId, string $result): void
     {
         $this->pdo->prepare("INSERT INTO decision_events (request_key, user_id, event_type, fit_result) VALUES (?, ?, 'FIT_CHECK', ?) ON DUPLICATE KEY UPDATE request_key = request_key")->execute([$requestKey, $userId, $result]);
+        $q = $this->pdo->prepare('SELECT user_id, event_type, fit_result FROM decision_events WHERE request_key = ?');
+        $q->execute([$requestKey]); $event = $q->fetch(PDO::FETCH_ASSOC);
+        if (!$event || (int) $event['user_id'] !== $userId || $event['event_type'] !== 'FIT_CHECK' || $event['fit_result'] !== $result) throw new ApiException('requestKey đã dùng cho yêu cầu khác. Hãy tạo mã mới.', 409);
     }
 }

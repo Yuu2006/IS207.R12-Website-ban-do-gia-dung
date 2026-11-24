@@ -6,25 +6,17 @@ import { API_URL } from '../../services/http-client.js';
 import {
   comparableCandidates,
   comparisonSpecs,
-  estimateTco,
   findRequestedProduct,
   productImage,
   productPrice,
   productionYear,
   selectedComparisonProducts,
 } from '../../utils/product-comparison.js';
+import TcoComparison from '../../components/decision/TcoComparison.jsx';
 import './compare-page.css';
 
 const money = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 });
 const paramKeys = ['product', 'with', 'with2', 'with3'];
-const costRows = [
-  ['purchase', 'Giá mua'],
-  ['electricity', 'Tiền điện'],
-  ['water', 'Tiền nước'],
-  ['consumables', 'Vật tư'],
-  ['maintenance', 'Bảo trì'],
-];
-const costLabels = Object.fromEntries(costRows);
 const valueOrDash = value => value === null || value === undefined || value === '' ? '—' : String(value);
 const formatMoney = value => value === null || value === undefined ? '—' : money.format(value);
 
@@ -77,10 +69,7 @@ export default function ComparePage() {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState('');
   const [detailsRetry, setDetailsRetry] = useState(0);
-  const [assumptions, setAssumptions] = useState({
-    years: '1', electricityRate: '', waterRate: '', usesPerWeek: '',
-    hoursPerUse: '', consumablesPerYear: '', maintenancePerYear: '',
-  });
+
 
   useEffect(() => {
     let cancelled = false;
@@ -157,7 +146,6 @@ export default function ComparePage() {
   const fullProducts = selected.map(product => product && (details[String(product.id)] || product));
   const detailProducts = selected.map(product => product && details[String(product.id)] || null);
   const specRows = !detailsLoading && !detailsError ? comparisonSpecs(detailProducts) : [];
-  const tcoResults = detailProducts.map(product => estimateTco(product, assumptions));
   const tcoReady = selected.filter(Boolean).length >= 2;
 
   return <main className="compare-page">
@@ -196,21 +184,7 @@ export default function ComparePage() {
           </div>
           <p className="compare-filter-note" role="status">{first ? candidates.length ? `Có ${candidates.length} sản phẩm khác thuộc loại ${first.category_name}.` : `Chưa có sản phẩm khác thuộc loại ${first.category_name}.` : 'Chọn sản phẩm đầu tiên để lọc các sản phẩm cùng loại.'}</p>
 
-          <section className="compare-tco-controls" aria-labelledby="compare-tco-title">
-            <div><h2 id="compare-tco-title">Giả định TCO</h2><p>Ước tính trên giao diện từ giá và thông số catalog. Nhập 0 nếu xác nhận không phát sinh vật tư hoặc bảo trì.</p></div>
-            <div className="compare-tco-inputs">
-              <label>Thời gian <select value={assumptions.years} onChange={event => setAssumptions(current => ({ ...current, years: event.target.value }))}><option value="1">1 năm</option><option value="3">3 năm</option><option value="5">5 năm</option></select></label>
-              {[
-                ['electricityRate', 'Giá điện (₫/kWh)'],
-                ['waterRate', 'Giá nước (₫/m³)'],
-                ['usesPerWeek', 'Số lần dùng/tuần'],
-                ['hoursPerUse', 'Số giờ/lần dùng'],
-                ['consumablesPerYear', 'Vật tư/năm/sản phẩm (₫)'],
-                ['maintenancePerYear', 'Bảo trì/năm/sản phẩm (₫)'],
-              ].map(([key, label]) => <label key={key}>{label}<input type="number" min="0" step="any" inputMode="decimal" value={assumptions[key]} onChange={event => setAssumptions(current => ({ ...current, [key]: event.target.value }))} placeholder="Chưa có" /></label>)}
-            </div>
-            <p>Với tủ lạnh, điện dùng kWh/năm. Với máy giặt hoặc máy lạnh, điện ước tính từ công suất × giờ/lần × lần/tuần × 52 tuần; nước máy giặt từ lít/chu trình. Tủ lạnh và máy lạnh không dùng nước vận hành.</p>
-          </section>
+
 
           {detailsError && <div className="compare-status compare-error" role="alert"><p>{detailsError}</p><button type="button" onClick={() => setDetailsRetry(value => value + 1)}><RotateCcw size={15} /> Tải lại thông số</button></div>}
           <div className="compare-table-scroll" role="region" aria-label="Bảng so sánh sản phẩm" tabIndex="0">
@@ -226,13 +200,12 @@ export default function ComparePage() {
                 {specRows.length > 0 && <tr className="compare-section-row"><th colSpan={slots + 1} scope="colgroup">Thông số theo loại sản phẩm</th></tr>}
                 {specRows.map(row => <tr key={row.key}><th scope="row">{row.label}</th>{row.values.map((value, index) => <td key={index}>{valueOrDash(value)}</td>)}</tr>)}
                 {detailsLoading && <tr><th scope="row">Thông số</th><td colSpan={slots}>Đang tải thông số…</td></tr>}
-                <tr className="compare-section-row"><th colSpan={slots + 1} scope="colgroup">Chi phí sở hữu TCO · {assumptions.years} năm · ước tính</th></tr>
-                {costRows.map(([key, label]) => <tr key={key}><th scope="row">{label}</th>{tcoResults.map((result, index) => <td key={index}>{formatMoney(result?.[key])}</td>)}</tr>)}
-                <tr className="compare-tco-total"><th scope="row">Tổng TCO</th>{tcoResults.map((result, index) => <td key={index}>{result?.total === null || !result ? <>{selected[index] ? 'Chưa đủ dữ liệu' : '—'}{result?.missing.length > 0 && <small>Thiếu: {result.missing.map(key => costLabels[key]).join(', ')}</small>}</> : formatMoney(result.total)}</td>)}</tr>
+
               </tbody>
             </table>
           </div>
-          <p className="compare-footnote">{!tcoReady && 'Chọn ít nhất 2 sản phẩm để so sánh. '}Giá là mức thấp nhất trong các phiên bản đang bán. TCO là ước tính theo giả định đã nhập, không phải tiền thanh toán; chưa có API TCO chính thức. Dấu “—” nghĩa là chưa có dữ liệu.</p>
+          {tcoReady && <TcoComparison key={selectedIdsKey} initialProductIds={selected.filter(Boolean).map(product => product.id)} />}
+          <p className="compare-footnote">{!tcoReady && 'Chọn ít nhất 2 sản phẩm để so sánh. '}Giá là mức thấp nhất trong các phiên bản đang bán. TCO bên dưới dùng cùng API với công cụ chi phí sở hữu, theo SKU và giả định đã chọn; không phải tiền thanh toán. Dấu “—” nghĩa là chưa có dữ liệu.</p>
         </>}
       </>}
     </div>

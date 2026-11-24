@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CheckCircle2, CircleHelp, Pencil, Ruler, Trash2, TriangleAlert } from 'lucide-react';
 import ConfirmDialog from '../../components/admin/ConfirmDialog.jsx';
 import FormField from '../../components/common/FormField.jsx';
+import InstallationChecklist from '../../components/decision/InstallationChecklist.jsx';
 import { listProducts } from '../../services/catalog-service.js';
 import { deleteRoom, listRooms, runFitCheck, saveRoom } from '../../services/room-fit-service.js';
 
@@ -128,6 +129,7 @@ export default function RoomFitPanel() {
       {checking.error && <p className="hc-error" role="alert">{checking.error}</p>}
       {result ? <FitResult result={result} /> : !checking.busy && !checking.error && <div className="dt-placeholder">Chọn hồ sơ phòng và sản phẩm để xem kết quả: Phù hợp, Cần kiểm tra thêm hoặc Không phù hợp.</div>}
     </section>
+    {productId && <InstallationChecklist key={`${productId}:${roomId}`} productId={productId} roomProfileId={roomId || null} />}
     <div className="dt-grid dt-grid--room">
       <section className="hc-card"><div className="dt-section-head"><Ruler size={21} aria-hidden="true" /><div><h2>{editingId ? 'Sửa hồ sơ không gian' : 'Thêm hồ sơ không gian'}</h2><p className="hc-muted">Nhập kích thước theo mm (32 cm = 320 mm). Bỏ trống nếu chưa biết.</p></div></div>
         <form className="hc-form dt-room-form" noValidate onSubmit={submitRoom}>

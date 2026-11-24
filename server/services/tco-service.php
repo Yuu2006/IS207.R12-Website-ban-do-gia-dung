@@ -87,12 +87,12 @@ final class TcoCalculator
         $electricityUnits = self::electricityUnits($product, $request, $missing, $assumptions);
         $electricityCents = $electricityUnits === null
             ? null
-            : self::multiplyDivideRound($electricityUnits, $request['electricityRateCents'], 10000);
+            : self::multiplyDivideRound($electricityUnits['numerator'], $request['electricityRateCents'], $electricityUnits['denominator']);
 
         $waterUnits = self::waterUnits($product, $request, $missing, $assumptions);
         $waterCents = $waterUnits === null
             ? null
-            : self::multiplyDivideRound($waterUnits, $request['waterRateCents'], 10000);
+            : self::multiplyDivideRound($waterUnits['numerator'], $request['waterRateCents'], $waterUnits['denominator']);
 
         $annualCosts = $request['annualCostsByProduct'][(int) $product['product_id']];
         $consumablesCents = self::annualCost($annualCosts['consumablesVndPerYear'], $request['years']);
@@ -182,7 +182,7 @@ final class TcoCalculator
     }
 
     /** Computes electricity from an annual kWh spec or rated power and the submitted use scenario. */
-    private static function electricityUnits(array $product, array $request, array &$missing, array &$assumptions): ?int
+    private static function electricityUnits(array $product, array $request, array &$missing, array &$assumptions): ?array
     {
         $attributes = $product['attributes'] ?? [];
         $defined = $product['defined_attributes'] ?? [];
@@ -200,12 +200,12 @@ final class TcoCalculator
                 return null;
             }
             $assumptions[] = 'Điện năng năm lấy từ thông số catalog; tần suất sử dụng không nhân lại thông số này.';
-            return self::multiplyDivideRound($annual, $request['years'], 1);
+            return ['numerator' => $annual * $request['years'], 'denominator' => 10000];
         }
 
         if ($request['usesPerWeek'] === 0) {
             $assumptions[] = 'Tần suất người dùng chọn là 0 lần/tuần; điện năng theo công suất sử dụng được tính bằng 0.';
-            return 0;
+            return ['numerator' => 0, 'denominator' => 1];
         }
 
         $dynamicPower = $attributes['power_watts'] ?? null;
@@ -232,13 +232,14 @@ final class TcoCalculator
         }
 
         $cyclesInPeriod = $request['usesPerWeek'] * 52 * $request['years'];
-        $energyUnits = self::multiplyDivideRound($powerUnits, $request['hoursPerUseUnits'] * $cyclesInPeriod, 100000);
+        // Keep the rational kWh amount until pricing: rounding energy first can change the final cents.
+        $energyUnits = ['numerator' => $powerUnits * $request['hoursPerUseUnits'] * $cyclesInPeriod, 'denominator' => 1000000000];
         $assumptions[] = 'Công suất catalog được chuẩn hóa về W (kW × 1.000 nếu cần) trước khi tính điện năng.';
         return $energyUnits;
     }
 
     /** Computes water from liters per use; known non-water appliance categories are explicitly excluded. */
-    private static function waterUnits(array $product, array $request, array &$missing, array &$assumptions): ?int
+    private static function waterUnits(array $product, array $request, array &$missing, array &$assumptions): ?array
     {
         $attributes = $product['attributes'] ?? [];
         $defined = $product['defined_attributes'] ?? [];
@@ -246,13 +247,13 @@ final class TcoCalculator
 
         if ($request['usesPerWeek'] === 0) {
             $assumptions[] = 'Tần suất người dùng chọn là 0 lần/tuần; lượng nước sử dụng được tính bằng 0.';
-            return 0;
+            return ['numerator' => 0, 'denominator' => 1];
         }
 
         if (!isset($defined['water_liters_cycle'])) {
             if (in_array($product['category_slug'] ?? '', ['tu-lanh', 'may-lanh'], true)) {
                 $assumptions[] = 'Danh mục không khai báo nước theo chu trình; khoản nước được tính 0.';
-                return 0;
+                return ['numerator' => 0, 'denominator' => 1];
             }
             $missing[] = 'Danh mục chưa định nghĩa mức tiêu thụ nước theo chu trình.';
             return null;
@@ -265,7 +266,7 @@ final class TcoCalculator
         }
 
         $cycles = $request['usesPerWeek'] * 52 * $request['years'];
-        $waterUnits = self::multiplyDivideRound($litersUnits, $cycles, 1000);
+        $waterUnits = ['numerator' => $litersUnits * $cycles, 'denominator' => 10000000];
         $assumptions[] = 'Lượng nước catalog được chuẩn hóa về lít (m³ × 1.000 nếu cần), rồi đổi sang m³ để tính chi phí.';
         return $waterUnits;
     }
@@ -408,7 +409,12 @@ final class TcoCalculator
 
         $normalized = function_exists('mb_strtolower') ? mb_strtolower(trim($unit), 'UTF-8') : strtolower(trim($unit));
         $normalized = str_replace(['³', '^3', ' ', "\u{00A0}"], ['3', '3', '', ''], $normalized);
-        return explode('/', $normalized, 2)[0];
+        // A key's physical unit and time basis must both match (kWh/day is not kWh/year).
+        if ($default === 'kwh') return in_array($normalized, ['kwh', 'kwh/năm', 'kwh/nam', 'kwh/year'], true) ? 'kwh' : '__UNKNOWN__';
+        if ($default === 'w') return $normalized;
+        $parts = explode('/', $normalized, 2);
+        if (isset($parts[1]) && !in_array($parts[1], ['cycle', 'chutrình', 'chutrinh'], true)) return '__UNKNOWN__';
+        return $parts[0];
     }
 
     /** Applies a unit multiplier without overflowing or exceeding the appliance-specific bound. */

@@ -33,6 +33,7 @@ final class TcoModel
                 END AS purchase_price
             FROM products p
             INNER JOIN categories c ON c.id = p.category_id
+            INNER JOIN brands b ON b.id = p.brand_id AND b.is_active = 1 AND b.is_deleted = 0
             INNER JOIN product_variants v ON v.product_id = p.id
             WHERE p.id = :product_id
               AND v.id = :variant_id
@@ -57,6 +58,7 @@ final class TcoModel
             LEFT JOIN product_attribute_values pav
                 ON pav.attribute_id = pa.id AND pav.product_id = :product_id
             WHERE pa.category_id = :category_id
+              AND pa.data_type = 'number'
               AND pa.attribute_key IN ('energy_kwh_year', 'power_watts', 'water_liters_cycle')"
         );
         $attributeStatement->execute([
@@ -71,7 +73,7 @@ final class TcoModel
             $key = $attribute['attribute_key'];
             $product['defined_attributes'][$key] = true;
             $product['attributes'][$key] = $attribute['value_number'];
-            $product['attribute_units'][$key] = $attribute['attribute_unit'];
+            $product['attribute_units'][$key] = trim($attribute['attribute_unit'] ?? '') === '' ? '__UNKNOWN__' : $attribute['attribute_unit'];
         }
 
         return $product;
