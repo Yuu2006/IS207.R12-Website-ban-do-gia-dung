@@ -3,10 +3,14 @@ export const API_URL = (env.VITE_API_URL || 'http://localhost:8080').replace(/\/
 let csrfToken = '';
 
 // Cookie do máy chủ quản lý; response lỗi giữ status và lỗi theo trường cho form.
-export async function requestApi(path, { method = 'GET', body, retried = false } = {}) {
-  if (method !== 'GET' && !csrfToken) await requestApi('/auth/me');
+export async function requestApi(path, { method = 'GET', body, retried = false, signal } = {}) {
+  if (signal?.aborted) throw new DOMException('Request cancelled', 'AbortError');
+  if (method !== 'GET' && !csrfToken) await requestApi('/auth/me', { signal });
   const isForm = body instanceof FormData;
   const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  if (signal?.aborted) controller.abort();
   const timeout = setTimeout(() => controller.abort(), 15000);
   let response;
   try {
@@ -15,13 +19,13 @@ export async function requestApi(path, { method = 'GET', body, retried = false }
       headers: { ...(body !== undefined && !isForm ? { 'Content-Type': 'application/json' } : {}), ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
       ...(body !== undefined ? { body: isForm ? body : JSON.stringify(body) } : {}),
     });
-  } catch { throw new Error('Không thể kết nối máy chủ. Hãy kiểm tra kết nối và thử lại.'); }
-  finally { clearTimeout(timeout); }
+  } catch { if (signal?.aborted) throw new DOMException('Request cancelled', 'AbortError'); throw new Error('Không thể kết nối máy chủ. Hãy kiểm tra kết nối và thử lại.'); }
+  finally { clearTimeout(timeout); signal?.removeEventListener('abort', abort); }
   const result = await response.json().catch(() => null);
   if (!result || typeof result.success !== 'boolean') throw Object.assign(new Error('Máy chủ trả dữ liệu không đúng hợp đồng API.'), { status: response.status });
   if (!response.ok || !result.success) {
     // Phiên máy chủ đổi (hết hạn/đăng nhập ở tab khác) làm token cũ sai: lấy token mới và thử lại một lần.
-    if (response.status === 403 && /CSRF/.test(result.message || '') && !retried) { csrfToken = ''; return requestApi(path, { method, body, retried: true }); }
+    if (response.status === 403 && /CSRF/.test(result.message || '') && !retried) { csrfToken = ''; return requestApi(path, { method, body, retried: true, signal }); }
     throw Object.assign(new Error(result.message || 'Yêu cầu chưa thực hiện được.'), { status: response.status, errors: result.errors || {} });
   }
   if (result.data?.csrfToken) csrfToken = result.data.csrfToken;

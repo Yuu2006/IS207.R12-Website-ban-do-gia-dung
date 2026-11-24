@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/../config/spec-fields.php';
+
 // Reads public, active catalog SKUs with their current effective price and stock count.
 final class ChatbotModel
 {
@@ -53,14 +55,15 @@ final class ChatbotModel
         }
         if ($products === [] || $specKeys === []) return array_values($products);
         $ids = array_keys($products);
-        $statement = $this->pdo->prepare('SELECT pav.product_id, pa.attribute_key, pa.data_type, pav.value_number, pav.value_boolean
+        $statement = $this->pdo->prepare('SELECT pav.product_id, pa.attribute_key, pa.data_type, pa.unit, pav.value_number, pav.value_boolean
             FROM product_attribute_values pav JOIN product_attributes pa ON pa.id = pav.attribute_id
             WHERE pa.category_id = ? AND pa.attribute_key IN (' . implode(',', array_fill(0, count($specKeys), '?')) . ')
                 AND pav.product_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
         $statement->execute([$categoryId, ...$specKeys, ...$ids]);
         foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $value = $row['data_type'] === 'boolean' ? $row['value_boolean'] : $row['value_number'];
-            if ($value !== null) $products[(string) $row['product_id']]['specs'][$row['attribute_key']] = $row['data_type'] === 'boolean' ? (int) $value : (string) $value;
+            $normalized = normalizedCatalogSpec($row['attribute_key'], $row['data_type'], $row['unit'], $value);
+            if ($normalized !== null) $products[(string) $row['product_id']]['specs'][$row['attribute_key']] = $normalized;
         }
         return array_values($products);
     }

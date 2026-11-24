@@ -33,6 +33,7 @@ function setupMigrations(): array
         ['name' => '018_chatbot_faqs', 'probe' => ['table', 'chatbot_faqs']],
         ['name' => '019_wishlists', 'probe' => ['table', 'wishlists']],
         ['name' => '020_query_indexes', 'probe' => ['index', 'orders', 'idx_orders_placed_at']],
+        ['name' => '021_installation_checklists', 'probe' => ['table', 'installation_checklist_events']],
     ];
 }
 

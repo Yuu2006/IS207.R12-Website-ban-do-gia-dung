@@ -215,6 +215,8 @@ erDiagram
 
 ## 7. Index phục vụ truy vấn thường dùng
 
+FIT-02 tuần 4 thêm migration 021: `installation_checklists` FK tới `users`, `products`, `room_profiles` (nullable); unique `(customer_id, product_id, room_scope)` với room_scope là COALESCE phòng/0, index `first_completed_at,id` phục vụ số đếm theo kỳ. `installation_checklist_events` FK tới customer/checklist, unique customer/request_key, giữ request_hash và snapshot response từng revision để replay/audit. Phiên bản cũ không bị viết lại; lần hoàn tất đầu tiên giữ nguyên khi bỏ check/hoàn tất lại. Không dùng bảng checklist nhận hàng trả của 015 để tính FIT-02.
+
 | Truy vấn | Index |
 | --- | --- |
 | Lọc sản phẩm theo danh mục/thương hiệu/trạng thái | `products.idx_product_filter (category_id, brand_id, is_active)` |

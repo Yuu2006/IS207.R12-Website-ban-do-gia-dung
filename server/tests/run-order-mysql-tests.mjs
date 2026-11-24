@@ -10,7 +10,11 @@ import { createServer } from 'node:net';
 // A brand-new loopback MySQL instance only. Never connect to the user's running DB service.
 const php = process.env.PHP_BIN || 'php';
 const mysqld = process.env.MYSQLD_BIN || 'mysqld';
-const phpArgs = process.env.PHP_EXTENSION_DIR ? ['-n', '-d', `extension_dir=${process.env.PHP_EXTENSION_DIR}`, '-d', 'extension=php_pdo_mysql.dll', '-d', 'extension=php_mbstring.dll'] : [];
+const dockerMode = process.argv.includes('--docker');
+const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
+const phpArgs = !dockerMode && process.env.PHP_EXTENSION_DIR ? ['-n', '-d', `extension_dir=${process.env.PHP_EXTENSION_DIR}`, '-d', 'extension=php_pdo_mysql.dll', '-d', 'extension=php_mbstring.dll'] : [];
+let databaseContainer;
+let phpContainer;
 const suite = fileURLToPath(new URL('./order-mysql.test.php', import.meta.url));
 const tcoSuite = fileURLToPath(new URL('./tco-mysql.test.php', import.meta.url));
 const careSuite = fileURLToPath(new URL('./care-mysql.test.php', import.meta.url));
@@ -25,6 +29,10 @@ await new Promise(resolve => portProbe.close(resolve));
 if (port === 3306) throw new Error('Refusing default MySQL port.');
 const env = { ...process.env, ORDER_MYSQL_TEST: 'isolated', DB_HOST: '127.0.0.1', DB_PORT: String(port), DB_NAME: 'homecare_order_test_' + Date.now(), DB_USER: 'root', DB_PASSWORD: '' };
 const run = (binary, args, allowedFailure = false) => new Promise((resolve, reject) => {
+  if (dockerMode && binary === php) {
+    args = ['exec', phpContainer, 'php', ...args.map(arg => arg.startsWith(projectRoot) ? '/workspace/' + arg.slice(projectRoot.length).replaceAll('\\', '/') : arg)];
+    binary = 'docker';
+  }
   const child = spawn(binary, args, { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';
   child.stdout.on('data', data => { output += data; });
@@ -40,19 +48,29 @@ let server;
 let log = '';
 try {
   console.log(`Isolated data directory: ${root}; port: ${port}`);
+  if (dockerMode) {
+    console.log('Building the project PHP image; creating private MySQL/PHP containers with no published ports.');
+    await run('docker', ['build', '-t', 'homecare-week4-test:local', fileURLToPath(new URL('../', import.meta.url))]);
+    databaseContainer = (await run('docker', ['run', '-d', '-e', 'MYSQL_ALLOW_EMPTY_PASSWORD=yes', 'mysql:8.4', `--port=${port}`, '--mysqlx=OFF', '--innodb-buffer-pool-size=64M'])).output.trim();
+    phpContainer = (await run('docker', ['run', '-d', '--network', `container:${databaseContainer}`, ...['ORDER_MYSQL_TEST', 'DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'].flatMap(key => ['-e', `${key}=${env[key]}`]), '--mount', `type=bind,source=${projectRoot},target=/workspace,readonly`, 'homecare-week4-test:local', 'sleep', 'infinity'])).output.trim();
+  } else {
   console.log((await run(mysqld, ['--version'])).output.trim());
   await run(mysqld, ['--no-defaults', '--initialize-insecure', `--datadir=${join(root, 'data')}`, '--console']);
   server = spawn(mysqld, ['--no-defaults', `--datadir=${join(root, 'data')}`, '--bind-address=127.0.0.1', `--port=${port}`, '--mysqlx=OFF', '--innodb-buffer-pool-size=64M', '--console'], { env, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
   server.on('error', error => { log += error.message; });
   server.stderr.on('data', data => { log = (log + data).slice(-12000); });
+  }
   let ready = false;
   for (let attempt = 0; attempt < 200; attempt += 1) {
-    if (server.exitCode !== null) throw new Error(log);
+    if (server && server.exitCode !== null) throw new Error(log);
     const ping = await run(php, [...phpArgs, suite, 'ping'], true);
     if (ping.code === 0) { ready = true; break; }
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   if (!ready) throw new Error(`MySQL did not become ready: ${log}`);
+  for (const file of ['tco-service.test.php', 'chatbot-rules.test.php', 'room-fit-evaluate.test.php', 'db-setup.test.php']) {
+    console.log((await run(php, [...phpArgs, fileURLToPath(new URL(file, import.meta.url))])).output.trim());
+  }
   console.log((await call('init')).output.trim());
   console.log((await callTco('init')).output.trim());
   console.log((await callCare('init')).output.trim());
@@ -108,8 +126,23 @@ try {
   // Runs last: its order fixtures would change the order suites' exact row counts.
   console.log((await callChatbot('init')).output.trim());
   console.log((await callChatbot('test')).output.trim());
+  const week4Suite = fileURLToPath(new URL('./week4-mysql.test.php', import.meta.url));
+  const callWeek4 = (...args) => run(php, [...phpArgs, week4Suite, ...args]);
+  console.log((await callWeek4('init')).output.trim());
+  console.log((await callWeek4('test')).output.trim());
+  for (const sameKey of [true, false]) {
+    const input = JSON.parse((await callWeek4('prepare-race')).output);
+    const results = (await Promise.all([input, { ...input, requestKey: sameKey ? input.requestKey : '19ba04ca-3ba8-4c1f-9550-a2ef783e45e4' }].map(payload => callWeek4('race-worker', JSON.stringify(payload))))).map(result => JSON.parse(result.output));
+    if (sameKey) { assert.ok(results.every(result => result.ok)); assert.deepEqual(results[0], results[1]); }
+    else { assert.equal(results.filter(result => result.ok).length, 1); assert.equal(results.filter(result => result.status === 409).length, 1); }
+    console.log((await callWeek4('verify-race', JSON.stringify(input))).output.trim());
+  }
   console.log('PASS: isolated MySQL integration, payment ledger, care, chatbot/dashboard and two-process races.');
 } finally {
+  // Remove only container IDs created by this invocation, including their own anonymous test volume.
+  for (const container of [phpContainer, databaseContainer]) {
+    if (container && /^[a-f0-9]{64}$/.test(container)) await run('docker', ['rm', '-fv', container], true);
+  }
   if (server?.pid && server.exitCode === null) {
     const stopped = once(server, 'exit');
     try { await call('shutdown'); } catch { server.kill(); }

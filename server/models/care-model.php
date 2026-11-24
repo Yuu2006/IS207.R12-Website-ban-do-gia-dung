@@ -124,6 +124,7 @@ final class CareModel
             if ($task['status'] === 'POSTPONED' && $task['due_date'] === $newDueDate && $task['postpone_reason'] === $reason) {
                 return $this->ownedCareTask($customerId, $taskId);
             }
+            if ($newDueDate <= $task['due_date']) throw new ApiException('Ngày hoãn phải sau ngày đến hạn hiện tại.', 422);
             $this->pdo->prepare("UPDATE care_tasks SET status = 'POSTPONED', due_date = ?, postpone_reason = ?, updated_by = ?, updated_at = UTC_TIMESTAMP() WHERE id = ?")
                 ->execute([$newDueDate, $reason, $actorId, $taskId]);
             return $this->ownedCareTask($customerId, $taskId);

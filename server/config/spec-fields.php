@@ -21,6 +21,23 @@ function specFieldMap(): array
     ];
 }
 
+// Normalize only known catalog units; bad metadata remains unknown instead of becoming a made-up spec.
+function normalizedCatalogSpec(string $key, string $type, ?string $unit, mixed $value): int|float|null
+{
+    $spec = specFieldMap()[$key] ?? null;
+    if (!$spec || $spec['type'] !== $type || $value === null) return null;
+    if ($type === 'boolean') return in_array((string) $value, ['0', '1'], true) && ($unit === null || $unit === '') ? (int) $value : null;
+    if (!is_numeric($value) || !is_finite((float) $value) || (float) $value < 0) return null;
+    $unit = strtolower(str_replace(['³', '²', ' '], ['3', '2', ''], trim($unit ?? '')));
+    $factor = match ($key) {
+        'power_watts' => match ($unit) { 'w' => 1, 'kw' => 1000, default => null },
+        'water_liters_cycle' => match ($unit) { 'l', 'l/cycle', 'l/chu trình', 'l/chutrình' => 1, 'm3', 'm3/cycle', 'm3/chutrình' => 1000, default => null },
+        'energy_kwh_year' => in_array($unit, ['kwh', 'kwh/năm', 'kwh/year'], true) ? 1 : null,
+        default => $unit === strtolower(str_replace(['³', '²', ' '], ['3', '2', ''], $spec['catalogUnit'] ?? '')) ? 1 : null,
+    };
+    return $factor === null ? null : (float) $value * $factor;
+}
+
 // Trường phòng luôn lưu theo đơn vị chuẩn của room_profiles.
 function roomSpecFieldMap(): array
 {

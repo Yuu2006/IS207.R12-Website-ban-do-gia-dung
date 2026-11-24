@@ -46,7 +46,7 @@ export default function ReportAdminPage() {
   const [dashboard, setDashboard] = useState({ loading: false, error: '', data: null });
   const [reloadKey, setReloadKey] = useState(0);
   useEffect(() => { document.title = 'Báo cáo · HomeCare'; }, []);
-  const rangeError = period === 'custom' && range.from && range.to && range.to < range.from ? 'Ngày kết thúc phải sau ngày bắt đầu.' : '';
+  const rangeError = period !== 'custom' || !range.from || !range.to ? '' : range.to < range.from ? 'Ngày kết thúc phải sau ngày bắt đầu.' : (new Date(`${range.to}T00:00:00Z`) - new Date(`${range.from}T00:00:00Z`)) / 86400000 > 365 ? 'Kỳ báo cáo tối đa 366 ngày.' : '';
   const periodLabel = periods.find(([key]) => key === period)[1].toLowerCase();
   const resolved = resolveRange(period, range);
   const from = resolved?.from || '';
@@ -55,10 +55,10 @@ export default function ReportAdminPage() {
   useEffect(() => {
     if (!from || !to) { setDashboard({ loading: false, error: '', data: null }); return undefined; }
     const controller = new AbortController();
-    setDashboard(current => ({ ...current, loading: true, error: '' }));
+    setDashboard({ data: null, loading: true, error: '' });
     getDashboard(from, to, { signal: controller.signal })
-      .then(data => setDashboard({ loading: false, error: '', data }))
-      .catch(error => { if (error.name !== 'AbortError') setDashboard({ loading: false, error: error.message || 'Không thể tải dashboard.', data: null }); });
+      .then(data => { if (!controller.signal.aborted) setDashboard({ loading: false, error: '', data }); })
+      .catch(error => { if (!controller.signal.aborted) setDashboard({ loading: false, error: error.message || 'Không thể tải dashboard.', data: null }); });
     return () => controller.abort();
   }, [from, to, reloadKey]);
   const retry = useCallback(() => setReloadKey(key => key + 1), []);
@@ -96,7 +96,7 @@ export default function ReportAdminPage() {
     {from && to && <p className="ad-sub" aria-live="polite">Kỳ báo cáo: {from} → {to}{dashboard.loading ? ' · đang tải…' : ''}</p>}
     {dashboard.error && <p className="hc-error" role="alert">{dashboard.error} <button className="hc-text-button" type="button" onClick={retry}><RefreshCw size={14} aria-hidden="true" /> Thử lại</button></p>}
     {(() => {
-      const data = dashboard.data;
+      const data = dashboard.data?.period?.from === from && dashboard.data?.period?.to === to ? dashboard.data : null;
       const sales = data?.sales;
       const statuses = data?.ordersByStatus || [];
       const placed = sales?.placedOrders || 0;
@@ -112,9 +112,10 @@ export default function ReportAdminPage() {
             {statuses.length ? <ul className="ad-status-bars">{statuses.map(row => <li key={row.status}><span>{statusLabels[row.status] || row.status}</span><span className="ad-status-track" aria-hidden="true"><span style={{ width: `${placed ? Math.round(row.orders * 100 / placed) : 0}%` }} /></span><b>{count(row.orders)}</b></li>)}</ul> : <p className="ad-sub">{data ? 'Không có đơn đặt trong kỳ.' : '—'}</p>}
           </Card></div>
           <Card title="Công cụ hỗ trợ chọn mua" subtitle="Sự kiện trong kỳ">
-            <ul className="ad-status-bars"><li><span>Lượt FitCheck</span><b>{count(data?.decisionTools?.fitChecks)}</b></li><li><span>Tỷ lệ không phù hợp</span><b>{data?.decisionTools?.notFitRate === null || data?.decisionTools?.notFitRate === undefined ? '—' : `${Math.round(data.decisionTools.notFitRate * 1000) / 10}%`}</b></li><li><span>Lượt tính TCO</span><b>{count(data?.decisionTools?.tcoCalculations)}</b></li><li><span>Hoàn tất bảo trì</span><b title="Chờ nhóm chốt cách tính lịch hoãn/hoàn tất muộn">—</b></li></ul>
+            <ul className="ad-status-bars"><li><span>Lượt FitCheck</span><b>{count(data?.decisionTools?.fitChecks)}</b></li><li><span>Tỷ lệ không phù hợp</span><b>{data?.decisionTools?.notFitRate === null || data?.decisionTools?.notFitRate === undefined ? '—' : `${Math.round(data.decisionTools.notFitRate * 1000) / 10}%`}</b></li><li><span>Lượt tính TCO</span><b>{count(data?.decisionTools?.tcoCalculations)}</b></li><li><span>Bảo trì hoàn tất (lượt)</span><b>{count(data?.decisionTools?.careCompleted)}</b></li><li><span>Lịch đang hoãn cập nhật trong kỳ</span><b>{count(data?.decisionTools?.carePostponed)}</b></li><li><span>Checklist giao/lắp hoàn tất lần đầu</span><b>{count(data?.decisionTools?.installationChecklistsCompleted)}</b></li><li><span>Tỷ lệ hoàn tất bảo trì</span><b title={data?.metricSources?.careCompletionRate?.reason}>—</b></li></ul>
           </Card>
         </div>
+        {data?.metricSources && <details className="hc-card"><summary>Nguồn và mốc thời gian của chỉ số</summary><ul>{Object.entries(data.metricSources).map(([key, item]) => <li key={key}><strong>{key}</strong>: {item.source || 'Chưa chốt nguồn/cách tính'}{item.timeBasis ? ` · ${item.timeBasis} (UTC → kỳ Việt Nam)` : ''} · {item.status === 'AVAILABLE' ? 'Có nguồn dữ liệu' : 'Chưa khả dụng'}{item.reason ? ` · ${item.reason}` : ''}</li>)}</ul></details>}
         <section className="hc-card ad-card" aria-labelledby="top-products-title">
           <div className="ad-card-head ad-pad"><div><h2 id="top-products-title">Sản phẩm bán chạy nhất</h2><span className="ad-sub">Xếp theo số lượng của đơn hoàn tất trong kỳ</span></div></div>
           <DataTable bare label="Sản phẩm bán chạy nhất" cols={topColumns} rows={data?.topProducts || []} rowKey={row => row.productId} empty={data ? 'Chưa có đơn hoàn tất trong kỳ.' : 'Chưa có dữ liệu.'} />

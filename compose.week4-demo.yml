@@ -1,0 +1,46 @@
+name: homecare-week4-demo
+
+# Separate development database and loopback API. Never point this file at the shared project DB.
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: homecare_week4_demo
+      MYSQL_USER: week4_demo
+      MYSQL_PASSWORD: week4_demo_only
+      MYSQL_ROOT_PASSWORD: week4_root_demo_only
+    volumes:
+      - week4_demo_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+  api:
+    build: ./server
+    ports:
+      - "127.0.0.1:18080:80"
+    volumes:
+      - ./server:/var/www/html
+      - ./database:/var/www/database:ro
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: homecare_week4_demo
+      DB_USER: week4_demo
+      DB_PASSWORD: week4_demo_only
+      APP_ENV: development
+      WEEK4_DEMO: "1"
+      CLIENT_URL: http://localhost:15173,http://127.0.0.1:15173
+      ORDER_STORAGE_MODE: mysql
+      CHECKOUT_SHIPPING_VND: 30000
+      CHECKOUT_FREE_SHIPPING_MIN_VND: 500000
+      STORE_NAME: HomeCare Week 4 Demo
+      VNPAY_TMN_CODE: ""
+      VNPAY_HASH_SECRET: ""
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  week4_demo_data:
