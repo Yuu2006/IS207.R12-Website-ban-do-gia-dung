@@ -34,11 +34,13 @@ export default function ReturnManagementPage() {
   const [busy, setBusy] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [error, setError] = useState('');
+  const [errorStatus, setErrorStatus] = useState(0);
   const [severityInput, setSeverityInput] = useState('MAJOR');
   const [triageNote, setTriageNote] = useState('');
   const [decisionReason, setDecisionReason] = useState('');
   const [checklist, setChecklist] = useState(emptyChecklist);
   const pendingMutation = useRef(null);
+  const detailPanelRef = useRef(null);
   const activeReturnId = useRef('');
   activeReturnId.current = selectedId;
   const salesCanTriage = user?.role === 'SALES';
@@ -57,7 +59,7 @@ export default function ReturnManagementPage() {
         setPagination(result.pagination);
         setSelectedId(current => result.items.some(item => item.id === current) ? current : (result.items[0]?.id || ''));
       })
-      .catch(failure => { if (failure.name !== 'AbortError') setError(failure.message); })
+      .catch(failure => { if (failure.name !== 'AbortError') { setError(failure.message); setErrorStatus(failure.status); } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [service, status, severity, search, page, refresh]);
@@ -74,10 +76,21 @@ export default function ReturnManagementPage() {
     setChecklist(emptyChecklist());
     service.detail(selectedId, { signal: controller.signal })
       .then(setDetail)
-      .catch(failure => { if (failure.name !== 'AbortError') setError(failure.message); })
+      .catch(failure => { if (failure.name !== 'AbortError') { setError(failure.message); setErrorStatus(failure.status); } })
       .finally(() => { if (!controller.signal.aborted) setDetailLoading(false); });
     return () => controller.abort();
-  }, [service, selectedId]);
+  }, [service, selectedId, refresh]);
+
+  // Bring the detail below the queue into view after a customer request is selected on mobile.
+  function selectRequest(id) {
+    setSelectedId(id);
+    setChecklist(emptyChecklist());
+    if (window.matchMedia('(min-width: 701px)').matches) return;
+    window.requestAnimationFrame(() => detailPanelRef.current?.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'start',
+    }));
+  }
 
   async function submitMutation(kind, body, apply) {
     if (!detail || busy) return;
@@ -100,6 +113,7 @@ export default function ReturnManagementPage() {
     } catch (failure) {
       if (!(failure.status === 0 || failure.status >= 500 || failure.code === 'INVALID_API_RESPONSE')) pendingMutation.current = null;
       setError(failure.message);
+      setErrorStatus(failure.status);
     } finally { setBusy(false); }
   }
 
@@ -121,17 +135,17 @@ export default function ReturnManagementPage() {
       <label><span>Mức độ</span><select value={severity} onChange={event => { setSeverity(event.target.value); setPage(1); }}><option value="">Tất cả mức độ</option>{Object.entries(severityLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <form className="rr-search" onSubmit={searchQueue}><label htmlFor="rr-search-input">Tìm mã đơn hoặc khách hàng</label><div><Search size={17} aria-hidden="true" /><input id="rr-search-input" value={searchDraft} onChange={event => setSearchDraft(event.target.value)} placeholder="Mã đơn, tên khách hàng" /><button type="submit">Tìm</button></div></form>
     </div>
-    {error && <div className="rr-alert" role="alert"><AlertTriangle size={18} />{error}<button type="button" onClick={() => setError('')} aria-label="Đóng thông báo">×</button></div>}
+    {error && <div className="rr-alert" role="alert"><AlertTriangle size={18} /><span>{error}</span>{errorStatus === 409 && <button className="rr-reload" type="button" onClick={() => { setError(''); setErrorStatus(0); setRefresh(value => value + 1); }}>Tải lại yêu cầu</button>}<button type="button" onClick={() => { setError(''); setErrorStatus(0); }} aria-label="Đóng thông báo">×</button></div>}
     <div className="rr-workspace">
       <aside className="rr-list" aria-label="Danh sách yêu cầu trả hàng">
-        {loading ? <div className="rr-state"><RefreshCw size={20} className="rr-spin" />Đang tải yêu cầu…</div> : rows.length === 0 ? <div className="rr-state"><PackageCheck size={28} /><strong>Không có yêu cầu phù hợp</strong><span>Thử bỏ bớt bộ lọc để xem yêu cầu khác.</span></div> : rows.map(item => <button key={item.id} type="button" className={'rr-list-item' + (selectedId === item.id ? ' is-active' : '')} onClick={() => { setSelectedId(item.id); setChecklist(emptyChecklist()); }}>
+        {loading ? <div className="rr-state"><RefreshCw size={20} className="rr-spin" />Đang tải yêu cầu…</div> : rows.length === 0 ? <div className="rr-state"><PackageCheck size={28} /><strong>Không có yêu cầu phù hợp</strong><span>Thử bỏ bớt bộ lọc để xem yêu cầu khác.</span></div> : rows.map(item => <button key={item.id} type="button" className={'rr-list-item' + (selectedId === item.id ? ' is-active' : '')} onClick={() => selectRequest(item.id)}>
           <span className="rr-list-top"><strong>#{item.orderCode}</strong><small>{formatDate(item.createdAt)}</small></span>
           <span className="rr-list-customer">{item.customerName}</span>
           <span className="rr-list-bottom"><Badge status={item.status} />{item.severity && <span className={'rr-severity rr-severity--' + item.severity}>{severityLabels[item.severity]}</span>}</span>
         </button>)}
         {!loading && pagination.totalPages > 1 && <div className="rr-pagination"><button type="button" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Trước</button><span>{page}/{pagination.totalPages}</span><button type="button" disabled={page >= pagination.totalPages} onClick={() => setPage(value => value + 1)}>Sau</button></div>}
       </aside>
-      <main className="rr-detail">
+      <main className="rr-detail" ref={detailPanelRef}>
         {detailLoading ? <div className="rr-state"><RefreshCw size={20} className="rr-spin" />Đang tải chi tiết…</div> : !detail ? <div className="rr-state rr-state--large"><ClipboardCheck size={36} /><strong>Chọn một yêu cầu</strong><span>Chi tiết và các bước xử lý hiển thị tại đây.</span></div> : <>
           <div className="rr-detail-head"><div><span className="rr-eyebrow">ĐƠN HÀNG #{detail.order.code}</span><h2>{detail.customer.name}</h2><p>{detail.customer.phone} · gửi lúc {formatDate(detail.createdAt)}</p></div><Badge status={selectedStatus} /></div>
           <div className="rr-summary-grid">

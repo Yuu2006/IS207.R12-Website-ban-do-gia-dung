@@ -55,6 +55,8 @@ final class InstallationChecklistModel
                 $q->execute([json_encode($input['checks'], JSON_THROW_ON_ERROR), (int) $completed, $id]);
                 $result = $this->read($customerId, $input['productId'], $input['roomProfileId']);
                 $this->pdo->prepare('UPDATE installation_checklist_events SET checklist_id = ?, response_json = ?, created_at = UTC_TIMESTAMP() WHERE id = ?')->execute([$id, json_encode($result, JSON_THROW_ON_ERROR), $event['id']]);
+                $result['history'] = $this->history($customerId, (int) $id);
+                $this->pdo->prepare('UPDATE installation_checklist_events SET response_json = ? WHERE id = ?')->execute([json_encode($result, JSON_THROW_ON_ERROR), $event['id']]);
             }
             $this->pdo->commit();
             return $result;

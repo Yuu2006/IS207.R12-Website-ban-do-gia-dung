@@ -41,7 +41,9 @@ final class InstallationChecklistService
         if (!is_int($input['expectedVersion'] ?? null) || $input['expectedVersion'] < 0 || $input['expectedVersion'] > 4294967294) throw new ApiException('Version không hợp lệ.', 422);
         if (!is_string($input['requestKey'] ?? null) || !preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iD', $input['requestKey'])) throw new ApiException('requestKey phải là UUID v4.', 422);
         $row = $this->model->save($userId, ['productId' => $productId, 'roomProfileId' => $roomId, 'checks' => $normalized, 'expectedVersion' => $input['expectedVersion'], 'requestKey' => strtolower($input['requestKey'])], array_fill_keys(array_keys(self::ITEMS), false));
-        return $this->dto($row, $productId, $roomId);
+        $result = $this->dto($row, $productId, $roomId);
+        $result['history'] = $row['history'] ?? $this->model->history($userId, (int) $row['id']);
+        return $result;
     }
 
     // Resolve IDs from the authenticated actor; client input never supplies ownership.

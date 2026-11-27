@@ -30,11 +30,12 @@ Mẫu v1 gồm `spaceMeasured`, `manualReviewed`, `utilitiesChecked`, `deliveryC
 }
 ```
 
-Response envelope chung, `data`: `id`, `productId`, `roomProfileId`, `version`, `templateVersion`, `items`, `checks`, `completed`, `firstCompletedAt`; GET thêm `history: [{version,checks,savedAt}]`. Chưa lưu thì version 0, mọi check false, firstCompletedAt null. Lưu lần đầu version 1. Chỉ khi tất cả check true mới ghi mốc hoàn tất đầu tiên. Thời điểm ISO UTC.
+Response envelope chung, `data`: `id`, `productId`, `roomProfileId`, `version`, `templateVersion`, `items`, `checks`, `completed`, `firstCompletedAt`, `history: [{version,checks,savedAt}]` cho cả GET và POST. Chưa lưu thì version 0, mọi check false, firstCompletedAt null, history rỗng. Lưu lần đầu version 1. Chỉ khi tất cả check true mới ghi mốc hoàn tất đầu tiên. Thời điểm ISO UTC.
 
 401 chưa đăng nhập/phiên không còn hợp lệ; 403 sai vai trò/CSRF; 404 sản phẩm không còn công khai hoặc hồ sơ phòng không thuộc khách; 409 version cũ hoặc cùng key nhưng nội dung khác; 422 ID/version/checks/key sai hoặc có field lạ; 503 schema chưa sẵn sàng. Không nhận owner/role từ body. Không lộ lịch sử khách khác.
 
 Một checklist duy nhất trên `(customer_id, product_id, COALESCE(room_profile_id,0))`. Transaction giữ khóa request trước checklist; key lặp replay response cũ, không tạo revision mới. Key khác nhưng version cũ trả 409. Các snapshot event đã lưu không bị sửa khi checklist thay đổi. `first_completed_at` giữ nguyên kể cả bỏ check rồi đánh dấu lại: dashboard đếm checklist hoàn tất lần đầu, không đếm click hoặc số request.
+POST trả lịch sử tại thời điểm lưu; replay cùng key giữ nguyên response đó kể cả khi checklist đã có phiên bản mới. GET luôn trả 20 phiên bản gần nhất hiện tại.
 
 ## Kiểm chứng
 

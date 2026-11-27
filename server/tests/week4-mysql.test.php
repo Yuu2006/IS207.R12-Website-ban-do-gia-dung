@@ -62,13 +62,17 @@ $body=$query+['checks'=>array_replace($all,['spaceMeasured'=>false]),'expectedVe
 week4Reject(422,fn()=>$checklists->save($owner,array_replace($body,['checks'=>array_replace($all,['spaceMeasured'=>'true'])])));
 week4Reject(422,fn()=>$checklists->save($owner,$body+['customerId'=>2]));
 $saved=$checklists->save($owner,$body);
-week4Assert($saved===$checklists->save($owner,$body) && $saved['version']===1 && !$saved['completed'],'Partial save/replay changed result');
+week4Assert(count($saved['history'])===1 && $saved['history'][0]['version']===1,'Save must return the latest checklist revision');
+$replay=$checklists->save($owner,$body);
+week4Assert($saved['version']===(int)$replay['version'] && !$saved['completed'],'Partial save/replay changed version');
 week4Reject(409,fn()=>$checklists->save($owner,array_replace($body,['checks'=>$all])));
 week4Reject(409,fn()=>$checklists->save($owner,array_replace($body,['requestKey'=>week4Uuid()])));
 $complete=$checklists->save($owner,array_replace($body,['checks'=>$all,'expectedVersion'=>1,'requestKey'=>week4Uuid()]));
 week4Assert($complete['completed'] && $complete['firstCompletedAt']!==null,'All checks must record completion');
 $unchecked=$checklists->save($owner,array_replace($body,['expectedVersion'=>2,'requestKey'=>week4Uuid()]));
 $recompleted=$checklists->save($owner,array_replace($body,['checks'=>$all,'expectedVersion'=>3,'requestKey'=>week4Uuid()]));
+$replay=$checklists->save($owner,$body);
+week4Assert(count($replay['history'])===1 && (int)$replay['history'][0]['version']===1,'Replay must keep the original history after later revisions');
 week4Assert($unchecked['firstCompletedAt']===$complete['firstCompletedAt'] && $recompleted['firstCompletedAt']===$complete['firstCompletedAt'],'Re-completion must retain first completion time');
 $history=$checklists->get($owner,$query)['history'];
 week4Assert(count($history)===4 && $history[3]['checks']['spaceMeasured']===false,'History must preserve old revisions');

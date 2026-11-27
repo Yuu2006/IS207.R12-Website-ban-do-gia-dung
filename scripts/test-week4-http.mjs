@@ -56,6 +56,7 @@ await customer('/api/installation-checklists', { method: 'POST', body: {}, noCsr
 await sales(checklistPath, { expected: 403 });
 const checklistBody = { productId: ids[0], roomProfileId: room.id, expectedVersion: 0, checks: Object.fromEntries(Object.keys(empty.items).map(key => [key, true])), requestKey: randomUUID() };
 const saved = await customer('/api/installation-checklists', { method: 'POST', body: checklistBody });
+assert.equal(saved.history?.at(-1)?.version, saved.version, 'Save response must include checklist history');
 assert.equal(saved.completed, true);
 assert.deepEqual(await customer('/api/installation-checklists', { method: 'POST', body: checklistBody }), saved);
 const tcoBody = { productIds: ids, variantIds: variants.map(item => Number(item.id)), years: 3, usesPerWeek: 5, hoursPerUse: '1.5', electricityVndPerKwh: '3000', waterVndPerM3: '25000', annualCosts: ids.map(productId => ({ productId, consumablesVndPerYear: '0', maintenanceVndPerYear: null })), requestKey: randomUUID() };
