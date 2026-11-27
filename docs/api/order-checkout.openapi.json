@@ -3337,7 +3337,8 @@
                           "enum": [
                             "pending",
                             "paid",
-                            "failed"
+                            "failed",
+                            "refunded"
                           ]
                         },
                         "orderStatus": {

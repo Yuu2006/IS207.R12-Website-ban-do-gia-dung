@@ -6,9 +6,9 @@ React `/cart` → `/checkout` dùng giỏ/SKU/địa chỉ/giá/khuyến mãi th
 
 - **COD:** tạo đơn `PENDING/UNPAID`, giữ tồn tại checkout. Chỉ giao hàng cùng xác nhận đã thu đủ tiền mới ghi `PAID`, thời điểm thu và audit người xử lý. Chuyển trạng thái giao không trừ kho lần hai.
 - **BANK_TRANSFER:** tạo `PENDING/PENDING`, lưu snapshot tài khoản nhận từ cấu hình server. QR VietQR là hướng dẫn chuyển tiền, không phải bằng chứng thu tiền. SALES/ADMIN phải kiểm tra sao kê, nhập số tiền thực nhận, mã ngân hàng và ghi chú nguồn kiểm tra. Chỉ chấp nhận số tiền khớp toàn bộ đơn; sai tiền hoặc mã ngân hàng dùng lại bị từ chối. Chuyển khoản sau khi hủy được ghi nhận tiền vào nhưng đánh dấu `refundRequired`, không phục hồi đơn/tồn.
-- **VNPAY:** chỉ Sandbox. Link ký HMAC SHA512, số tiền VND nhân 100, hiệu lực 15 phút. Chỉ IPN có checksum, merchant, mã tham chiếu và số tiền đúng mới cập nhật ledger. Trang return chỉ tra trạng thái của đơn thuộc khách, không dùng `vnp_ResponseCode` trên URL để xác nhận tiền. IPN lặp trả `02`, không thu thêm. Thành công đến sau hủy/hết hạn được lưu và đưa sang cần đối soát/hoàn tiền.
+- **VNPAY:** chỉ Sandbox. Link ký HMAC SHA512, số tiền VND nhân 100, hiệu lực 15 phút. Chỉ IPN có checksum, merchant, mã tham chiếu và số tiền đúng mới cập nhật ledger. Đường dẫn quay về chuẩn là `/orders/payment-return` (route `/payment/result` vẫn tương thích); cả hai chỉ tra trạng thái máy chủ theo chủ đơn (có tự động polling giới hạn khi còn `pending`), không dùng `vnp_ResponseCode` trên URL để xác nhận tiền. IPN lặp trả `02`, không thu thêm. Thành công đến sau hủy/hết hạn được lưu và đưa sang cần đối soát/hoàn tiền.
 
-`server/scripts/expire-payments.php` là worker CLI: chạy mỗi phút bằng hạ tầng triển khai để hủy đơn VNPay vẫn chờ và hết hạn, giải phóng đúng reservation/voucher một lần. Worker và IPN khóa cùng order → payment, nên không đồng thời bán/hoàn cùng lượng hàng. Không tự hủy chuyển khoản thủ công: nhân viên phải đối soát khoản tiền có thể đến muộn trước khi quyết định xử lý.
+`server/scripts/expire-payments.php` là worker CLI: chạy mỗi phút bằng hạ tầng triển khai để hủy đơn VNPay vẫn chờ và hết hạn, giải phóng đúng reservation/voucher một lần. Worker tự nạp các biến DB/`ORDER_STORAGE_MODE` từ `.env` gốc nếu môi trường tiến trình chưa thiết lập (biến môi trường tiến trình luôn được ưu tiên). Worker và IPN khóa cùng order → payment, nên không đồng thời bán/hoàn cùng lượng hàng. Không tự hủy chuyển khoản thủ công: nhân viên phải đối soát khoản tiền có thể đến muộn trước khi quyết định xử lý.
 
 ## Hoàn tiền mô phỏng đã chốt
 
@@ -33,15 +33,19 @@ Tất cả endpoint bên dưới dùng envelope JSON chung. CUSTOMER chỉ xem �
 
 | Method/path | Quyền | Dữ liệu / kết quả |
 | --- | --- | --- |
-| GET `/cart` | CUSTOMER | `{ cartVersion, items }` từ SKU còn bán, giá hiện hành |
-| PUT `/cart` | CUSTOMER | `{ expectedCartVersion, items: [{ skuId, quantity }] }`; thay giỏ có version, không nhận giá |
+| GET `/cart` | CUSTOMER | `{ cartVersion, items }` theo giỏ của phiên; SKU không còn hoạt động vẫn được trả về với `available: false` để khách xóa, còn giá/tồn bán được lấy lại từ server |
+| POST `/cart/items` | CUSTOMER | `{ variantId, quantity, expectedCartVersion }`; thêm hoặc gộp SKU đang bán, kiểm tra tồn/version, không giữ tồn; cần CSRF và `Idempotency-Key` |
+| PATCH `/cart/items/{variantId}` | CUSTOMER | `{ quantity, expectedCartVersion }`; đặt số lượng tuyệt đối, server kiểm tra quyền sở hữu, version, trạng thái SKU và tồn; cần CSRF và `Idempotency-Key` |
+| DELETE `/cart/items/{variantId}` | CUSTOMER | `{ expectedCartVersion }`; xóa mềm dòng thuộc giỏ của khách, kể cả SKU đã ngừng bán; replay an toàn, không thay đổi tồn; cần CSRF và `Idempotency-Key` |
+| PUT `/cart` | CUSTOMER | `{ expectedCartVersion, items: [{ skuId, quantity }] }`; thay giỏ có version, không nhận giá; cần CSRF và `Idempotency-Key` |
 | GET `/addresses` | CUSTOMER | Địa chỉ của phiên hiện tại |
 | GET `/payments/methods` | CUSTOMER | Phương thức đã đủ cấu hình server |
 | GET `/orders/{id}/payment` | CUSTOMER owner | Trạng thái, số tiền, reference; thông tin QR chỉ khi còn chờ |
 | GET `/sales/orders/{id}/payment` | SALES/ADMIN | Như trên, thêm audit |
 | POST `/sales/orders/{id}/payment/confirm-transfer` | SALES/ADMIN | `{ expectedVersion, amount, bankTransactionRef, reason }` |
 | POST `/sales/orders/{id}/payment/simulate-refund` | ADMIN | `{ expectedVersion, reason }`; hoàn toàn bộ mô phỏng cho đơn đã hủy + đã thu tiền |
-| GET `/payments/reference/{reference}` | CUSTOMER owner | Tra trạng thái sau return, không cập nhật |
+| GET `/payments/vnpay/attempts/{paymentCode}` | CUSTOMER owner | Tra trạng thái thanh toán VNPay từ máy chủ cho trang `/orders/payment-return`, không cập nhật |
+| GET `/payments/reference/{reference}` | CUSTOMER owner | Tra trạng thái sau return cho `/payment/result`, không cập nhật |
 | GET `/orders/{id}/document` | CUSTOMER owner | Bill khách từ snapshot |
 | GET `/sales/orders/{id}/document/customer` | SALES/ADMIN | Bill khách |
 | GET `/sales/orders/{id}/document/internal` | SALES/ADMIN | Chứng từ nội bộ + audit |
@@ -62,11 +66,11 @@ Response trạng thái: `{ orderId, orderCode, version, reference, method, statu
 1. Trên DB đã review/backup, áp baseline + migration catalog/auth/order hiện có. Áp **một lần** `server/db/migrations/014_payment_ledger.sql` sau `008_order_runtime.sql`. 014 độc lập với 012/013 của FitCheck. Không import lại baseline, không xóa volume. Đơn cũ không có snapshot cửa hàng bị chặn phát hành bill mới cho đến khi được kiểm tra, không bịa snapshot lịch sử.
 2. Trong `.env` server, đặt `ORDER_STORAGE_MODE=mysql`; `BANK_TRANSFER_BIN`, `BANK_TRANSFER_ACCOUNT_NO`, `BANK_TRANSFER_ACCOUNT_NAME` theo tài khoản cửa hàng đã duyệt; không đặt secret trong `VITE_*`.
 3. `CHECKOUT_SHIPPING_VND` bắt buộc, là phí VND do nhóm chốt. `CHECKOUT_FREE_SHIPPING_MIN_VND` tùy chọn, xét subtotal trước giảm giá. Không có cấu hình phí thì checkout trả 503 thay vì tự đặt mức phí.
-4. Đặt `STORE_NAME`, `STORE_ADDRESS`, `STORE_PHONE` đúng thông tin demo/cửa hàng. Đặt `VNPAY_TMN_CODE`, `VNPAY_HASH_SECRET`, `VNPAY_RETURN_URL` theo merchant Sandbox. Đăng ký IPN public tới backend `/payments/vnpay/ipn`; localhost không nhận callback từ cổng bên ngoài nếu chưa có địa chỉ truy cập được.
+4. Đặt `STORE_NAME`, `STORE_ADDRESS`, `STORE_PHONE` đúng thông tin demo/cửa hàng. Đặt `VNPAY_TMN_CODE`, `VNPAY_HASH_SECRET`, `VNPAY_RETURN_URL` (mặc định `http://localhost:5173/orders/payment-return`) theo merchant Sandbox. Đăng ký IPN public tới backend `/payments/vnpay/ipn`; localhost không nhận callback từ cổng bên ngoài nếu chưa có địa chỉ truy cập được.
 5. Tạo lại API container để nhận env: `docker compose up -d --build api`. Trong `client/.env.local`, đặt `VITE_ORDER_API_MODE=http`, `VITE_API_URL=http://localhost:8080`; khởi động lại Vite.
-6. Nhân viên thử tại `/sales/orders`; khách chọn hàng thực ở `/cart`, tiếp tục `/checkout`. Giá/khuyến mãi/kho luôn được kiểm tra lại trong transaction tạo đơn. Chi tiết từng dòng, giảm giá, thanh toán và reservation commit cùng nhau.
+6. Nhân viên thử tại `/sales/orders`; khách chọn hàng thực từ trang sản phẩm hoặc `/cart`, tiếp tục `/checkout`. Giá/khuyến mãi/kho luôn được kiểm tra lại trong transaction tạo đơn. Chi tiết từng dòng, giảm giá, thanh toán và reservation commit cùng nhau.
 
-Trang chủ/chi tiết storefront vẫn còn dữ liệu mock của module catalog. Nút mua chuyển sang `/cart` để khách chọn lại SKU từ API; không tự dùng ID mock để mua nhầm sản phẩm thật. Chuyển toàn bộ storefront sang catalog API là bước tích hợp của module sản phẩm.
+Trang chủ, danh sách và chi tiết sản phẩm đã nối trực tiếp catalog API (`product_variants.id`) và các endpoint giỏ hàng `POST/PATCH/DELETE /cart/items`. Giỏ hàng giữ SKU ngừng bán ở trạng thái `available: false` để khách chủ động xóa trước khi đặt đơn.
 
 ## Nghiệp vụ đã sửa so với bản Java
 
