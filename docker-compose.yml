@@ -48,6 +48,27 @@ services:
     depends_on:
       - db
 
+  reminders:
+    build:
+      context: ./server
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - ./server:/var/www/html
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      ORDER_STORAGE_MODE: mysql
+    command: >-
+      sh -c 'while true; do
+        if php scripts/send-reminders.php; then sleep 86400; else sleep 300; fi;
+      done'
+    depends_on:
+      - db
+
   client:
     image: node:22-alpine
     working_dir: /app
