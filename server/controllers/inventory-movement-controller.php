@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../models/audit-model.php';
 
 /**
  * GET /api/inventory/movements
@@ -120,7 +121,7 @@ function listInventoryMovements(): void
  *   "note": "Nhap hang"
  * }
  */
-function createInventoryMovement(int $performedBy): void
+function createInventoryMovement(int $performedBy, string $actorRole): void
 {
     $input = json_decode(file_get_contents('php://input'), true);
 
@@ -267,6 +268,10 @@ function createInventoryMovement(int $performedBy): void
         ]);
 
         $movementId = (int) $pdo->lastInsertId();
+        (new AuditModel($pdo))->record($performedBy, $actorRole, 'INVENTORY_ADJUSTED', 'inventory_movement', $movementId, [
+            'variantId' => $variantId, 'movementType' => $type, 'quantityChange' => $type === 'import' ? $quantity : -$quantity,
+            'quantityBefore' => $before, 'quantityAfter' => $after, 'referenceCode' => $referenceCode,
+        ]);
         $pdo->commit();
 
         http_response_code(201);

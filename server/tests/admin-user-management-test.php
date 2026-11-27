@@ -60,7 +60,7 @@ class FakeAdminUserModel extends AdminUserModel
         $user = $this->users[$id];
         return ['id' => (string) $id, 'fullName' => $user['full_name'], 'email' => $user['email'], 'phone' => $user['phone'] ?? '', 'role' => $user['role'], 'status' => $user['status'], 'createdAt' => '', 'lastLoginAt' => '', 'lockedUntil' => '', 'adminLockedAt' => '', 'lockReason' => $user['admin_lock_reason'] ?? ''];
     }
-    public function audit(int $actorId, string $action, int $userId, array $details): void { $this->audits[] = compact('actorId', 'action', 'userId', 'details'); }
+    public function audit(int $actorId, string $actorRole, string $action, int $userId, array $details): void { $this->audits[] = compact('actorId', 'actorRole', 'action', 'userId', 'details'); }
 }
 
 function fixture(): array

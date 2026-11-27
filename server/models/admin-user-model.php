@@ -113,10 +113,10 @@ class AdminUserModel
     }
 
     // Persist an audit event in the caller's transaction.
-    public function audit(int $actorId, string $action, int $userId, array $details): void
+    public function audit(int $actorId, string $actorRole, string $action, int $userId, array $details): void
     {
-        $stmt = $this->pdo->prepare('INSERT INTO audit_logs (actor_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)');
-        $stmt->execute([$actorId, $action, 'user', $userId, json_encode($details, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]);
+        $stmt = $this->pdo->prepare('INSERT INTO audit_logs (actor_id, actor_role, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?, ?)');
+        $stmt->execute([$actorId, $actorRole, $action, 'user', $userId, json_encode($details, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]);
     }
 
     // Whitelist account fields so hashes and internal flags never leave the server.

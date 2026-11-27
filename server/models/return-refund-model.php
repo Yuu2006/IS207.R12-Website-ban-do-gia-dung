@@ -123,7 +123,7 @@ final class ReturnRefundModel
     }
 
     // Record receipt and the full-order refund atomically after warehouse inspection.
-    public function receiveAndRefund(array $return, array $order, array $actor, array $payment, array $checklist, int $amount): void
+    public function receiveAndRefund(array $return, array $order, array $actor, array $payment, array $checklist, int $amount): int
     {
         $insert = $this->pdo->prepare("INSERT INTO order_simulated_refunds (order_id, return_request_id, payment_id, amount, status, recorded_by, created_at) VALUES (?, ?, ?, ?, 'SIMULATED', ?, UTC_TIMESTAMP())");
         $insert->execute([$order['id'], $return['id'], $payment['id'], $amount, $actor['id']]);
@@ -138,7 +138,14 @@ final class ReturnRefundModel
         $requestUpdate = $this->pdo->prepare("UPDATE order_return_requests SET status = 'REFUNDED', received_by = ?, received_at = UTC_TIMESTAMP(), inspection_checklist = ?, updated_at = UTC_TIMESTAMP() WHERE id = ? AND status = 'APPROVED'");
         $requestUpdate->execute([$actor['id'], $checklistJson, $return['id']]);
         if ($requestUpdate->rowCount() !== 1) throw new ApiException(409, 'RETURN_STATE_CONFLICT', 'Yêu cầu trả hàng đã thay đổi.');
-        $this->recordHistory((string) $return['id'], 'APPROVED', 'REFUNDED', 'WAREHOUSE_RECEIVED_AND_REFUNDED', $actor, $checklist['notes'], ['checklist' => $checklist, 'refundAmount' => $amount, 'refundStatus' => 'SIMULATED']);
+        $returnedDevices = $this->pdo->prepare("UPDATE owned_devices d
+            JOIN order_items oi ON oi.id = d.order_item_id
+            SET d.status = 'RETURNED', d.return_request_id = ?, d.returned_at = UTC_TIMESTAMP(), d.returned_by = ?
+            WHERE oi.order_id = ? AND oi.is_deleted = 0 AND d.status IN ('ACTIVE', 'ARCHIVED')");
+        $returnedDevices->execute([$return['id'], $actor['id'], $order['id']]);
+        $returnedDeviceCount = $returnedDevices->rowCount();
+        $this->recordHistory((string) $return['id'], 'APPROVED', 'REFUNDED', 'WAREHOUSE_RECEIVED_AND_REFUNDED', $actor, $checklist['notes'], ['checklist' => $checklist, 'refundAmount' => $amount, 'refundStatus' => 'SIMULATED', 'returnedDeviceCount' => $returnedDeviceCount]);
+        return $returnedDeviceCount;
     }
 
     // Write the transition event in the same transaction as the state mutation.

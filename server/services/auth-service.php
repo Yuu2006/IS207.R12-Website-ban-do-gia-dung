@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../models/user-model.php';
 require_once __DIR__ . '/../middleware/role-middleware.php';
 require_once __DIR__ . '/../middleware/validation-middleware.php';
+require_once __DIR__ . '/../models/audit-model.php';
 
 // Đăng ký/đăng nhập email-mật khẩu (CUS-01..03); principal lưu trong PHP session.
 class AuthService
@@ -12,7 +13,7 @@ class AuthService
     private array $state;
 
     // clientIp lấy từ REMOTE_ADDR của máy chủ, không đọc X-Forwarded-For do client tự gửi.
-    public function __construct(private UserModel $model, array &$state, private string $clientIp = '') { $this->state =& $state; }
+    public function __construct(private UserModel $model, array &$state, private string $clientIp = '', private ?AuditModel $audit = null) { $this->state =& $state; }
 
     // shortcut: giới hạn theo phiên, client bỏ cookie là reset; khóa theo tài khoản trong UserModel chặn dò mật khẩu.
     private function rateLimit(string $action): void
@@ -62,17 +63,25 @@ class AuthService
         // Chặn dò mật khẩu trên nhiều tài khoản từ một IP: mặc định 30 lần sai/15 phút (AUTH_IP_MAX_FAILURES cho máy test).
         if ($this->clientIp !== '' && $this->model->recentFailedLogins($this->clientIp) >= ((int) getenv('AUTH_IP_MAX_FAILURES') ?: 30)) throw new ApiException('Có quá nhiều lần đăng nhập sai từ thiết bị này. Hãy thử lại sau 15 phút.', 429);
         $user = $this->model->findContact(normalizeContact($input['identifier']));
-        if ($user && $user['locked_until'] && strtotime($user['locked_until'] . ' UTC') > time()) throw new ApiException('Đăng nhập sai quá nhiều lần. Hãy thử lại sau 15 phút.', 429);
+        if ($user && $user['locked_until'] && strtotime($user['locked_until'] . ' UTC') > time()) {
+            // A failed attempt is unauthenticated; never attribute it to the account that was guessed.
+            $this->audit?->record(null, null, 'LOGIN_BLOCKED', 'auth', null, ['audience' => $staff ? 'staff' : 'customer']);
+            throw new ApiException('Đăng nhập sai quá nhiều lần. Hãy thử lại sau 15 phút.', 429);
+        }
         $valid = $user && password_verify($input['password'], $user['password_hash']);
         if ($user && !$valid) $this->model->recordLoginFailure((int) $user['id']);
         $allowed = $valid && $user['status'] === 'ACTIVE' && in_array($user['role'], self::STAFF_ROLES, true) === $staff && in_array($user['role'], AUTH_ROLES, true);
         if ($this->clientIp !== '') $this->model->recordLoginAttempt($this->clientIp, $user ? (int) $user['id'] : null, $allowed);
-        if (!$allowed) throw new ApiException('Tài khoản hoặc mật khẩu chưa đúng.', 401);
+        if (!$allowed) {
+            $this->audit?->record(null, null, 'LOGIN_FAILED', 'auth', null, ['audience' => $staff ? 'staff' : 'customer']);
+            throw new ApiException('Tài khoản hoặc mật khẩu chưa đúng.', 401);
+        }
         $this->model->resetLoginFailures((int) $user['id']);
         if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
             $user['password_hash'] = password_hash($input['password'], PASSWORD_DEFAULT);
             $this->model->updatePassword((int) $user['id'], $user['password_hash']);
         }
+        $this->audit?->record((int) $user['id'], $user['role'], 'LOGIN_SUCCESS', 'auth', (int) $user['id'], ['audience' => $staff ? 'staff' : 'customer']);
         return $this->establish($user);
     }
 
@@ -187,6 +196,8 @@ class AuthService
 
     public function logout(): array
     {
+        $principal = $this->state['principal'] ?? null;
+        if (is_array($principal)) $this->audit?->record((int) $principal['id'], $principal['role'] ?? null, 'LOGOUT', 'auth', (int) $principal['id']);
         unset($this->state['principal'], $this->state['reset'], $this->state['emailChange']);
         return ['user' => null, 'expiresAt' => null];
     }

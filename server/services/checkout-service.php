@@ -108,6 +108,11 @@ final class CheckoutService implements CheckoutServiceInterface
             $expiresAt = $input['paymentMethod'] === 'VNPAY' ? time() + 900 : null;
             $order = (new CheckoutModel($this->model))->insert($principal, $input, $quote, $expiresAt);
             $this->dependencies->commitCheckout($this->model->pdo, $principal, $quote, $order);
+            (new \AuditModel($this->model->pdo))->record((int) $principal['id'], $principal['role'], 'ORDER_CREATED', 'order', (int) $order['id'], [
+                'orderStatus' => 'PENDING', 'paymentMethod' => $input['paymentMethod'], 'paymentStatus' => $input['paymentMethod'] === 'COD' ? 'UNPAID' : 'PENDING',
+                'inventoryState' => 'RESERVED', 'itemCount' => count($quote['items']), 'total' => $quote['totals']['total'],
+            ]);
+            (new \NotificationModel($this->model->pdo))->create((int) $principal['id'], 'order:' . $order['id'] . ':created', 'ORDER', 'Đã tiếp nhận đơn hàng', 'Đơn hàng #' . $order['order_code'] . ' đang chờ xác nhận.', '/orders/' . $order['id']);
             $payment = null;
             if ($input['paymentMethod'] === 'VNPAY') {
                 $row = (new PaymentModel($this->model->pdo))->lock((string) $order['id'])[0];

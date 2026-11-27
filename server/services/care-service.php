@@ -14,7 +14,7 @@ final class CareService
         $page = $this->integer($query['page'] ?? 1, 'page', 1, 1000000);
         $pageSize = $this->integer($query['pageSize'] ?? 20, 'pageSize', 1, 50);
         $status = $query['status'] ?? 'ACTIVE';
-        if (!in_array($status, ['ACTIVE', 'ARCHIVED'], true)) throw new ApiException('Trạng thái thiết bị không hợp lệ.', 422);
+        if (!in_array($status, ['ACTIVE', 'ARCHIVED', 'RETURNED'], true)) throw new ApiException('Trạng thái thiết bị không hợp lệ.', 422);
         return $this->model->ownedDevices($principal['id'], $status, $page, $pageSize);
     }
 

@@ -20,8 +20,8 @@ function handleCatalogAdminRoutes(string $method, string $path): bool
     ];
     foreach ($routes as [$verb, $pattern, $action]) {
         if ($method !== $verb || !preg_match($pattern, $path, $matches)) continue;
-        requireAdmin();
-        catalogAdminController($action, (int) ($matches[1] ?? 0));
+        $actor = requireAdmin();
+        catalogAdminController($action, (int) ($matches[1] ?? 0), $actor);
         return true;
     }
     return false;

@@ -9,6 +9,8 @@ require_once __DIR__ . '/../middleware/role-middleware.php';
 require_once __DIR__ . '/../middleware/validation-middleware.php';
 require_once __DIR__ . '/order-domain.php';
 require_once __DIR__ . '/../models/order-model.php';
+require_once __DIR__ . '/../models/audit-model.php';
+require_once __DIR__ . '/../models/notification-model.php';
 require_once __DIR__ . '/../models/payment-model.php';
 require_once __DIR__ . '/../models/order-idempotency-model.php';
 require_once __DIR__ . '/../models/checkout-model.php';

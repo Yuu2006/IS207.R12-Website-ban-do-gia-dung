@@ -59,7 +59,7 @@ class RoomFitService
         if ($categoryId === null) throw new ApiException('Không tìm thấy sản phẩm đang bán.', 404);
         $room = $this->ownedRoom($roomId, $userId);
         $result = self::evaluate($this->model->activeRules($productId, $categoryId), $room, $this->fitAttributes($productId));
-        $this->model->recordFitCheck(strtolower($requestKey), $userId, $result['result']);
+        $this->model->recordFitCheck(strtolower($requestKey), $userId, $result['result'], $productId, $roomId);
         return ['productId' => $productId, 'roomProfileId' => $roomId] + $result + ['evaluatedAt' => gmdate('Y-m-d\TH:i:s\Z')];
     }
 

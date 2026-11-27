@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../models/product-model.php';
 require_once __DIR__ . '/../services/catalog-admin-service.php';
+require_once __DIR__ . '/../utils/catalog-audit.php';
 
 function isAdminRequest(): bool
 {
@@ -188,6 +189,15 @@ function createProduct(): void
             // Tồn ban đầu luôn 0; nhập kho qua /api/inventory/movements để có log (WH-03).
         ]);
 
+        $variantId = (int) $pdo->lastInsertId();
+        recordCatalogAudit($pdo, 'CATALOG_PRODUCT_CREATED', 'product', $productId, [
+            'productCode' => trim($input['product_code']),
+            'sku' => trim($input['sku']),
+            'categoryId' => (int) $input['category_id'],
+            'brandId' => (int) $input['brand_id'],
+            'variantId' => $variantId,
+        ]);
+
         $pdo->commit();
 
         http_response_code(201);
@@ -244,8 +254,37 @@ function updateProductRequest(int $id): void
         return;
     }
 
+    $allowedFields = ['category_id', 'brand_id', 'product_code', 'name', 'slug', 'description', 'specifications', 'warranty_months', 'is_active'];
+    if (array_diff(array_keys($input), $allowedFields) !== []) {
+        http_response_code(422);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Request chứa trường không được hỗ trợ.',
+        ], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+
     try {
+        $pdo = db();
+        $pdo->beginTransaction();
+
+        $exists = $pdo->prepare('SELECT id FROM products WHERE id = :id AND is_deleted = 0 FOR UPDATE');
+        $exists->execute(['id' => $id]);
+        if (!$exists->fetchColumn()) {
+            $pdo->rollBack();
+            http_response_code(404);
+            echo json_encode(['success' => false, 'message' => 'Không tìm thấy sản phẩm.'], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+
         $updated = updateProduct($id, $input);
+        if ($updated) {
+            recordCatalogAudit($pdo, 'CATALOG_PRODUCT_UPDATED', 'product', $id, [
+                'changedFields' => array_values(array_keys($input)),
+            ]);
+        }
+        $pdo->commit();
+
         $product = getProductById($id);
 
         if ($product === null) {
@@ -265,6 +304,9 @@ function updateProductRequest(int $id): void
         ], JSON_UNESCAPED_UNICODE);
 
     } catch (PDOException $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         error_log($e->getMessage());
 
         if ($e->getCode() === '23000') {
@@ -282,6 +324,9 @@ function updateProductRequest(int $id): void
             'message' => 'Không thể cập nhật sản phẩm.'
         ], JSON_UNESCAPED_UNICODE);
     } catch (Throwable $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         error_log($e->getMessage());
         http_response_code(500);
         echo json_encode([
@@ -293,7 +338,9 @@ function updateProductRequest(int $id): void
 function deleteProductRequest(int $id): void
 {
     try {
-        $deleted = deleteProduct($id);
+        $deleted = deleteProduct($id, static function () use ($id): void {
+            recordCatalogAudit(db(), 'CATALOG_PRODUCT_DELETED', 'product', $id);
+        });
 
         if (!$deleted) {
             http_response_code(404);

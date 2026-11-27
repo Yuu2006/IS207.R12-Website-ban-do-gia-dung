@@ -46,6 +46,17 @@ if ($mode === 'init') {
     echo "Baseline + 008/014/015 migrations applied to a fresh isolated DB; fixture cart version is test-only.\n";
     exit;
 }
+if ($mode === 'apply-shared-migrations') {
+    $pdo->exec("USE `{$name}`");
+    foreach (['020_query_indexes.sql', '022_notifications_audit.sql', '023_owned_device_returns.sql'] as $migration) {
+        $path = __DIR__ . '/../db/migrations/' . $migration;
+        $sql = file_get_contents($path);
+        if ($sql === false) throw new RuntimeException("Missing isolated test migration: {$migration}");
+        $pdo->exec($sql);
+    }
+    echo "020/022/023 migrations applied to the isolated integration database.\n";
+    exit;
+}
 $pdo->exec("USE `{$name}`");
 $model = new OrderModel($pdo);
 $deps = new SqlTestCheckoutDependencies();
@@ -236,6 +247,13 @@ check('cart add merges SKU once, replays idempotently, rejects stale version and
     errorCode(fn () => $cartService->addItem($principal, ['variantId' => '2', 'quantity' => 2, 'expectedCartVersion' => $merged['cartVersion']], 'cart-add-runtime-key-stock'), 'OUT_OF_STOCK');
     ensure((int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === $stockBefore, 'Adding cart items must not decrement stock.');
     ensure($cartService->getCart($principal) === $merged, 'Rejected mutations changed the cart.');
+});
+check('cart removal cannot remove a line from another customer cart', function () use ($cartService) {
+    $ownerCart = $cartService->getCart(actor(9));
+    ensure(count($ownerCart['items']) === 1 && $ownerCart['items'][0]['skuId'] === '1');
+    errorCode(fn () => $cartService->removeItem(actor(10), '1', ['expectedCartVersion' => 1], 'foreign-cart-remove-runtime-key'), 'CART_ITEM_NOT_FOUND');
+    ensure($cartService->getCart(actor(9)) === $ownerCart, 'Foreign removal changed the owner cart.');
+    ensure(sql('SELECT id FROM carts WHERE user_id = 10') === false, 'Failed removal must roll back a newly created empty cart.');
 });
 check('cart removal is idempotent, versioned, soft-deleted, and does not change stock', function () use ($cartService) {
     $principal = actor(9);
