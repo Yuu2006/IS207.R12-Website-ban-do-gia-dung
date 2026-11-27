@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { ApiError, createApiClient } from '../src/services/api-client.js';
-import { createOrderService, mapOrder } from '../src/services/order-service.js';
+import { createOrderService, mapOrder, mapVnpayAttempt } from '../src/services/order-service.js';
 import { createMockOrderService } from '../src/services/order-mock-service.js';
 import { downloadRevenueCsv } from '../src/services/reports-service.js';
 import { createReturnRefundService } from '../src/services/return-refund-service.js';
@@ -114,6 +114,49 @@ test('catalog add-to-cart rejects an invalid SKU or quantity before making a req
   await assert.rejects(service.addCartItem('sku-42'), error => error.code === 'INVALID_CART_ITEM');
   await assert.rejects(service.addCartItem('42', 0), error => error.code === 'INVALID_CART_ITEM');
   assert.equal(calls, 0);
+});
+
+test('cart removal sends a versioned DELETE with its idempotency key', async () => {
+  const calls = [];
+  const service = createOrderService(async (path, input = {}) => {
+    calls.push({ path, input });
+    return { ...cart, cartVersion: cart.cartVersion + 1, items: [] };
+  });
+
+  const updated = await service.removeCartItem('42', cart.cartVersion, options);
+
+  assert.equal(updated.cartVersion, cart.cartVersion + 1);
+  assert.deepEqual(updated.items, []);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, '/cart/items/42');
+  assert.equal(calls[0].input.method, 'DELETE');
+  assert.deepEqual(calls[0].input.body, { expectedCartVersion: cart.cartVersion });
+  assert.equal(calls[0].input.idempotencyKey, idempotencyKey);
+  await assert.rejects(service.removeCartItem('not-a-sku', cart.cartVersion, options), isError(422, 'INVALID_CART_ITEM'));
+  await assert.rejects(service.removeCartItem('42', 0, options), isError(422, 'INVALID_CART_ITEM'));
+  assert.equal(calls.length, 1, 'Invalid removal must not reach the API.');
+});
+
+test('mapVnpayAttempt accepts pending, paid, failed and refunded statuses and rejects unknown values', () => {
+  for (const paymentStatus of ['pending', 'paid', 'failed', 'refunded']) {
+    const mapped = mapVnpayAttempt({
+      orderId: '101',
+      orderCode: 'HC202611270001',
+      paymentStatus,
+      orderStatus: paymentStatus === 'refunded' ? 'cancelled' : 'pending',
+      expiresAt: '2026-11-27T10:15:00+00:00',
+      refundRequired: false,
+    });
+    assert.equal(mapped.paymentStatus, paymentStatus);
+  }
+  assert.throws(() => mapVnpayAttempt({
+    orderId: '101',
+    orderCode: 'HC202611270001',
+    paymentStatus: 'unpaid',
+    orderStatus: 'pending',
+    expiresAt: null,
+    refundRequired: false,
+  }), error => error.code === 'INVALID_API_RESPONSE');
 });
 
 test('HTTP error status/code/fields survive; 5xx does not expose SQL message', async () => {

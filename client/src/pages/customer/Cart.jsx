@@ -1,5 +1,6 @@
 
 import { useState } from 'react';
+import { Minus, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { listProducts, getProduct } from '../../services/catalog-service.js';
 import { useOrderAction, useOrderQuery } from '../../hooks/use-order-api.js';
@@ -190,21 +191,41 @@ export default function Cart() {
                 {item.variant} · {item.sku}
               </p>
 
-              <p>{money(item.price)} / sản phẩm</p>
-
-              <label className="oc-field">
-                Số lượng
-                <input
-                  type="number"
-                  min="1"
-                  max="999"
-                  value={item.quantity}
-                  disabled={action.busy || action.uncertain}
-                  onChange={event =>
-                    updateQuantity(item, Number(event.target.value))
-                  }
-                />
-              </label>
+              {item.available === false ? (
+                <p className="oc-cart-unavailable">Sản phẩm đã ngừng kinh doanh. Vui lòng xóa khỏi giỏ để tiếp tục thanh toán.</p>
+              ) : (
+                <>
+                  <p>{money(item.price)} / sản phẩm</p>
+                  {Number.isSafeInteger(item.availableQuantity) && (
+                    <small className="oc-cart-availability">Còn {item.availableQuantity} sản phẩm</small>
+                  )}
+                  <div className="oc-cart-quantity-wrap">
+                    <div className="oc-cart-quantity" role="group" aria-label={`Số lượng ${item.name}`}>
+                      <button
+                        type="button"
+                        aria-label={`Giảm số lượng ${item.name}`}
+                        disabled={action.busy || action.uncertain || item.quantity <= 1}
+                        onClick={() => updateQuantity(item, item.quantity - 1)}
+                      >
+                        <Minus size={14} />
+                      </button>
+                      <span aria-live="polite">{item.quantity}</span>
+                      <button
+                        type="button"
+                        aria-label={`Tăng số lượng ${item.name}`}
+                        disabled={
+                          action.busy ||
+                          action.uncertain ||
+                          (Number.isSafeInteger(item.availableQuantity) && item.quantity >= item.availableQuantity)
+                        }
+                        onClick={() => updateQuantity(item, item.quantity + 1)}
+                      >
+                        <Plus size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {service.mode === 'http' && (

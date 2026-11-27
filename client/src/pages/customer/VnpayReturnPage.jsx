@@ -14,6 +14,10 @@ export default function VnpayReturnPage() {
   const resource = useOrderQuery(signal => service.getVnpayAttempt(paymentCode, { signal }), [service, paymentCode], { enabled: Boolean(paymentCode) });
 
   useEffect(() => {
+    setPollCount(0);
+  }, [paymentCode]);
+
+  useEffect(() => {
     if (resource.data?.paymentStatus !== 'pending' || pollCount >= 6) return undefined;
     const timer = window.setTimeout(() => {
       setPollCount(value => value + 1);
@@ -24,7 +28,10 @@ export default function VnpayReturnPage() {
 
   let title = 'Đang xác minh thanh toán';
   let message = 'HomeCare đang chờ xác nhận trực tiếp từ VNPay. Trạng thái này sẽ cập nhật theo dữ liệu máy chủ.';
-  if (resource.data?.paymentStatus === 'paid' && resource.data.refundRequired) {
+  if (resource.data?.paymentStatus === 'refunded') {
+    title = 'Đã hoàn tiền mô phỏng';
+    message = 'Đơn hàng đã được ghi nhận hoàn tiền mô phỏng trên hệ thống. Không có giao dịch hoàn tiền ngân hàng thực tế.';
+  } else if (resource.data?.paymentStatus === 'paid' && resource.data.refundRequired) {
     title = 'Đã ghi nhận thanh toán';
     message = 'Đơn hàng đã hết hạn hoặc bị hủy trước khi xác nhận thanh toán. Khoản thanh toán cần được đối soát và hoàn theo quy trình hỗ trợ.';
   } else if (resource.data?.paymentStatus === 'paid') {

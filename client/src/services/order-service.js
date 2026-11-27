@@ -64,7 +64,7 @@ function mapPage(dto) {
 }
 
 export function mapVnpayAttempt(dto) {
-  if (!isId(dto?.orderId) || !isId(dto?.orderCode) || !['pending', 'paid', 'failed'].includes(dto.paymentStatus) || !statuses.includes(dto.orderStatus) || (dto.expiresAt !== null && Number.isNaN(Date.parse(dto.expiresAt)))) badResponse();
+  if (!isId(dto?.orderId) || !isId(dto?.orderCode) || !['pending', 'paid', 'failed', 'refunded'].includes(dto.paymentStatus) || !statuses.includes(dto.orderStatus) || (dto.expiresAt !== null && Number.isNaN(Date.parse(dto.expiresAt)))) badResponse();
   return { orderId: dto.orderId, orderCode: dto.orderCode, paymentStatus: dto.paymentStatus, orderStatus: dto.orderStatus, expiresAt: dto.expiresAt, refundRequired: Boolean(dto.refundRequired) };
 }
 

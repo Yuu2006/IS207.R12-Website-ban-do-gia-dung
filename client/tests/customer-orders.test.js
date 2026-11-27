@@ -69,7 +69,9 @@ function renderWorkspace(path, user = owner, status = 'authenticated') {
   return renderToStaticMarkup(createElement(MemoryRouter, { initialEntries: [path] },
     createElement(AuthContext.Provider, { value }, createElement(ServiceContext.Provider, { value: mockService }, createElement(Routes, null,
       createElement(Route, { path: '/orders', element: createElement(Workspace, { orders: fixtures, setOrders() {}, cart: [], setCart() {} }) }),
+      createElement(Route, { path: '/orders/payment-return', element: createElement(Workspace, { orders: fixtures, setOrders() {}, cart: [], setCart() {} }) }),
       createElement(Route, { path: '/orders/:orderId', element: createElement(Workspace, { orders: fixtures, setOrders() {}, cart: [], setCart() {} }) }),
+      createElement(Route, { path: '/payment/result', element: createElement(Workspace, { orders: fixtures, setOrders() {}, cart: [], setCart() {} }) }),
       createElement(Route, { path: '/checkout', element: createElement(Workspace, { orders: fixtures, setOrders() {}, cart: [], setCart() {} }) }),
       createElement(Route, { path: '/sales/orders', element: createElement(Workspace, { orders: fixtures, setOrders() {}, cart: [], setCart() {} }) }),
     )))));
@@ -220,8 +222,19 @@ test('session retry coalesces repeated clicks and releases the request after a n
 
 test('cart and payment return retain a safe login return path', () => {
   assert.equal(customerReturnPath('/cart'), '/cart');
+  assert.equal(customerReturnPath('/orders/payment-return?vnp_TxnRef=VNPAY-HC123'), '/orders/payment-return?vnp_TxnRef=VNPAY-HC123');
   assert.equal(customerReturnPath('/payment/result?vnp_TxnRef=VNPAY-HC123'), '/payment/result?vnp_TxnRef=VNPAY-HC123');
   assert.equal(customerReturnPath('//example.com/payment/result'), '/orders');
+});
+
+test('VNPay return routes never settle payment from URL query parameters', () => {
+  assert.match(renderWorkspace('/orders/payment-return'), /Thiếu mã giao dịch/);
+  assert.match(renderWorkspace('/payment/result'), /Thiếu mã tham chiếu thanh toán hợp lệ/);
+  for (const path of ['/orders/payment-return?vnp_TxnRef=VNPAY-HC123&vnp_ResponseCode=00', '/payment/result?vnp_TxnRef=VNPAY-HC123&vnp_ResponseCode=00']) {
+    const html = renderWorkspace(path);
+    assert.match(html, /Đang tải dữ liệu/);
+    assert.doesNotMatch(html, /Thanh toán thành công|Đã thanh toán/);
+  }
 });
 
 test('unseeded orders render loading, not empty or sample customer data', () => {
