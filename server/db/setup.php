@@ -34,6 +34,8 @@ function setupMigrations(): array
         ['name' => '019_wishlists', 'probe' => ['table', 'wishlists']],
         ['name' => '020_query_indexes', 'probe' => ['index', 'orders', 'idx_orders_placed_at']],
         ['name' => '021_installation_checklists', 'probe' => ['table', 'installation_checklist_events']],
+        ['name' => '022_notifications_audit', 'probe' => ['table', 'notifications']],
+        ['name' => '023_owned_device_returns', 'probe' => ['column', 'owned_devices', 'return_request_id']],
     ];
 }
 

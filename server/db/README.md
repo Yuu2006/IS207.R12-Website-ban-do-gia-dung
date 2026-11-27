@@ -64,12 +64,14 @@ Script dùng đúng thứ tự này; khi áp thủ công (Workbench, `mysql < fi
 | 14 | `migrations/019_wishlists.sql` | Danh sách yêu thích |
 | 15 | `migrations/020_query_indexes.sql` | Index cho dashboard/CSV (đã kiểm bằng EXPLAIN) |
 | 16 | `migrations/021_installation_checklists.sql` | FIT-02: checklist khách/sản phẩm/phòng, version, lịch sử/replay và mốc hoàn tất đầu tiên; cần 012 |
+| 17 | `migrations/022_notifications_audit.sql` | Hộp thư thông báo theo người nhận, idempotency và bộ lọc audit (`actor_role`, index) |
+| 18 | `migrations/023_owned_device_returns.sql` | Lưu hồ sơ thiết bị đã nhận trả, người nhận, thời điểm và liên kết yêu cầu trả |
 
 Seed (chỉ database phát triển): `001_auth_demo_users`, rồi `003` → `010`, `011_catalog_real_images` nếu có, rồi `012_catalog_expansion` (5 nhóm + 92 danh mục + 552 sản phẩm đồ gia dụng theo Điện Máy Xanh, sinh bởi `scripts/generate-catalog-expansion.mjs`). Bỏ qua `002_demo_data.sql` (dữ liệu cũ, không còn dùng). Seed 011 thay ảnh placeholder bằng URL ảnh model thật gần nhất (Điện Máy Xanh, chỉ cho demo); chạy sau 005 và không ghi đè ảnh admin đã tải lên.
 
 `seeds/001_auth_demo_users.sql` tạo 4 tài khoản phát triển (`customer@`, `admin@`, `sales@`, `warehouse@example.test`, mật khẩu `Demo@1234567890!`). Không dùng trên production. Không cần seed để đăng ký tài khoản khách thật tại `/register`; DB chưa có đơn sẽ hiển thị trạng thái trống.
 
-Migration mới đánh số từ **022** và phải được thêm vào `setupMigrations()` trong `setup.php` kèm dấu hiệu nhận biết (`probe`); `server/tests/db-setup.test.php` báo lỗi nếu có file migration chưa được liệt kê. 021 chỉ thêm bảng, không chuyển đổi/xóa dữ liệu cũ; xem [FIT-02](../../docs/api/INSTALLATION-CHECKLIST.md).
+Migration mới đánh số từ **024** và phải được thêm vào `setupMigrations()` trong `setup.php` kèm dấu hiệu nhận biết (`probe`); `server/tests/db-setup.test.php` báo lỗi nếu có file migration chưa được liệt kê. 021–023 chỉ thêm bảng/cột/index, không chuyển đổi/xóa dữ liệu cũ; xem [FIT-02](../../docs/api/INSTALLATION-CHECKLIST.md) và [Thông báo & Audit](../../docs/api/NOTIFICATIONS-AUDIT.md).
 
 ## Tạo database HomeCare mới trên Windows (không dùng Docker)
 
