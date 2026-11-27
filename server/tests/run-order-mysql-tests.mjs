@@ -27,7 +27,7 @@ await once(portProbe, 'listening');
 const port = portProbe.address().port;
 await new Promise(resolve => portProbe.close(resolve));
 if (port === 3306) throw new Error('Refusing default MySQL port.');
-const env = { ...process.env, ORDER_MYSQL_TEST: 'isolated', DB_HOST: '127.0.0.1', DB_PORT: String(port), DB_NAME: 'homecare_order_test_' + Date.now(), DB_USER: 'root', DB_PASSWORD: '' };
+const env = { ...process.env, ORDER_MYSQL_TEST: 'isolated', ORDER_STORAGE_MODE: 'mysql', DB_HOST: '127.0.0.1', DB_PORT: String(port), DB_NAME: 'homecare_order_test_' + Date.now(), DB_USER: 'root', DB_PASSWORD: '' };
 const run = (binary, args, allowedFailure = false) => new Promise((resolve, reject) => {
   if (dockerMode && binary === php) {
     args = ['exec', phpContainer, 'php', ...args.map(arg => arg.startsWith(projectRoot) ? '/workspace/' + arg.slice(projectRoot.length).replaceAll('\\', '/') : arg)];
@@ -123,6 +123,15 @@ try {
     else { assert.equal(results.filter(result => result.ok).length, 1); assert.equal(results.filter(result => result.code === 'ORDER_VERSION_CONFLICT').length, 1); }
     console.log((await paymentCall('verify-refund-race', JSON.stringify(refundOrder))).output.trim());
   }
+  const expireFixture = JSON.parse((await paymentCall('prepare-expire-cli')).output);
+  const expireScript = fileURLToPath(new URL('../scripts/expire-payments.php', import.meta.url));
+  const firstExpire = await run(php, [...phpArgs, expireScript]);
+  const secondExpire = await run(php, [...phpArgs, expireScript]);
+  console.log(firstExpire.output.trim());
+  console.log(secondExpire.output.trim());
+  assert.match(firstExpire.output, /Expired orders: 1/);
+  assert.match(secondExpire.output, /Expired orders: 0/);
+  console.log((await paymentCall('verify-expire-cli', JSON.stringify(expireFixture))).output.trim());
   // Runs last: its order fixtures would change the order suites' exact row counts.
   console.log((await callChatbot('init')).output.trim());
   console.log((await callChatbot('test')).output.trim());

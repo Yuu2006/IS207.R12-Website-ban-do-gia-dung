@@ -87,9 +87,9 @@ final class CheckoutRuntimeModel
     }
 
     // Locking reads see committed reservations after the caller has locked the voucher row.
-    public function lockVoucherReservations(string $voucherId, string $customerId): array
+    public function lockVoucherReservations(string $voucherId, string $customerId, bool $lock = true): array
     {
-        $statement = $this->pdo->prepare('SELECT id FROM voucher_usages WHERE voucher_id = ? AND customer_id = ? AND released_at IS NULL ORDER BY id FOR UPDATE');
+        $statement = $this->pdo->prepare('SELECT id FROM voucher_usages WHERE voucher_id = ? AND customer_id = ? AND released_at IS NULL ORDER BY id' . ($lock ? ' FOR UPDATE' : ''));
         $statement->execute([$voucherId, $customerId]);
         return $statement->fetchAll(\PDO::FETCH_ASSOC);
     }
@@ -217,7 +217,8 @@ final class CheckoutRuntimeModel
     private function insertMovement(array $actor, array $order, array $item, int $delta, int $before, int $after, string $kind): void
     {
         $statement = $this->pdo->prepare('INSERT INTO inventory_movements (variant_id, order_item_id, movement_type, quantity_change, quantity_before, quantity_after, reference_code, performed_by, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-        $statement->execute([$item['variant_id'], $item['id'], $kind, $delta, $before, $after, $kind . ':' . $order['id'] . ':' . $item['id'], $actor['id'], $kind === 'RESERVE' ? 'Giữ tồn khi tạo đơn COD' : 'Hoàn tồn khi hủy đơn']);
+        $method = strtoupper((string) ($order['payment_method'] ?? 'ORDER'));
+        $statement->execute([$item['variant_id'], $item['id'], $kind, $delta, $before, $after, $kind . ':' . $order['id'] . ':' . $item['id'], $actor['id'], $kind === 'RESERVE' ? 'Giữ tồn khi tạo đơn ' . $method : 'Hoàn tồn khi hủy đơn']);
     }
 
     // Cart is cleared only after order, payment, history, stock and voucher writes have succeeded.

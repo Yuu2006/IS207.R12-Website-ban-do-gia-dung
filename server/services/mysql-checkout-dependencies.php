@@ -117,7 +117,7 @@ final class MysqlCheckoutDependencies implements CheckoutDependencies
         if ($input['voucherCode'] !== null) {
             $voucher = $model->voucherByCode($input['voucherCode'], $lock);
             if (!$voucher || !(bool) $voucher['is_active'] || !(bool) $voucher['is_in_window']) throw new ApiException(422, 'VOUCHER_INVALID', 'Mã ưu đãi không tồn tại, chưa có hiệu lực hoặc đã hết hạn.');
-            $reservedVoucherCount = $model->lockVoucherReservations((string) $voucher['id'], $principal['id']);
+            $reservedVoucherCount = $model->lockVoucherReservations((string) $voucher['id'], $principal['id'], $lock);
             if ($voucher['usage_limit'] !== null && (int) $voucher['used_count'] >= (int) $voucher['usage_limit']) throw new ApiException(422, 'VOUCHER_EXHAUSTED', 'Mã ưu đãi đã hết lượt sử dụng.');
             if ($voucher['per_customer_limit'] !== null && count($reservedVoucherCount) >= (int) $voucher['per_customer_limit']) throw new ApiException(422, 'VOUCHER_CUSTOMER_LIMIT', 'Bạn đã sử dụng hết lượt của mã ưu đãi này.');
         }
@@ -162,11 +162,13 @@ final class MysqlCheckoutDependencies implements CheckoutDependencies
         if ($subtotal < $minimum) throw new ApiException(422, 'VOUCHER_MINIMUM_NOT_MET', 'Đơn hàng chưa đạt giá trị tối thiểu của mã ưu đãi.');
         $value = orderMoney($voucher['discount_value']);
         if ($value <= 0) throw new ApiException(503, 'VOUCHER_DATA_INCOMPATIBLE', 'Mức giảm của mã ưu đãi không hợp lệ.');
-        if ($voucher['discount_type'] === 'percent') {
+        // Accept both seeded UPPERCASE (PERCENT/FIXED) and admin lowercase (percent/amount) voucher types.
+        $type = strtoupper(trim((string) ($voucher['discount_type'] ?? '')));
+        if ($type === 'PERCENT') {
             if ($value > 100) throw new ApiException(503, 'VOUCHER_DATA_INCOMPATIBLE', 'Tỷ lệ giảm của mã ưu đãi vượt giới hạn.');
             $discount = intdiv($subtotal * $value, 100);
             if ($voucher['max_discount'] !== null) $discount = min($discount, orderMoney($voucher['max_discount']));
-        } elseif ($voucher['discount_type'] === 'amount') {
+        } elseif ($type === 'AMOUNT' || $type === 'FIXED') {
             $discount = $value;
         } else {
             throw new ApiException(503, 'VOUCHER_DATA_INCOMPATIBLE', 'Loại giảm giá chưa được hỗ trợ.');

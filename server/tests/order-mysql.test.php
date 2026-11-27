@@ -237,6 +237,13 @@ check('cart add merges SKU once, replays idempotently, rejects stale version and
     ensure((int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === $stockBefore, 'Adding cart items must not decrement stock.');
     ensure($cartService->getCart($principal) === $merged, 'Rejected mutations changed the cart.');
 });
+check('cart removal cannot remove a line from another customer cart', function () use ($cartService) {
+    $ownerCart = $cartService->getCart(actor(9));
+    ensure(count($ownerCart['items']) === 1 && $ownerCart['items'][0]['skuId'] === '1');
+    errorCode(fn () => $cartService->removeItem(actor(10), '1', ['expectedCartVersion' => 1], 'foreign-cart-remove-runtime-key'), 'CART_ITEM_NOT_FOUND');
+    ensure($cartService->getCart(actor(9)) === $ownerCart, 'Foreign removal changed the owner cart.');
+    ensure(sql('SELECT id FROM carts WHERE user_id = 10') === false, 'Failed removal must roll back a newly created empty cart.');
+});
 check('cart removal is idempotent, versioned, soft-deleted, and does not change stock', function () use ($cartService) {
     $principal = actor(9);
     $before = $cartService->getCart($principal);
@@ -523,6 +530,14 @@ check('VNPay expiry releases stock/voucher once and late success requires reconc
     ensure((int) sql('SELECT refund_required FROM orders WHERE id = ?', [$orderId]) === 1);
     ensure((int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === $stockBefore);
     ensure(sql('SELECT order_status FROM orders WHERE id = ?', [$orderId]) === 'CANCELLED');
+});
+check('production checkout supports seeded UPPERCASE PERCENT and FIXED voucher types', function () use ($runtimeCheckout) {
+    sql("INSERT INTO vouchers (code, discount_type, discount_value, min_order_amount, max_discount, starts_at, ends_at, usage_limit, used_count, is_active, per_customer_limit, is_deleted) VALUES ('SEEDPCT10', 'PERCENT', 10, 500000, 60000, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 DAY), DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 DAY), 10, 0, 1, 1, 0)");
+    sql("INSERT INTO vouchers (code, discount_type, discount_value, min_order_amount, max_discount, starts_at, ends_at, usage_limit, used_count, is_active, per_customer_limit, is_deleted) VALUES ('SEEDFIX50K', 'FIXED', 50000, 500000, NULL, DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 DAY), DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 DAY), 10, 0, 1, 1, 0)");
+    $pctQuote = $runtimeCheckout->quoteCheckout(actor(6), runtimeCart(6, 1, 1, 'SEEDPCT10'));
+    ensure($pctQuote['totals'] === ['subtotal' => 710000, 'discount' => 60000, 'shipping' => 0, 'total' => 650000], 'UPPERCASE PERCENT voucher must apply cap.');
+    $fixedQuote = $runtimeCheckout->quoteCheckout(actor(6), runtimeCart(6, 1, 1, 'SEEDFIX50K'));
+    ensure($fixedQuote['totals'] === ['subtotal' => 710000, 'discount' => 50000, 'shipping' => 0, 'total' => 660000], 'UPPERCASE FIXED voucher must deduct exact amount.');
 });
 echo "MySQL checks: {$checks}; failures: {$failures}\n";
 exit($failures === 0 ? 0 : 1);

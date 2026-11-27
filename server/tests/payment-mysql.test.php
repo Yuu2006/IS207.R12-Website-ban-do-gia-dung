@@ -9,7 +9,7 @@ $pdo = new PDO('mysql:host=127.0.0.1;port=' . getenv('DB_PORT') . ';dbname=' . g
 $pdo->exec("SET time_zone = '+00:00'");
 putenv('CHECKOUT_SHIPPING_VND=30000'); putenv('CHECKOUT_FREE_SHIPPING_MIN_VND=500000');
 putenv('BANK_TRANSFER_BIN=970422'); putenv('BANK_TRANSFER_ACCOUNT_NO=123456789'); putenv('BANK_TRANSFER_ACCOUNT_NAME=TEST BENEFICIARY');
-putenv('VNPAY_TMN_CODE=TESTCODE'); putenv('VNPAY_HASH_SECRET=isolated-test-secret-not-a-real-credential'); putenv('VNPAY_RETURN_URL=http://localhost:5173/payment/result');
+putenv('VNPAY_TMN_CODE=TESTCODE'); putenv('VNPAY_HASH_SECRET=isolated-test-secret-not-a-real-credential'); putenv('VNPAY_RETURN_URL=http://localhost:5173/orders/payment-return');
 putenv('STORE_NAME=Original test merchant');
 $actor = ['id' => '1', 'role' => 'CUSTOMER']; $staff = ['id' => '3', 'role' => 'SALES'];
 $admin = ['id' => '4', 'role' => 'ADMIN'];
@@ -60,6 +60,24 @@ if ($mode === 'verify-refund-race') {
     verify($state['status']==='refunded' && !$state['refundRequired'] && $state['version']===$request['version']+1, 'Refund race left inconsistent state/version');
     verify((int)value('SELECT stock_quantity FROM product_variants WHERE id=1')===$request['stock'], 'Refund touched released stock');
     echo "ok - concurrent simulated refund: one financial event/version, no stock mutation\n"; exit;
+}
+if ($mode === 'prepare-expire-cli') {
+    $stockBefore = (int) value('SELECT stock_quantity FROM product_variants WHERE id=1');
+    $created = newOrder('VNPAY');
+    $orderId = $created['order']['id'];
+    verify((int) value('SELECT stock_quantity FROM product_variants WHERE id=1') === $stockBefore - 1, 'CLI expiry fixture did not reserve stock');
+    $pdo->prepare("UPDATE payments SET expires_at = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 2 MINUTE) WHERE order_id = ?")->execute([$orderId]);
+    echo json_encode(['id' => $orderId, 'stockBefore' => $stockBefore, 'reference' => $created['payment']['attemptReference']]); exit;
+}
+if ($mode === 'verify-expire-cli') {
+    $request = json_decode($argv[2], true, 16, JSON_THROW_ON_ERROR);
+    verify(value('SELECT order_status FROM orders WHERE id=?', [$request['id']]) === 'CANCELLED', 'CLI worker did not cancel expired VNPay order');
+    verify(value('SELECT payment_status FROM orders WHERE id=?', [$request['id']]) === 'FAILED', 'CLI worker did not mark expired order payment failed');
+    verify(value('SELECT inventory_state FROM orders WHERE id=?', [$request['id']]) === 'RELEASED', 'CLI worker did not mark inventory released');
+    verify(value('SELECT status FROM payments WHERE order_id=?', [$request['id']]) === 'FAILED', 'CLI worker did not mark payment row failed');
+    verify((int) value('SELECT stock_quantity FROM product_variants WHERE id=1') === $request['stockBefore'], 'CLI worker did not restore stock exactly once');
+    verify((int) value("SELECT COUNT(*) FROM inventory_movements WHERE movement_type='RELEASE' AND order_item_id IN (SELECT id FROM order_items WHERE order_id=?)", [$request['id']]) === 1, 'CLI worker did not write one RELEASE movement');
+    echo "ok - expire-payments.php CLI worker cancelled expired VNPay order and released stock once\n"; exit;
 }
 
 $result = newOrder(); $id = $result['order']['id']; $bank = $payments->status($actor, $id, false);
