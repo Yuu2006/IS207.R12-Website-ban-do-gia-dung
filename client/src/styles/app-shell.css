@@ -23,7 +23,7 @@
 .hc-role small { display: block; color: #667085; font-size: 9px; letter-spacing: .08em; margin-bottom: 5px; }
 .hc-role strong { font-size: 14px; }
 .hc-sidebar nav { display: grid; gap: 5px; }
-.hc-sidebar nav a { padding: 11px 14px; text-decoration: none; color: var(--hc-text-muted); border-radius: 8px; font-size: 13px; font-weight: 500; transition: color var(--hc-motion-duration) var(--hc-motion-ease), background-color var(--hc-motion-duration) var(--hc-motion-ease); }
+.hc-sidebar nav a { display: flex; align-items: center; gap: 8px; padding: 11px 14px; text-decoration: none; color: var(--hc-text-muted); border-radius: 8px; font-size: 13px; font-weight: 500; transition: color var(--hc-motion-duration) var(--hc-motion-ease), background-color var(--hc-motion-duration) var(--hc-motion-ease); }
 .hc-sidebar nav a.active { color: var(--hc-primary); background: var(--hc-tint); font-weight: 700; }
 .hc-sidebar nav a:hover { color: var(--hc-primary); background: #f1f6f7; }
 .hc-logout { display: flex; align-items: center; gap: 9px; margin: 26px 0 0; padding: 11px 14px; border: 0; border-radius: 6px; background: none; color: #b42318; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: background-color .15s ease; }
@@ -72,6 +72,7 @@
 .hc-button--outline:hover:not(:disabled) { background: #eaf4f6; }
 .hc-button--danger { background: #b42318; border-color: #b42318; }
 .hc-button--danger:hover:not(:disabled) { background: #912018; }
+.hc-button:disabled { opacity: .45; cursor: not-allowed; }
 .hc-text-button { padding: 5px 0; border: 0; background: none; color: #0f5f73; font-size: 12px; font-weight: 600; }
 .hc-danger { color: #b42318; }
 .hc-success, .hc-error { padding: 12px 15px; margin: 0 0 18px; border-radius: 6px; font-size: 12px; line-height: 1.7; }

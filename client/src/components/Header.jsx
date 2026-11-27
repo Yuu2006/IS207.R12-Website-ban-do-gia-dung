@@ -7,12 +7,14 @@ import {
   LogOut,
   ArrowLeftRight,
   Heart,
+  Bell,
 } from "lucide-react";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useCustomerAuth } from "../context/CustomerAuthContext.jsx";
 import { roleHome } from "../context/auth-context.js";
+import { getNotifications } from "../services/notification-service.js";
 
 const storefrontLinks = [
   ["/", "Trang chủ"],
@@ -39,6 +41,7 @@ export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState("");
+  const [unreadCount, setUnreadCount] = useState(0);
   const navRef = useRef(null);
   const [navIndicator, setNavIndicator] = useState({ left: 0, width: 0, visible: false });
   const activePath = activeStorefrontPath(location.pathname);
@@ -67,6 +70,31 @@ export default function Header() {
   }, [activePath]);
 
   useEffect(() => { setMenuOpen(false); setError(""); }, [location.pathname]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setUnreadCount(0);
+      return undefined;
+    }
+    let active = true;
+    const refresh = async () => {
+      try {
+        const inbox = await getNotifications({ page: 1, pageSize: 1 });
+        if (active) setUnreadCount(inbox.unreadCount);
+      } catch { /* Keep the last known count when API is temporarily unavailable. */ }
+    };
+    const onRefresh = () => { void refresh(); };
+    void refresh();
+    const timer = window.setInterval(refresh, 60000);
+    window.addEventListener("focus", onRefresh);
+    window.addEventListener("hc:notifications-updated", onRefresh);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onRefresh);
+      window.removeEventListener("hc:notifications-updated", onRefresh);
+    };
+  }, [user?.id]);
 
   async function handleSignOut() {
     if (signingOut) return;
@@ -146,6 +174,17 @@ export default function Header() {
             <ShoppingCart size={17} />
           </Link>
 
+          {user && <Link
+            to="/notifications"
+            aria-label={unreadCount > 0 ? `Thông báo (${unreadCount} chưa đọc)` : "Thông báo"}
+            title="Thông báo"
+            aria-current={location.pathname === "/notifications" ? "page" : undefined}
+            className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E7EB] text-[#667085] transition-colors hover:border-[#0F5F73] hover:text-[#0F5F73]"
+          >
+            <Bell size={17} />
+            {unreadCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex min-w-4 items-center justify-center rounded-full bg-[#B42318] px-1 text-[10px] font-bold leading-4 text-white">{unreadCount > 99 ? "99+" : unreadCount}</span>}
+          </Link>}
+
           <Link
             to={user ? roleHome[user.role] || "/profile" : "/login"}
             aria-label={user ? `Không gian của ${user.fullName || "tôi"}` : "Đăng nhập"}
@@ -175,6 +214,7 @@ export default function Header() {
           const active = activePath === path;
           return <Link key={path} to={path} aria-current={active ? "page" : undefined} onClick={() => setMenuOpen(false)} className={`hc-store-mobile-link rounded-xl px-4 py-3 text-sm ${active ? "is-active font-semibold text-[#0F5F73]" : "text-[#1F2937]"}`}>{label}</Link>;
         })}
+        {user && <Link to="/notifications" aria-current={location.pathname === "/notifications" ? "page" : undefined} onClick={() => setMenuOpen(false)} className={`hc-store-mobile-link flex items-center justify-between rounded-xl px-4 py-3 text-sm ${location.pathname === "/notifications" ? "is-active font-semibold text-[#0F5F73]" : "text-[#1F2937]"}`}><span>Thông báo</span>{unreadCount > 0 && <span className="rounded-full bg-[#B42318] px-2 py-0.5 text-[11px] font-bold text-white">{unreadCount > 99 ? "99+" : unreadCount}</span>}</Link>}
         {user && <button type="button" disabled={signingOut} onClick={handleSignOut} className="flex items-center gap-2 px-4 py-3 text-left text-sm text-[#667085] disabled:opacity-50"><LogOut size={16} />{signingOut ? "Đang đăng xuất…" : "Đăng xuất"}</button>}
       </nav>}
       {error && <p role="alert" className="mx-auto max-w-7xl px-4 py-2 text-sm text-[#B42318]">{error}</p>}
