@@ -1,19 +1,20 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { Boxes, CalendarClock, ChartColumn, ClipboardList, CreditCard, Heart, History, House, LayoutDashboard, LogOut, MapPin, Menu, MessageCircleQuestion, Package, PackageCheck, ReceiptText, Ruler, Store, Ticket, Undo2, UserRound, Users, Warehouse, X } from 'lucide-react';
+import { Bell, Boxes, CalendarClock, ChartColumn, ClipboardList, CreditCard, FileClock, Heart, History, House, LayoutDashboard, LogOut, MapPin, Menu, MessageCircleQuestion, Package, PackageCheck, ReceiptText, Ruler, Store, Ticket, Undo2, UserRound, Users, Warehouse, X } from 'lucide-react';
 import Header from '../components/Header.jsx';
 import { roleLabels, useAuth } from '../context/auth-context.js';
+import { getNotifications } from '../services/notification-service.js';
 
 // Nguồn duy nhất cho menu và quyền xem tab; ProtectedRoute trong AppRoutes dùng cùng danh sách vai trò.
 export const workspaceMenus = {
-  CUSTOMER: [['/customer', 'Tổng quan'], ['/customer/decision-tools', 'Không gian & thiết bị'], ['/customer/devices', 'Thiết bị của tôi'], ['/profile', 'Hồ sơ của tôi'], ['/addresses', 'Địa chỉ nhận hàng'], ['/wishlist', 'Sản phẩm yêu thích'], ['/orders', 'Đơn hàng của tôi'], ['/checkout', 'Thanh toán']],
-  ADMIN: [['/admin', 'Tổng quan'], ['/admin/fit-rules', 'Quy tắc FitCheck'], ['/admin/care-rules', 'Chu kỳ bảo trì'], ['/admin/chatbot-faqs', 'FAQ chatbot'], ['/admin/products', 'Catalog sản phẩm'], ['/warehouse/inventory', 'Tồn kho'], ['/warehouse/history', 'Nhật ký kho'], ['/admin/users', 'Người dùng'], ['/admin/vouchers', 'Voucher'], ['/admin/reports', 'Báo cáo'], ['/sales/orders', 'Xử lý đơn hàng'], ['/sales/returns', 'Trả hàng / hoàn tiền'], ['/profile', 'Hồ sơ của tôi']],
-  SALES: [['/sales', 'Tổng quan'], ['/sales/orders', 'Xử lý đơn hàng'], ['/sales/returns', 'Trả hàng / hoàn tiền'], ['/profile', 'Hồ sơ của tôi']],
-  WAREHOUSE: [['/warehouse', 'Tổng quan'], ['/warehouse/inventory', 'Tồn kho'], ['/warehouse/history', 'Nhật ký kho'], ['/warehouse/returns', 'Nhận hàng trả'], ['/profile', 'Hồ sơ của tôi']],
+  CUSTOMER: [['/customer', 'Tổng quan'], ['/customer/decision-tools', 'Không gian & thiết bị'], ['/customer/devices', 'Thiết bị của tôi'], ['/profile', 'Hồ sơ của tôi'], ['/addresses', 'Địa chỉ nhận hàng'], ['/wishlist', 'Sản phẩm yêu thích'], ['/orders', 'Đơn hàng của tôi'], ['/checkout', 'Thanh toán'], ['/notifications', 'Thông báo']],
+  ADMIN: [['/admin', 'Tổng quan'], ['/admin/fit-rules', 'Quy tắc FitCheck'], ['/admin/care-rules', 'Chu kỳ bảo trì'], ['/admin/chatbot-faqs', 'FAQ chatbot'], ['/admin/products', 'Catalog sản phẩm'], ['/warehouse/inventory', 'Tồn kho'], ['/warehouse/history', 'Nhật ký kho'], ['/admin/users', 'Người dùng'], ['/admin/vouchers', 'Voucher'], ['/admin/reports', 'Báo cáo'], ['/admin/audit-logs', 'Nhật ký hoạt động'], ['/sales/orders', 'Xử lý đơn hàng'], ['/sales/returns', 'Trả hàng / hoàn tiền'], ['/profile', 'Hồ sơ của tôi'], ['/notifications', 'Thông báo']],
+  SALES: [['/sales', 'Tổng quan'], ['/sales/orders', 'Xử lý đơn hàng'], ['/sales/returns', 'Trả hàng / hoàn tiền'], ['/profile', 'Hồ sơ của tôi'], ['/notifications', 'Thông báo']],
+  WAREHOUSE: [['/warehouse', 'Tổng quan'], ['/warehouse/inventory', 'Tồn kho'], ['/warehouse/history', 'Nhật ký kho'], ['/warehouse/returns', 'Nhận hàng trả'], ['/profile', 'Hồ sơ của tôi'], ['/notifications', 'Thông báo']],
 };
 
 const roleIcons = { CUSTOMER: UserRound, ADMIN: LayoutDashboard, SALES: Store, WAREHOUSE: Warehouse };
-export const pathIcons = { '/customer/decision-tools': House, '/customer/devices': PackageCheck, '/admin/care-rules': CalendarClock, '/admin/chatbot-faqs': MessageCircleQuestion, '/admin/fit-rules': Ruler, '/customer': LayoutDashboard, '/admin': LayoutDashboard, '/sales': LayoutDashboard, '/warehouse': LayoutDashboard, '/admin/products': Package, '/warehouse/inventory': Boxes, '/warehouse/history': History, '/warehouse/returns': Undo2, '/admin/users': Users, '/admin/vouchers': Ticket, '/admin/reports': ChartColumn, '/profile': UserRound, '/addresses': MapPin, '/wishlist': Heart, '/orders': ReceiptText, '/checkout': CreditCard, '/sales/orders': ClipboardList, '/sales/returns': Undo2 };
+export const pathIcons = { '/customer/decision-tools': House, '/customer/devices': PackageCheck, '/admin/care-rules': CalendarClock, '/admin/chatbot-faqs': MessageCircleQuestion, '/admin/fit-rules': Ruler, '/customer': LayoutDashboard, '/admin': LayoutDashboard, '/sales': LayoutDashboard, '/warehouse': LayoutDashboard, '/admin/products': Package, '/warehouse/inventory': Boxes, '/warehouse/history': History, '/warehouse/returns': Undo2, '/admin/users': Users, '/admin/vouchers': Ticket, '/admin/reports': ChartColumn, '/admin/audit-logs': FileClock, '/notifications': Bell, '/profile': UserRound, '/addresses': MapPin, '/wishlist': Heart, '/orders': ReceiptText, '/checkout': CreditCard, '/sales/orders': ClipboardList, '/sales/returns': Undo2 };
 const overviewPaths = ['/customer', '/admin', '/sales', '/warehouse'];
 
 // Font của template chỉ nạp khi vào khu nhân viên để giao diện khách không đổi.
@@ -31,12 +32,29 @@ export default function AppShell() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [open, setOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const staff = user.role !== 'CUSTOMER';
   const RoleIcon = roleIcons[user.role];
   useStaffFont(staff);
   useEffect(() => { setOpen(false); }, [pathname]);
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const inbox = await getNotifications({ page: 1, pageSize: 1 });
+        if (active) setUnreadCount(inbox.unreadCount);
+      } catch { /* Keep the last known count during a transient API failure. */ }
+    };
+    const onFocus = () => { void refresh(); };
+    const onUpdated = () => { void refresh(); };
+    void refresh();
+    const timer = window.setInterval(refresh, 60000);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('hc:notifications-updated', onUpdated);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', onFocus); window.removeEventListener('hc:notifications-updated', onUpdated); };
+  }, [user.id]);
 
   async function handleLogout() {
     if (busy) return;
@@ -46,7 +64,7 @@ export default function AppShell() {
     finally { setBusy(false); }
   }
 
-  const nav = <nav id="hc-side-nav" aria-label={`Menu ${roleLabels[user.role]}`}>{workspaceMenus[user.role].map(([path, title]) => { const Icon = staff && pathIcons[path]; return <NavLink key={path} end={overviewPaths.includes(path)} to={path}>{Icon && <Icon size={20} aria-hidden="true" />}{title}</NavLink>; })}</nav>;
+  const nav = <nav id="hc-side-nav" aria-label={`Menu ${roleLabels[user.role]}`}>{workspaceMenus[user.role].map(([path, title]) => { const Icon = staff && pathIcons[path]; return <NavLink key={path} end={overviewPaths.includes(path)} to={path}>{Icon && <Icon size={20} aria-hidden="true" />}<span>{title}</span>{path === '/notifications' && unreadCount > 0 && <span className="hc-notification-count" aria-label={`${unreadCount} chưa đọc`}>{unreadCount > 99 ? '99+' : unreadCount}</span>}</NavLink>; })}</nav>;
   const logout = <div className={staff ? 'ad-logout' : undefined}><button className="hc-logout" type="button" disabled={busy} onClick={handleLogout}><LogOut size={staff ? 20 : 17} aria-hidden="true" />{busy ? 'Đang đăng xuất…' : 'Đăng xuất'}</button></div>;
 
   return <div className={`hc-app${staff ? ' hc-app--staff' : ''}`}>{!staff && <Header />}<div className="hc-app-body">

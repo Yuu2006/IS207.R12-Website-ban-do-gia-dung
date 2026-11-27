@@ -69,6 +69,27 @@ final class PaymentModel
     {
         $query = $this->pdo->prepare('INSERT INTO payment_events (payment_id, event_type, amount, actor_id, actor_role, reference_code, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())');
         $query->execute([$payment['id'], $type, $payment['amount'], $actor['id'], $actor['role'], $reference, $reason]);
+        (new \AuditModel($this->pdo))->record(
+            isset($actor['id']) ? (int) $actor['id'] : null,
+            $actor['role'] ?? null,
+            'PAYMENT_' . strtoupper($type),
+            'payment',
+            (int) $payment['id'],
+            ['amount' => orderMoney($payment['amount']), 'hasReference' => $reference !== null]
+        );
+    }
+
+    // Notify the account owner after an authoritative payment transition, never on an unverified browser return.
+    private function notifyCustomer(array $order, array $payment, string $event, string $title, string $message): void
+    {
+        (new \NotificationModel($this->pdo))->create(
+            (int) $order['customer_id'],
+            'payment:' . $payment['id'] . ':' . $event,
+            'ORDER',
+            $title,
+            $message,
+            '/orders/' . $order['id']
+        );
     }
 
     // Caller locks order then payment. No external provider call takes place in this transaction.
@@ -80,6 +101,11 @@ final class PaymentModel
         $query = $this->pdo->prepare("UPDATE orders SET payment_status = 'PAID', refund_required = ?, version = version + 1 WHERE id = ?");
         $query->execute([(int) ($late || $order['order_status'] === 'CANCELLED'), $order['id']]);
         $this->audit($payment, $actor, $late || $order['order_status'] === 'CANCELLED' ? 'PAID_REQUIRES_REVIEW' : 'PAID', $reference, $reason);
+        if ($late || $order['order_status'] === 'CANCELLED') {
+            $this->notifyCustomer($order, $payment, 'paid-review', 'Đã nhận thanh toán, cần đối soát', 'Khoản thanh toán cho đơn #' . $order['order_code'] . ' đã được xác nhận và đang chờ nhân viên đối soát.');
+        } else {
+            $this->notifyCustomer($order, $payment, 'paid', 'Đã xác nhận thanh toán', 'Khoản thanh toán cho đơn #' . $order['order_code'] . ' đã được xác nhận.');
+        }
     }
 
     public function fail(array $order, array $payment, string $reason): void
@@ -89,6 +115,7 @@ final class PaymentModel
         if ($query->rowCount() === 1) {
             $this->pdo->prepare("UPDATE orders SET payment_status = 'FAILED', version = version + 1 WHERE id = ?")->execute([$order['id']]);
             $this->audit($payment, ['id' => null, 'role' => 'SYSTEM'], 'FAILED', null, $reason);
+            $this->notifyCustomer($order, $payment, 'failed', 'Thanh toán chưa thành công', 'Thanh toán cho đơn #' . $order['order_code'] . ' chưa được xác nhận. Vui lòng thử lại hoặc liên hệ hỗ trợ.');
         }
     }
 
@@ -102,6 +129,7 @@ final class PaymentModel
         $query->execute([$order['id'], $order['version']]);
         if ($query->rowCount() !== 1) throw new ApiException(409, 'ORDER_VERSION_CONFLICT', 'Đơn đã thay đổi. Hãy tải lại.');
         $this->audit($payment, $actor, 'REFUND_SIMULATED', 'SIM-REFUND:' . $payment['id'], $reason);
+        $this->notifyCustomer($order, $payment, 'refunded', 'Đã ghi nhận hoàn tiền mô phỏng', 'Khoản hoàn tiền mô phỏng cho đơn #' . $order['order_code'] . ' đã được ghi nhận.');
     }
 
     // Owner-safe summary distinguishes the classroom simulation from an actual bank refund.
@@ -118,10 +146,11 @@ final class PaymentModel
         return $this->pdo->query("SELECT o.id FROM orders o JOIN payments p ON p.order_id = o.id WHERE o.order_status = 'PENDING' AND o.inventory_state = 'RESERVED' AND p.payment_method = 'VNPAY' AND p.status IN ('PENDING','FAILED') AND p.expires_at <= UTC_TIMESTAMP() AND p.is_deleted = 0 AND o.is_deleted = 0 ORDER BY p.expires_at LIMIT 100")->fetchAll(\PDO::FETCH_COLUMN);
     }
 
-    public function expire(array $payment): void
+    public function expire(array $payment, array $order, bool $notify = true): void
     {
         $this->pdo->prepare("UPDATE payments SET status = 'FAILED' WHERE id = ? AND status IN ('PENDING','FAILED')")->execute([$payment['id']]);
         $this->audit($payment, ['id' => null, 'role' => 'SYSTEM'], 'EXPIRED', null, 'Hết hạn VNPay Sandbox; hủy đơn chờ và giải phóng reservation.');
+        if ($notify) $this->notifyCustomer($order, $payment, 'expired', 'Thanh toán đã hết hạn', 'Phiên thanh toán VNPay cho đơn #' . $order['order_code'] . ' đã hết hạn. Hàng được giải phóng khỏi lượt giữ tồn.');
     }
 
     public function document(string $orderId, string $type): ?array

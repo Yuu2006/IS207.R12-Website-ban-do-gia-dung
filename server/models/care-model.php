@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/audit-model.php';
+
 // MySQL access for owned devices, care schedules and their catalog-linked supplies.
 final class CareModel
 {
@@ -26,6 +28,7 @@ final class CareModel
         $statement = $this->pdo->prepare("SELECT d.id, d.order_item_id, d.unit_number, d.product_id, d.variant_id,
                 d.product_name_snapshot, d.sku_snapshot, d.purchased_at, d.completed_at,
                 d.warranty_months_snapshot, d.warranty_start_date, d.serial_number, d.manual_url, d.status,
+                d.return_request_id, d.returned_at,
                 p.category_id, c.name AS category_name,
                 (SELECT pi.image_url FROM product_images pi WHERE pi.product_id = d.product_id AND pi.is_primary = 1 AND pi.is_deleted = 0 ORDER BY pi.id DESC LIMIT 1) AS image_url
             FROM owned_devices d
@@ -52,6 +55,7 @@ final class CareModel
         $statement = $this->pdo->prepare("SELECT d.id, d.order_item_id, d.unit_number, d.product_id, d.variant_id,
                 d.product_name_snapshot, d.sku_snapshot, d.purchased_at, d.completed_at,
                 d.warranty_months_snapshot, d.warranty_start_date, d.serial_number, d.manual_url, d.status,
+                d.return_request_id, d.returned_at,
                 p.category_id, c.name AS category_name,
                 (SELECT pi.image_url FROM product_images pi WHERE pi.product_id = d.product_id AND pi.is_primary = 1 AND pi.is_deleted = 0 ORDER BY pi.id DESC LIMIT 1) AS image_url
             FROM owned_devices d
@@ -73,6 +77,7 @@ final class CareModel
             $statement->execute([$deviceId, $customerId]);
             $current = $statement->fetch(PDO::FETCH_ASSOC);
             if (!$current) throw new ApiException('Không tìm thấy thiết bị.', 404);
+            if ($current['status'] === 'RETURNED') throw new ApiException('Thiết bị đã trả lại không thể chỉnh sửa.', 409);
             $serialNumber = array_key_exists('serialNumber', $values) ? $values['serialNumber'] : $current['serial_number'];
             $status = array_key_exists('status', $values) ? $values['status'] : $current['status'];
             $this->pdo->prepare('UPDATE owned_devices SET serial_number = ?, status = ?, updated_at = UTC_TIMESTAMP() WHERE id = ? AND customer_id = ?')
@@ -174,7 +179,7 @@ final class CareModel
         ], $statement->fetchAll(PDO::FETCH_ASSOC));
     }
 
-    // Insert a rule and its optional SKU links atomically.
+    // Insert a rule and its optional SKU links atomically with an ADMIN audit row.
     public function createCareRule(array $values, string $actorId): array
     {
         return $this->transaction(function () use ($values, $actorId): array {
@@ -183,11 +188,15 @@ final class CareModel
             $statement->execute([$values['categoryId'], $values['productId'], $values['ruleKey'], $values['title'], $values['instructions'], $values['firstDueDays'], $values['intervalDays'], $values['status'], $actorId]);
             $id = (string) $this->pdo->lastInsertId();
             $this->replaceRuleSupplies($id, $values['supplyVariantIds']);
+            (new AuditModel($this->pdo))->record((int) $actorId, 'ADMIN', 'CARE_RULE_CREATED', 'care_rule', (int) $id, [
+                'ruleKey' => $values['ruleKey'], 'status' => $values['status'],
+                'categoryId' => $values['categoryId'], 'productId' => $values['productId'],
+            ]);
             return $this->careRuleById($id);
         });
     }
 
-    // Update configuration without rewriting care tasks that already exist.
+    // Update configuration without rewriting care tasks that already exist; append audit atomically.
     public function updateCareRule(string $ruleId, array $values, string $actorId): array
     {
         return $this->transaction(function () use ($ruleId, $values, $actorId): array {
@@ -198,6 +207,10 @@ final class CareModel
             $update = $this->pdo->prepare('UPDATE care_rules SET category_id = ?, product_id = ?, rule_key = ?, title = ?, instructions = ?, first_due_days = ?, interval_days = ?, status = ?, version = version + 1, updated_by = ?, updated_at = UTC_TIMESTAMP() WHERE id = ?');
             $update->execute([$values['categoryId'], $values['productId'], $values['ruleKey'], $values['title'], $values['instructions'], $values['firstDueDays'], $values['intervalDays'], $values['status'], $actorId, $ruleId]);
             $this->replaceRuleSupplies($ruleId, $values['supplyVariantIds']);
+            (new AuditModel($this->pdo))->record((int) $actorId, 'ADMIN', 'CARE_RULE_UPDATED', 'care_rule', (int) $ruleId, [
+                'ruleKey' => $values['ruleKey'], 'status' => $values['status'],
+                'categoryId' => $values['categoryId'], 'productId' => $values['productId'],
+            ]);
             return $this->careRuleById($ruleId);
         });
     }
@@ -327,7 +340,9 @@ final class CareModel
             'purchasedAt' => $this->utcIso($row['purchased_at']), 'completedAt' => $this->utcIso($row['completed_at']),
             'warrantyMonths' => (int) $row['warranty_months_snapshot'], 'warrantyStartDate' => $row['warranty_start_date'],
             'warrantyStartConfirmed' => $row['warranty_start_date'] !== null, 'serialNumber' => $row['serial_number'],
-            'manualUrl' => $row['manual_url'], 'status' => $row['status'], 'careTasks' => $tasks,
+            'manualUrl' => $row['manual_url'], 'status' => $row['status'],
+            'returnRequestId' => isset($row['return_request_id']) && $row['return_request_id'] !== null ? (string) $row['return_request_id'] : null,
+            'returnedAt' => isset($row['returned_at']) ? $this->utcIso($row['returned_at']) : null, 'careTasks' => $tasks,
         ];
     }
 

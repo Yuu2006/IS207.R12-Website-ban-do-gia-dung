@@ -12,9 +12,10 @@ function catalogAdminInput(): array
     return get_object_vars($decoded);
 }
 
-function catalogAdminController(string $action, int $id): void
+function catalogAdminController(string $action, int $id, array $actor): void
 {
-    $service = new CatalogAdminService(new CatalogAdminModel(db()));
+    $pdo = db();
+    $service = new CatalogAdminService(new CatalogAdminModel($pdo), new AuditModel($pdo), (int) $actor['id']);
     $data = match ($action) {
         'variants' => $service->variants($id),
         'createVariant' => $service->createVariant($id, catalogAdminInput()),

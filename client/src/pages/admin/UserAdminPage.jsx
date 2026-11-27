@@ -12,11 +12,20 @@ import { registerErrors } from '../../utils/account-validation.js';
 const blank = { fullName: '', email: '', phone: '', role: '', password: '', confirmPassword: '' };
 const roleOptions = Object.entries(roleLabels);
 
+// Parse UTC MySQL timestamps explicitly so local display and temporary lock comparisons stay accurate in UTC+7.
+function parseUtcTimestamp(value) {
+  if (!value) return null;
+  const text = String(value).trim();
+  const iso = /[zZ]|[+-]\d{2}:?\d{2}$/.test(text) ? text : `${text.replace(' ', 'T')}Z`;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 // Format DB timestamps for the admin table without showing a fabricated date for accounts without a successful login.
-function dateTime(value) {
-  if (!value) return 'Chưa đăng nhập';
-  const date = new Date(String(value).replace(' ', 'T'));
-  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+function dateTime(value, fallback = 'Chưa đăng nhập') {
+  if (!value) return fallback;
+  const date = parseUtcTimestamp(value);
+  return date ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(date) : value;
 }
 
 // USR-01: ADMIN-managed accounts; API rechecks role, ownership-sensitive rules and last-admin protection.
@@ -110,9 +119,9 @@ export default function UserAdminPage() {
   const columns = [
     { key: 'user', label: 'Người dùng', width: 'minmax(0, 2fr)', render: user => <div className="ad-name"><span><b>{user.fullName}</b><small className="ad-sub">{user.email}{user.phone ? ` · ${user.phone}` : ''}</small></span></div> },
     { key: 'role', label: 'Vai trò', render: user => <span>{roleLabels[user.role] || user.role}</span> },
-    { key: 'status', label: 'Trạng thái', render: user => <span><span className={`hc-badge ${user.status === 'ACTIVE' ? 'hc-badge--in' : 'hc-badge--out'}`}>{user.status === 'ACTIVE' ? 'Hoạt động' : 'Đã khóa'}</span>{user.status === 'DISABLED' && user.lockReason && <small className="ad-sub">{user.lockReason}</small>}{user.status === 'ACTIVE' && user.lockedUntil && new Date(String(user.lockedUntil).replace(' ', 'T')) > new Date() && <small className="ad-sub">Khóa đăng nhập tạm đến {dateTime(user.lockedUntil)}</small>}</span> },
-    { key: 'joined', label: 'Ngày tham gia', render: user => <span>{dateTime(user.createdAt)}</span> },
-    { key: 'login', label: 'Đăng nhập gần nhất', render: user => <span>{dateTime(user.lastLoginAt)}</span> },
+    { key: 'status', label: 'Trạng thái', render: user => { const lockEndsAt = parseUtcTimestamp(user.lockedUntil); return <span><span className={`hc-badge ${user.status === 'ACTIVE' ? 'hc-badge--in' : 'hc-badge--out'}`}>{user.status === 'ACTIVE' ? 'Hoạt động' : 'Đã khóa'}</span>{user.status === 'DISABLED' && user.lockReason && <small className="ad-sub">{user.lockReason}</small>}{user.status === 'ACTIVE' && lockEndsAt && lockEndsAt > new Date() && <small className="ad-sub">Khóa đăng nhập tạm đến {dateTime(user.lockedUntil, '—')}</small>}</span>; } },
+    { key: 'joined', label: 'Ngày tham gia', render: user => <span>{dateTime(user.createdAt, '—')}</span> },
+    { key: 'login', label: 'Đăng nhập gần nhất', render: user => <span>{dateTime(user.lastLoginAt, 'Chưa đăng nhập')}</span> },
     { key: 'actions', label: 'Thao tác', width: '110px', render: user => <span className="ad-acts">
       <button className="hc-button hc-button--outline ad-sm" type="button" aria-label={`Sửa ${user.fullName}`} title="Sửa tài khoản" onClick={() => openEdit(user)}><Pencil size={16} aria-hidden="true" /></button>
       <button className={`hc-button hc-button--outline ad-sm${user.status === 'ACTIVE' ? ' ad-icon--danger' : ''}`} type="button" aria-label={`${user.status === 'ACTIVE' ? 'Khóa' : 'Mở khóa'} ${user.fullName}`} title={user.status === 'ACTIVE' ? 'Khóa tài khoản' : 'Mở khóa tài khoản'} onClick={() => openStatus(user)}>{user.status === 'ACTIVE' ? <LockKeyhole size={16} aria-hidden="true" /> : <UnlockKeyhole size={16} aria-hidden="true" />}</button>

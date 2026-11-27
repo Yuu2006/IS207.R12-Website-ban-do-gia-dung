@@ -21,7 +21,7 @@ function handleInventoryMovementRoutes(string $method, string $path): bool
         && $path === '/api/inventory/movements'
     ) {
         $actor = requireSessionRole(['ADMIN', 'WAREHOUSE']);
-        createInventoryMovement((int) $actor['id']);
+        createInventoryMovement((int) $actor['id'], (string) $actor['role']);
         return true;
     }
 

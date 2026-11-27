@@ -1,16 +1,17 @@
 # ERD — HomeCare (MVP)
 
-Cập nhật 12/11/2026 theo schema sau `server/db/setup.php migrate` (baseline + migration 008–020) trên MySQL 8.4. Sơ đồ chỉ vẽ khóa chính, khóa ngoại và cột nghiệp vụ chính; kiểu dữ liệu đầy đủ xem file migration. Tiền dùng `DECIMAL(14,2)` (VND nguyên), thời gian lưu UTC.
+Cập nhật 27/11/2026 theo schema sau `server/db/setup.php migrate` (baseline + migration 008–023) trên MySQL 8.4. Sơ đồ chỉ vẽ khóa chính, khóa ngoại và cột nghiệp vụ chính; kiểu dữ liệu đầy đủ xem file migration. Tiền dùng `DECIMAL(14,2)` (VND nguyên), thời gian lưu UTC.
 
 Quy ước chung: hầu hết bảng nghiệp vụ có `created_at`, `updated_at`, `is_deleted` (xóa mềm). Bảng `schema_migrations` do `setup.php` tạo để ghi các file đã áp.
 
-## 1. Tài khoản và hồ sơ (CUS-01..05, USR-01)
+## 1. Tài khoản, hồ sơ, thông báo và audit (CUS-01..05, USR-01..02, NOTI-01, AUD-01)
 
 ```mermaid
 erDiagram
     users ||--o{ addresses : "có"
     users ||--o{ auth_login_attempts : "ghi lần đăng nhập"
     users ||--o{ audit_logs : "thực hiện"
+    users ||--o{ notifications : "nhận thông báo"
     users |o--o{ users : "admin_locked_by"
     users {
         bigint id PK
@@ -29,6 +30,25 @@ erDiagram
         varchar phone
         varchar address_line
         tinyint is_default
+    }
+    notifications {
+        bigint id PK
+        bigint recipient_id FK
+        varchar event_key "UK cùng recipient_id"
+        varchar notification_type "ORDER | RETURN | CARE | WARRANTY | ACCOUNT | SYSTEM"
+        varchar title
+        varchar target_url
+        datetime read_at
+    }
+    audit_logs {
+        bigint id PK
+        bigint actor_id FK
+        varchar actor_role
+        varchar action
+        varchar entity_type
+        bigint entity_id
+        json details
+        timestamp created_at
     }
 ```
 
@@ -187,6 +207,7 @@ erDiagram
     fit_rules ||--o{ fit_rule_versions : "phiên bản"
     users |o--o{ decision_events : "lượt FitCheck/TCO"
     order_items ||--o| owned_devices : "tạo thiết bị"
+    order_return_requests |o--o{ owned_devices : "return_request_id (023)"
     users ||--o{ owned_devices : "sở hữu"
     owned_devices ||--o{ care_tasks : "lịch bảo trì"
     care_rules ||--o{ care_tasks : "sinh lịch"
@@ -226,5 +247,8 @@ FIT-02 tuần 4 thêm migration 021: `installation_checklists` FK tới `users`,
 | Hoàn tiền theo kỳ | `order_simulated_refunds.idx_simulated_refund_created` |
 | Lượt FitCheck/TCO theo kỳ | `decision_events.idx_decision_type_date`, `idx_decision_created` (020) |
 | Wishlist của khách | `wishlists.idx_wishlist_user_created` |
+| Hộp thư thông báo và đếm chưa đọc | `notifications.uq_notification_recipient_event`, `idx_notification_inbox`, `idx_notification_unread` (022) |
+| Lọc nhật ký audit theo hành động/người thực hiện/thời gian | `audit_logs.idx_audit_action_time`, `idx_audit_actor_time` (022) |
+| Thiết bị gắn yêu cầu trả | `owned_devices.idx_owned_return_request` (023) |
 
 Đã kiểm bằng `EXPLAIN` trên dữ liệu seed: trước migration 020, lọc `orders.placed_at` quét toàn bảng và gom lịch sử `COMPLETED` quét toàn index; sau 020 lần lượt dùng `range` và `ref`. Bảng catalog (~60 sản phẩm, ~70 SKU) quét toàn bảng vẫn nhanh nên chưa thêm index cho cảnh báo tồn.

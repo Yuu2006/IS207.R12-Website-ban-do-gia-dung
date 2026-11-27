@@ -63,7 +63,7 @@ final class PaymentService
                 if (count($rows) !== 1 || $order['order_status'] !== 'PENDING' || $order['inventory_state'] !== 'RESERVED' || !in_array($rows[0]['status'], ['PENDING', 'FAILED'], true) || !$rows[0]['expires_at'] || strtotime($rows[0]['expires_at'] . ' UTC') > time()) { $pdo->commit(); continue; }
                 $actor = ['id' => null, 'role' => 'SYSTEM'];
                 $dependencies->release($pdo, $actor, $order, $this->orders->itemsFor([(string) $id])[(string) $id] ?? []);
-                $model->expire($rows[0]);
+                $model->expire($rows[0], $order);
                 $this->orders->transition($order, $actor, ['expectedVersion' => (int) $order['version'], 'reason' => 'Hết hạn thanh toán VNPay.'], ['from' => 'pending', 'to' => 'cancelled', 'payment' => 'failed', 'refundRequired' => false]);
                 $pdo->commit(); $count++;
             } catch (\Throwable $error) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $error; }
@@ -145,7 +145,7 @@ final class PaymentService
                 if ($late && $order['order_status'] === 'PENDING' && $order['inventory_state'] === 'RESERVED') {
                     $system = ['id' => null, 'role' => 'SYSTEM'];
                     $this->checkout->release($pdo, $system, $order, $this->orders->itemsFor([(string) $order['id']])[(string) $order['id']] ?? []);
-                    $model->expire($payment);
+                    $model->expire($payment, $order, false);
                     $this->orders->transition($order, $system, ['expectedVersion' => (int) $order['version'], 'reason' => 'Hết hạn thanh toán VNPay.'], ['from' => 'pending', 'to' => 'cancelled', 'payment' => 'failed', 'refundRequired' => false]);
                     $order['order_status'] = 'CANCELLED';
                 }

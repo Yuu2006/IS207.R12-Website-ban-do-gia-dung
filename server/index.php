@@ -4,6 +4,12 @@ declare(strict_types=1);
 require_once __DIR__ . '/utils/response.php';
 require_once __DIR__ . '/utils/order-api.php';
 require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/models/notification-model.php';
+require_once __DIR__ . '/models/audit-model.php';
+require_once __DIR__ . '/services/notification-service.php';
+require_once __DIR__ . '/services/audit-service.php';
+require_once __DIR__ . '/routes/notification-routes.php';
+require_once __DIR__ . '/routes/audit-routes.php';
 require_once __DIR__ . '/routes/auth-routes.php';
 require_once __DIR__ . '/routes/user-routes.php';
 require_once __DIR__ . '/routes/admin-user-routes.php';
@@ -47,10 +53,13 @@ try {
     startAppSession();
     $readOnly = in_array($method, ['GET', 'HEAD'], true);
     $isAdminUsers = $path === '/admin/users' || str_starts_with($path, '/admin/users/');
+    $isNotifications = $path === '/notifications' || $path === '/notifications/read-all' || preg_match('#^/notifications/[1-9][0-9]{0,18}/read$#D', $path) === 1;
+    $isAudit = $path === '/admin/audit-logs';
     $isAuth = str_starts_with($path, '/auth/') || str_starts_with($path, '/users/') || $isAdminUsers;
+    $isSessionModule = $isAuth || $isNotifications || $isAudit;
     $isCatalog = str_starts_with($path, '/api/');
     // Order API tự kiểm tra CSRF sau xác thực (401 trước 403) theo contract riêng.
-    if (($isAuth || $isCatalog) && !$readOnly && !hash_equals($_SESSION['csrfToken'], $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '')) throw new ApiException('CSRF token chưa hợp lệ. Hãy tải lại phiên đăng nhập.', 403);
+    if (($isSessionModule || $isCatalog) && !$readOnly && !hash_equals($_SESSION['csrfToken'], $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '')) throw new ApiException('CSRF token chưa hợp lệ. Hãy tải lại phiên đăng nhập.', 403);
 
     // Chỉ chạm MySQL khi cần; principal được đối chiếu mỗi request để hủy phiên hết hạn/bị khóa/đổi mật khẩu.
     // Phiên chưa từng đăng nhập không cần DB để xác nhận anonymous; tuyệt đối không fallback ở phiên có principal.
@@ -58,15 +67,31 @@ try {
         respondJson(['user' => null, 'expiresAt' => null, 'csrfToken' => $_SESSION['csrfToken']]);
         exit;
     }
-    if ((str_starts_with($path, '/users/') || $isAdminUsers) && currentPrincipal() === null) {
+    if ((str_starts_with($path, '/users/') || $isAdminUsers || $isNotifications || $isAudit) && currentPrincipal() === null) {
         throw new ApiException('Yêu cầu đăng nhập.', 401);
     }
     $model = null;
     $auth = null;
     if ($isAuth || currentPrincipal()) {
         $model = new UserModel(db());
-        $auth = new AuthService($model, $_SESSION, (string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+        $auth = new AuthService($model, $_SESSION, (string) ($_SERVER['REMOTE_ADDR'] ?? ''), new AuditModel(db()));
         $auth->session();
+    }
+
+    if ($isNotifications || $isAudit) {
+        $raw = $readOnly ? '' : file_get_contents('php://input', false, null, 0, 16385);
+        if (strlen($raw) > 16384) throw new ApiException('Request quá lớn.', 413);
+        $input = [];
+        if ($raw !== '') {
+            try { $decoded = json_decode($raw, false, 32, JSON_THROW_ON_ERROR); }
+            catch (JsonException) { throw new ApiException('JSON chưa hợp lệ.', 400); }
+            if (!$decoded instanceof stdClass) throw new ApiException('Request phải là JSON object.', 422);
+            $input = get_object_vars($decoded);
+        }
+        $principal = currentPrincipal();
+        if ($isNotifications && dispatchNotificationRoute($method, $path, $readOnly ? $_GET : $input, $principal, new NotificationService(new NotificationModel(db())))) exit;
+        if ($isAudit && dispatchAuditRoute($method, $path, $_GET, $principal, new AuditService(new AuditModel(db())))) exit;
+        throw new ApiException('Endpoint chưa tồn tại.', 404);
     }
 
     if ($isAuth) {

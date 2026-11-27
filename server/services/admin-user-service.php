@@ -108,7 +108,7 @@ class AdminUserService
             $id = $this->model->transaction(function () use ($actor, $values) {
                 $this->activeActor((int) $actor['id']);
                 $id = $this->model->create($values, password_hash($values['password'], PASSWORD_DEFAULT));
-                $this->model->audit((int) $actor['id'], 'USER_CREATE', $id, ['role' => $values['role']]);
+                $this->model->audit((int) $actor['id'], $actor['role'], 'USER_CREATE', $id, ['role' => $values['role']]);
                 return $id;
             });
         } catch (PDOException $error) {
@@ -145,7 +145,7 @@ class AdminUserService
                 }
                 if (!$changed) return;
                 $this->model->update($targetId, $values);
-                $this->model->audit((int) $actor['id'], 'USER_UPDATE', $targetId, ['changedFields' => $changed, 'role' => ['from' => $current['role'], 'to' => $values['role']]]);
+                $this->model->audit((int) $actor['id'], $actor['role'], 'USER_UPDATE', $targetId, ['changedFields' => $changed, 'role' => ['from' => $current['role'], 'to' => $values['role']]]);
             });
         } catch (PDOException $error) {
             if ($this->isUniqueViolation($error)) throw new ApiException('Email hoặc số điện thoại đã được sử dụng.', 409);
@@ -179,7 +179,7 @@ class AdminUserService
                 throw new ApiException('Không thể khóa quản trị viên hoạt động cuối cùng.', 409);
             }
             $this->model->changeStatus($targetId, $status, (int) $actor['id'], $reason);
-            $this->model->audit((int) $actor['id'], $status === 'DISABLED' ? 'USER_DISABLE' : 'USER_ENABLE', $targetId, [
+            $this->model->audit((int) $actor['id'], $actor['role'], $status === 'DISABLED' ? 'USER_DISABLE' : 'USER_ENABLE', $targetId, [
                 'from' => $current['status'], 'to' => $status, 'reason' => $reason,
             ]);
         });

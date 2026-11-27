@@ -1,0 +1,64 @@
+.hc-notifications-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
+.hc-notifications-heading .hc-button, .hc-audit-filter-actions .hc-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.hc-notifications-toolbar, .hc-audit-table-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.hc-notification-summary { display: inline-flex; align-items: center; gap: 8px; color: #475467; font-size: 13px; }
+.hc-notification-summary svg { color: #0f5f73; }
+.hc-checkbox-label { display: inline-flex; align-items: center; gap: 8px; color: #475467; font-size: 13px; cursor: pointer; }
+.hc-checkbox-label input { accent-color: #0f5f73; }
+.hc-notification-list { display: grid; gap: 10px; }
+.hc-notification-item { display: flex; align-items: center; gap: 16px; padding: 18px 20px; border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; }
+.hc-notification-item.is-unread { border-left: 3px solid #0f5f73; background: #f4fafb; }
+.hc-notification-link { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; color: inherit; text-decoration: none; }
+.hc-notification-link:hover .hc-notification-copy strong { color: #0f5f73; }
+.hc-notification-icon { display: grid; place-items: center; width: 40px; height: 40px; flex: 0 0 auto; border-radius: 9px; background: #eaf4f6; color: #0f5f73; }
+.hc-notification-copy { display: grid; gap: 4px; min-width: 0; }
+.hc-notification-copy strong { color: #1f2937; font-size: 14px; }
+.hc-notification-copy > span, .hc-notification-copy time { color: #667085; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.hc-notification-unread { flex: 0 0 auto; color: #0f5f73; }
+.hc-notification-item .hc-text-button { border: 0; background: transparent; color: #0f5f73; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.hc-notification-empty { display: grid; justify-items: center; gap: 10px; min-height: 220px; align-content: center; color: #667085; text-align: center; }
+.hc-notification-empty svg { color: #98a2b3; }
+.hc-notification-empty strong { color: #1f2937; }
+.hc-notification-count { margin-left: auto; padding: 2px 7px; border-radius: 999px; background: #b42318; color: #fff; font-size: 10px; font-weight: 700; line-height: 1.5; }
+.hc-audit-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 14px; margin-bottom: 18px; }
+.hc-audit-filters .hc-field { display: grid; gap: 7px; color: #475467; font-size: 12px; font-weight: 600; }
+.hc-audit-filters input { width: 100%; min-width: 0; height: 40px; padding: 8px 10px; border: 1px solid #d0d5dd; border-radius: 7px; background: #fff; color: #1f2937; font: inherit; font-size: 13px; }
+.hc-audit-filter-actions { display: flex; gap: 8px; }
+.hc-audit-table-card { padding: 20px; }
+.hc-audit-table-heading { margin-bottom: 12px; color: #344054; font-size: 14px; }
+.hc-audit-table-heading strong { display: inline-flex; align-items: center; gap: 8px; }
+.hc-audit-table-heading svg { color: #0f5f73; }
+.hc-audit-table-heading > span { color: #667085; font-size: 12px; }
+.hc-table-scroll { overflow-x: auto; }
+.hc-audit-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.hc-audit-table th, .hc-audit-table td { padding: 11px 10px; border-bottom: 1px solid #eaecf0; text-align: left; vertical-align: top; }
+.hc-audit-table th { background: #f9fafb; color: #475467; font-weight: 600; white-space: nowrap; }
+.hc-audit-table td code { color: #0f5f73; font-size: 11px; }
+.hc-audit-subtext { display: block; margin-top: 4px; color: #667085; font-size: 11px; }
+.hc-audit-table details summary { color: #0f5f73; cursor: pointer; }
+.hc-audit-table details pre { max-width: 340px; max-height: 180px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 10px; }
+.hc-table-state { padding: 28px !important; color: #667085; text-align: center !important; }
+.hc-audit-page > .hc-error, .hc-notifications-page > .hc-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; padding: 12px; border-radius: 8px; background: #fef3f2; color: #b42318; }
+@media (max-width: 800px) { .hc-audit-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) {
+  .hc-notifications-heading { align-items: stretch; flex-direction: column; }
+  .hc-notification-item { align-items: flex-start; flex-wrap: wrap; padding: 14px; }
+  .hc-notification-item .hc-text-button { margin-left: 54px; }
+  .hc-audit-filters { grid-template-columns: 1fr; }
+  .hc-audit-filter-actions { flex-wrap: wrap; }
+  .hc-audit-table-card { padding: 14px; }
+  .hc-audit-table thead { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  .hc-audit-table tbody tr { display: block; overflow: hidden; margin-bottom: 12px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
+  .hc-audit-table tbody td { display: grid; grid-template-columns: minmax(92px, 0.65fr) minmax(0, 1fr); gap: 10px; padding: 9px 11px; border-bottom: 1px solid #f0f1f3; overflow-wrap: anywhere; }
+  .hc-audit-table tbody td:last-child { border-bottom: 0; }
+  .hc-audit-table tbody td:nth-child(1)::before { content: "Thời gian"; }
+  .hc-audit-table tbody td:nth-child(2)::before { content: "Người thực hiện"; }
+  .hc-audit-table tbody td:nth-child(3)::before { content: "Thao tác"; }
+  .hc-audit-table tbody td:nth-child(4)::before { content: "Đối tượng"; }
+  .hc-audit-table tbody td:nth-child(5)::before { content: "Chi tiết"; }
+  .hc-audit-table tbody td::before { color: #667085; font-weight: 600; }
+  .hc-audit-table tbody td code { overflow-wrap: anywhere; }
+  .hc-audit-table tbody td .hc-audit-subtext { overflow-wrap: anywhere; }
+  .hc-audit-table tbody td.hc-table-state { display: block; padding: 20px !important; }
+  .hc-audit-table tbody td.hc-table-state::before { content: none; }
+}

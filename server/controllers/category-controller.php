@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../utils/catalog-audit.php';
 
 /**
  * GET /api/categories
@@ -189,6 +190,7 @@ function createCategory(): void
 
     try {
         $pdo = db();
+        $pdo->beginTransaction();
 
         if ($data['parent_id'] !== null) {
             $stmt = $pdo->prepare("
@@ -198,6 +200,7 @@ function createCategory(): void
             $stmt->execute(['id' => $data['parent_id']]);
 
             if (!$stmt->fetchColumn()) {
+                $pdo->rollBack();
                 http_response_code(422);
                 echo json_encode([
                     'success' => false,
@@ -212,14 +215,23 @@ function createCategory(): void
             VALUES (:parent_id, :name, :slug, :sort_order, :is_active, 0)
         ");
         $stmt->execute($data);
+        $categoryId = (int) $pdo->lastInsertId();
+        recordCatalogAudit($pdo, 'CATALOG_CATEGORY_CREATED', 'category', $categoryId, [
+            'parentId' => $data['parent_id'],
+            'isActive' => (bool) $data['is_active'],
+        ]);
+        $pdo->commit();
 
         http_response_code(201);
         echo json_encode([
             'success' => true,
             'message' => 'Tạo danh mục thành công.',
-            'data' => ['id' => (int) $pdo->lastInsertId()]
+            'data' => ['id' => $categoryId]
         ], JSON_UNESCAPED_UNICODE);
     } catch (PDOException $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         error_log($e->getMessage());
 
         if ($e->getCode() === '23000') {
@@ -237,6 +249,9 @@ function createCategory(): void
             'message' => 'Không thể tạo danh mục.'
         ], JSON_UNESCAPED_UNICODE);
     } catch (Throwable $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         error_log($e->getMessage());
         http_response_code(500);
         echo json_encode([
@@ -258,14 +273,18 @@ function updateCategory(int $id): void
 
     try {
         $pdo = db();
+        $pdo->beginTransaction();
 
         $stmt = $pdo->prepare("
-            SELECT id FROM categories
+            SELECT id, parent_id, name, slug, sort_order, is_active FROM categories
             WHERE id = :id AND COALESCE(is_deleted, 0) = 0
+            FOR UPDATE
         ");
         $stmt->execute(['id' => $id]);
 
-        if (!$stmt->fetchColumn()) {
+        $current = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$current) {
+            $pdo->rollBack();
             http_response_code(404);
             echo json_encode([
                 'success' => false,
@@ -275,6 +294,7 @@ function updateCategory(int $id): void
         }
 
         if ($data['parent_id'] === $id) {
+            $pdo->rollBack();
             http_response_code(422);
             echo json_encode([
                 'success' => false,
@@ -291,6 +311,7 @@ function updateCategory(int $id): void
             $stmt->execute(['parent_id' => $data['parent_id']]);
 
             if (!$stmt->fetchColumn()) {
+                $pdo->rollBack();
                 http_response_code(422);
                 echo json_encode([
                     'success' => false,
@@ -308,6 +329,7 @@ function updateCategory(int $id): void
             $stmt->execute(['id' => $id]);
 
             if ($stmt->fetchColumn()) {
+                $pdo->rollBack();
                 http_response_code(422);
                 echo json_encode([
                     'success' => false,
@@ -333,6 +355,7 @@ function updateCategory(int $id): void
             ]);
 
             if ($stmt->fetchColumn()) {
+                $pdo->rollBack();
                 http_response_code(422);
                 echo json_encode([
                     'success' => false,
@@ -353,6 +376,10 @@ function updateCategory(int $id): void
             WHERE id = :id AND COALESCE(is_deleted, 0) = 0
         ");
         $stmt->execute($data);
+        recordCatalogAudit($pdo, 'CATALOG_CATEGORY_UPDATED', 'category', $id, [
+            'changedFields' => ['parent_id', 'name', 'slug', 'sort_order', 'is_active'],
+        ]);
+        $pdo->commit();
 
         http_response_code(200);
         echo json_encode([
@@ -360,6 +387,9 @@ function updateCategory(int $id): void
             'message' => 'Cập nhật danh mục thành công.'
         ], JSON_UNESCAPED_UNICODE);
     } catch (PDOException $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         error_log($e->getMessage());
 
         if ($e->getCode() === '23000') {
@@ -377,6 +407,9 @@ function updateCategory(int $id): void
             'message' => 'Không thể cập nhật danh mục.'
         ], JSON_UNESCAPED_UNICODE);
     } catch (Throwable $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         error_log($e->getMessage());
         http_response_code(500);
         echo json_encode([
@@ -454,6 +487,7 @@ function deleteCategory(int $id): void
             WHERE id = :id
         ");
         $stmt->execute(['id' => $id]);
+        recordCatalogAudit($pdo, 'CATALOG_CATEGORY_DELETED', 'category', $id);
 
         $pdo->commit();
 

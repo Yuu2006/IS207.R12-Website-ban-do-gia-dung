@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../models/catalog-admin-model.php';
+require_once __DIR__ . '/../models/audit-model.php';
 require_once __DIR__ . '/../middleware/validation-middleware.php';
 
 // Nghiệp vụ quản trị SKU/giá khuyến mãi/ảnh/thông số; mọi hàm yêu cầu route đã kiểm tra ADMIN.
@@ -8,7 +9,7 @@ class CatalogAdminService
 {
     private const VARIANT_FIELDS = ['sku', 'variant_name', 'price', 'sale_price', 'sale_starts_at', 'sale_ends_at', 'low_stock_threshold', 'is_active'];
 
-    public function __construct(private CatalogAdminModel $model) {}
+    public function __construct(private CatalogAdminModel $model, private AuditModel $audit, private int $actorId) {}
 
     // Tiền giữ dạng chuỗi thập phân tới PDO/DECIMAL(14,2), không đi qua float.
     public static function money(mixed $value, string $field, array &$errors): ?string
@@ -76,7 +77,14 @@ class CatalogAdminService
         if (!$this->model->productExists($productId)) throw new ApiException('Không tìm thấy sản phẩm.', 404);
         $values = self::validateVariant($input, null);
         try {
-            return $this->model->variant($this->model->insertVariant($productId, $values));
+            $created = $this->model->transactionOnProduct($productId, function () use ($productId, $values) {
+                $id = $this->model->insertVariant($productId, $values);
+                $variant = $this->model->variant($id);
+                $this->audit->record($this->actorId, 'ADMIN', 'CATALOG_VARIANT_CREATED', 'product_variant', $id, ['productId' => $productId, 'isActive' => $values['is_active']]);
+                return $variant;
+            });
+            if ($created === null) throw new ApiException('Không tìm thấy sản phẩm.', 404);
+            return $created;
         } catch (PDOException $error) {
             if ($error->getCode() === '23000') throw new ApiException('Mã SKU đã tồn tại.', 409, ['sku' => 'Mã SKU đã tồn tại.']);
             throw $error;
@@ -86,7 +94,9 @@ class CatalogAdminService
     // Xóa mềm SKU: chỉ khi tồn bằng 0 để không mất dấu hàng còn trong kho; lịch sử movement giữ nguyên.
     public function deleteVariant(int $id): array
     {
-        if (!$this->model->softDeleteVariant($id)) throw new ApiException('Không tìm thấy SKU.', 404);
+        if (!$this->model->softDeleteVariant($id, function (array $row) use ($id): void {
+            $this->audit->record($this->actorId, 'ADMIN', 'CATALOG_VARIANT_DELETED', 'product_variant', $id, ['productId' => (int) $row['product_id']]);
+        })) throw new ApiException('Không tìm thấy SKU.', 404);
         return ['id' => $id];
     }
 
@@ -96,8 +106,17 @@ class CatalogAdminService
         if (!$current) throw new ApiException('Không tìm thấy SKU.', 404);
         $current['low_stock_threshold'] = (int) $current['low_stock_threshold'];
         $current['is_active'] = (bool) $current['is_active'];
-        $this->model->updateVariant($id, self::validateVariant($input, $current));
-        return $this->model->variant($id);
+        $values = self::validateVariant($input, $current);
+        $updated = $this->model->transactionOnProduct((int) $current['product_id'], function () use ($id, $values, $current): ?array {
+            $locked = $this->model->variant($id);
+            if (!$locked) return null;
+            $this->model->updateVariant($id, $values);
+            $row = $this->model->variant($id);
+            $this->audit->record($this->actorId, 'ADMIN', 'CATALOG_VARIANT_UPDATED', 'product_variant', $id, ['productId' => (int) $current['product_id'], 'isActive' => $values['is_active']]);
+            return $row;
+        });
+        if ($updated === null) throw new ApiException('Không tìm thấy SKU.', 404);
+        return $updated;
     }
 
     // PRD-04: nhiều ảnh, chọn ảnh đại diện, sắp thứ tự; chỉ nhận ảnh do /api/uploads/images sinh ra.
@@ -126,6 +145,7 @@ class CatalogAdminService
             if (count($current) >= 10) throw new ApiException('Mỗi sản phẩm tối đa 10 ảnh.', 422);
             $id = $this->model->insertImage($productId, $input['image_url'], $sortOrder);
             if ($primary || !$current) $this->model->makePrimary($productId, $id);
+            $this->audit->record($this->actorId, 'ADMIN', 'CATALOG_IMAGE_CREATED', 'product_image', $id, ['productId' => $productId, 'isPrimary' => $primary || !$current, 'sortOrder' => $sortOrder]);
             return true;
         });
         if (!$done) throw new ApiException('Không tìm thấy sản phẩm.', 404);
@@ -139,11 +159,13 @@ class CatalogAdminService
         if (array_key_exists('is_primary', $input) && $input['is_primary'] !== true) throw new ApiException('Chọn ảnh khác làm ảnh đại diện thay vì bỏ cờ.', 422, ['is_primary' => 'Chỉ nhận true.']);
         $sortOrder = array_key_exists('sort_order', $input) ? self::sortOrder($input['sort_order']) : null;
         $productId = (int) $image['product_id'];
-        $this->model->transactionOnProduct($productId, function () use ($imageId, $productId, $input, $sortOrder) {
+        $done = $this->model->transactionOnProduct($productId, function () use ($imageId, $productId, $input, $sortOrder) {
             if ($sortOrder !== null) $this->model->updateImageOrder($imageId, $sortOrder);
             if (($input['is_primary'] ?? false) === true) $this->model->makePrimary($productId, $imageId);
+            $this->audit->record($this->actorId, 'ADMIN', 'CATALOG_IMAGE_UPDATED', 'product_image', $imageId, ['productId' => $productId, 'isPrimary' => ($input['is_primary'] ?? false) === true, 'sortOrderChanged' => $sortOrder !== null]);
             return true;
         });
+        if (!$done) throw new ApiException('Không tìm thấy sản phẩm.', 404);
         return $this->model->images($productId);
     }
 
@@ -156,6 +178,7 @@ class CatalogAdminService
             $this->model->softDeleteImage($imageId);
             $rest = $this->model->images($productId);
             if ((int) $image['is_primary'] && $rest) $this->model->makePrimary($productId, (int) $rest[0]['id']);
+            $this->audit->record($this->actorId, 'ADMIN', 'CATALOG_IMAGE_DELETED', 'product_image', $imageId, ['productId' => $productId]);
             return true;
         });
         return $this->model->images($productId);
@@ -178,7 +201,13 @@ class CatalogAdminService
         if ($errors) throw new ApiException('Hãy kiểm tra thông số.', 422, $errors);
         if (!$this->model->categoryExists($categoryId)) throw new ApiException('Không tìm thấy danh mục.', 404);
         try {
-            return ['id' => (string) $this->model->insertAttribute($categoryId, $values)] + $values;
+            $id = $this->model->transactionOnCategory($categoryId, function () use ($categoryId, $values): int {
+                $id = $this->model->insertAttribute($categoryId, $values);
+                $this->audit->record($this->actorId, 'ADMIN', 'CATALOG_ATTRIBUTE_CREATED', 'product_attribute', $id, ['categoryId' => $categoryId, 'attributeKey' => $values['attribute_key'], 'dataType' => $values['data_type']]);
+                return $id;
+            });
+            if ($id === null) throw new ApiException('Không tìm thấy danh mục.', 404);
+            return ['id' => (string) $id] + $values;
         } catch (PDOException $error) {
             if ($error->getCode() === '23000') throw new ApiException('Khóa thông số đã tồn tại trong danh mục.', 409, ['attribute_key' => 'Khóa đã tồn tại.']);
             throw $error;

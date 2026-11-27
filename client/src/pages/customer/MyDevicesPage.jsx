@@ -6,7 +6,7 @@ import { careService } from '../../services/care-service.js';
 import './care-pages.css';
 
 const dateLabel = value => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${value.slice(0, 10)}T00:00:00Z`)) : 'Chưa xác nhận';
-const deviceStatusTabs = [['ACTIVE', 'Đang sử dụng'], ['ARCHIVED', 'Đã lưu trữ']];
+const deviceStatusTabs = [['ACTIVE', 'Đang sử dụng'], ['ARCHIVED', 'Đã lưu trữ'], ['RETURNED', 'Đã trả lại']];
 const money = value => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(Number(value || 0));
 const vietnamDate = (date = new Date()) => {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
@@ -61,17 +61,18 @@ function DeviceCard({ device, onComplete, onPostpone, onArchive, busyTaskId, bus
   const [serial, setSerial] = useState(device.serialNumber || '');
   const [serialDirty, setSerialDirty] = useState(false);
   const canModify = device.status === 'ACTIVE';
+  const isReturned = device.status === 'RETURNED';
   return <article className="care-device hc-card">
     <div className="care-device__top">
       <div className="care-device__image">{device.imageUrl ? <img src={device.imageUrl} alt="" /> : <Package size={28} aria-hidden="true" />}</div>
       <div className="care-device__identity"><span className="hc-eyebrow">{device.categoryName || 'Thiết bị gia dụng'}</span><h2>{device.productName}</h2><p>Mã SKU: <strong>{device.sku}</strong>{device.unitNumber > 1 ? ` · Thiết bị ${device.unitNumber}` : ''}</p></div>
-      <button type="button" className="care-icon-button" aria-label={device.status === 'ARCHIVED' ? 'Khôi phục thiết bị' : 'Lưu trữ thiết bị'} title={device.status === 'ARCHIVED' ? 'Khôi phục thiết bị' : 'Lưu trữ thiết bị'} disabled={busyDeviceId === device.id} onClick={() => onArchive(device.id)}><Archive size={18} aria-hidden="true" /></button>
+      {isReturned ? <span className="care-status care-status--returned">Đã trả lại</span> : <button type="button" className="care-icon-button" aria-label={device.status === 'ARCHIVED' ? 'Khôi phục thiết bị' : 'Lưu trữ thiết bị'} title={device.status === 'ARCHIVED' ? 'Khôi phục thiết bị' : 'Lưu trữ thiết bị'} disabled={busyDeviceId === device.id} onClick={() => onArchive(device.id)}><Archive size={18} aria-hidden="true" /></button>}
     </div>
     <div className="care-device__facts">
       <div><ShieldCheck size={17} aria-hidden="true" /><span>Bảo hành<strong>{device.warrantyMonths ? `${device.warrantyMonths} tháng` : 'Chưa có thời hạn'}</strong><small>{device.warrantyStartConfirmed ? `Bắt đầu ${dateLabel(device.warrantyStartDate)}` : 'Ngày bắt đầu chưa được xác nhận'}</small></span></div>
       <div><CalendarClock size={17} aria-hidden="true" /><span>Hoàn tất đơn<strong>{dateLabel(device.completedAt)}</strong><small>Ngày mua: {dateLabel(device.purchasedAt)}</small></span></div>
     </div>
-    {!canModify && <p className="care-empty-inline">Thiết bị đang lưu trữ. Khôi phục thiết bị để cập nhật serial hoặc lịch bảo trì.</p>}
+    {!canModify && <p className="care-empty-inline">{isReturned ? 'Đơn trả đã được kho tiếp nhận. Hồ sơ được giữ để tra cứu và không còn lịch chăm sóc hoạt động.' : 'Thiết bị đang lưu trữ. Khôi phục thiết bị để cập nhật serial hoặc lịch bảo trì.'}</p>}
     <form className="care-serial" onSubmit={async event => { event.preventDefault(); if (await onSerialSave(device.id, serial)) setSerialDirty(false); }}>
       <div className="hc-field"><label htmlFor={`serial-${device.id}`}>Số serial (tùy chọn)</label><input id={`serial-${device.id}`} value={serial} onChange={event => { setSerial(event.target.value); setSerialDirty(true); }} maxLength={100} placeholder="Nhập số serial trên thiết bị" disabled={!canModify} /></div>
       {canModify && serialDirty && <button type="submit" className="care-button care-button--quiet" disabled={busyDeviceId === device.id}>Lưu serial</button>}
@@ -151,7 +152,7 @@ export default function MyDevicesPage() {
     {notice && <p className="care-notice" role="status">{notice}</p>}{error && <div className="care-error" role="alert"><span>{error}</span><button type="button" onClick={loadDevices}>Thử lại</button></div>}
     <div id="devices-panel" key={status} className="hc-tab-content" role="tabpanel" aria-labelledby={`device-tab-${status}`}>
       {loading ? <div className="hc-card care-loading" role="status">Đang tải thiết bị và lịch bảo trì…</div> : devices.length ? <div className="care-device-list">{devices.map(device => <DeviceCard key={device.id} device={device} onComplete={taskId => runTaskAction(taskId, () => careService.completeTask(taskId))} onPostpone={(taskId, values) => runTaskAction(taskId, () => careService.postponeTask(taskId, values))} onArchive={archiveDevice} onSerialSave={saveSerial} busyTaskId={busyTaskId} busyDeviceId={busyDeviceId} />)}</div>
-        : <div className="hc-card care-empty"><Package size={36} aria-hidden="true" /><h2>{status === 'ACTIVE' ? 'Chưa có thiết bị được ghi nhận' : 'Không có thiết bị lưu trữ'}</h2><p>Thiết bị sẽ xuất hiện tại đây khi đơn hàng của bạn được hoàn tất.</p><Link className="care-button" to="/orders">Xem đơn hàng</Link></div>}
+        : <div className="hc-card care-empty"><Package size={36} aria-hidden="true" /><h2>{status === 'ACTIVE' ? 'Chưa có thiết bị được ghi nhận' : status === 'RETURNED' ? 'Chưa có thiết bị đã trả' : 'Không có thiết bị lưu trữ'}</h2><p>{status === 'RETURNED' ? 'Thiết bị sẽ xuất hiện tại đây sau khi kho xác nhận nhận hàng trả.' : 'Thiết bị sẽ xuất hiện tại đây khi đơn hàng của bạn được hoàn tất.'}</p>{status !== 'RETURNED' && <Link className="care-button" to="/orders">Xem đơn hàng</Link>}</div>}
       {!loading && pagination.totalPages > 1 && <nav className="care-pagination" aria-label="Phân trang thiết bị"><button type="button" className="care-button care-button--quiet" onClick={() => setPage(value => Math.max(1, value - 1))} disabled={page <= 1}><ChevronLeft size={16} aria-hidden="true" />Trước</button><span>Trang {pagination.page} / {pagination.totalPages} · {pagination.totalItems} thiết bị</span><button type="button" className="care-button care-button--quiet" onClick={() => setPage(value => Math.min(pagination.totalPages, value + 1))} disabled={page >= pagination.totalPages}>Sau<ChevronRight size={16} aria-hidden="true" /></button></nav>}
     </div>
   </section>;
