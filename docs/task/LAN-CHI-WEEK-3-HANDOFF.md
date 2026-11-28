@@ -28,6 +28,7 @@
 - Desktop: chạy lại luồng CUSTOMER → SALES MAJOR → ADMIN duyệt → WAREHOUSE nhận/kiểm → hoàn tiền mô phỏng trên đơn demo khác. Kết quả `refunded`, khoản hoàn 6.490.000₫, không gọi ngân hàng.
 - FIT-02 trên mobile: lưu đủ 4/4 mục, nhận trạng thái hoàn tất lần đầu và phiên bản 1; mở “Lịch sử checklist (20 bản gần nhất)” thấy bản ghi 4/4. Sau đó `/admin/reports` hiển thị checklist hoàn tất lần đầu từ 0 lên 1.
 - Tải CSV báo cáo thành công; file có header và các dòng `SALE`, `REFUND`, `NET_TOTAL`. CSV được kiểm tra sau luồng trả hàng mobile.
+- Kiểm tra xung đột từ hai tab: tab thứ hai gửi thao tác trên chi tiết cũ, nhận HTTP 409, hiển thị nút **Tải lại yêu cầu**; bấm nút thì trạng thái chi tiết cập nhật theo dữ liệu hiện tại.
 - Các return E2E trên chỉ dùng DB và tài khoản demo. `RETURN_WINDOW_DAYS=14` được dùng cho đơn demo gần ngày; `60` chỉ dùng tạm trong container E2E để kiểm tra đơn demo cũ trên desktop. Đây là cấu hình test, không phải quyết định chính sách của nhóm. Container MySQL kiểm thử chưa có migrations 022/023 của STT18 nên E2E này không nghiệm thu tích hợp STT18.
 
 ## Cần xử lý trước khi nghiệm thu cuối
