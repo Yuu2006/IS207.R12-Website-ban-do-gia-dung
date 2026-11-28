@@ -117,7 +117,7 @@ Metadata không ghi mật khẩu, token, secret hoặc dữ liệu xác thực.
 - Migration `023_owned_device_returns.sql` thêm trạng thái `RETURNED` và siêu dữ liệu trả hàng cho `owned_devices` để giữ lịch sử sở hữu nhưng loại thiết bị đã trả khỏi nhắc lịch bảo trì/bảo hành; áp sau `022_notifications_audit.sql`.
 - Xem trạng thái bằng `php server/db/setup.php status --database=<DB_NAME>`. Chỉ áp migration còn thiếu sau khi review và sao lưu. Không chạy lại DDL đã áp dụng.
 - `server/scripts/send-reminders.php` chạy CLI, yêu cầu `ORDER_STORAGE_MODE=mysql`, và chọn bảo trì đến hạn trong 7 ngày cùng bảo hành hết hạn trong 30 ngày (chỉ thiết bị `ACTIVE` của khách `ACTIVE`). Unique event key làm cho chạy lặp an toàn.
-- Docker Compose chạy service `reminders` tự động: lần chạy thành công cách nhau 24 giờ, lỗi DB/schema thử lại sau 5 phút. Service dùng cùng DB với API và chỉ thêm thông báo khi migration 022/023 đã sẵn sàng.
+- Docker Compose chờ MySQL healthy rồi chạy service `reminders`. Job kiểm tra migration trước khi gửi; nếu database chưa sẵn sàng hoặc thiếu migration, job chờ 5 phút rồi kiểm tra lại. Sau mỗi lượt thành công, lần tiếp theo chạy sau 24 giờ. Service dùng cùng DB với API và chỉ tạo thông báo sau khi schema đã sẵn sàng.
 - Khi chạy ngoài Compose, scheduler của môi trường vận hành cần gọi job hằng ngày. Ví dụ PowerShell/Windows Task Scheduler action: `php.exe E:\DoAnWeb\server\scripts\send-reminders.php`; cấu hình working directory `E:\DoAnWeb` và biến môi trường DB theo môi trường chạy. Nếu chưa cấu hình scheduler thì thông báo tức thời vẫn hoạt động, thông báo định kỳ chưa tự phát.
 
 ## Kiểm thử

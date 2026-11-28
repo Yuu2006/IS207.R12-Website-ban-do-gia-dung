@@ -12,6 +12,12 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - ./server/db:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
 
   api:
     build:
@@ -55,6 +61,8 @@ services:
     working_dir: /var/www/html
     volumes:
       - ./server:/var/www/html
+      # Baseline để setup.php kiểm tra trạng thái migration trước khi gửi nhắc lịch.
+      - ./database:/var/www/database:ro
     environment:
       DB_HOST: db
       DB_PORT: 3306
@@ -64,10 +72,15 @@ services:
       ORDER_STORAGE_MODE: mysql
     command: >-
       sh -c 'while true; do
-        if php scripts/send-reminders.php; then sleep 86400; else sleep 300; fi;
+        if php db/setup.php status --database="$$DB_NAME" >/dev/null 2>&1; then
+          if php scripts/send-reminders.php; then sleep 86400; else sleep 300; fi;
+        else
+          echo "Reminder job waits for database migrations"; sleep 300;
+        fi;
       done'
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   client:
     image: node:22-alpine
