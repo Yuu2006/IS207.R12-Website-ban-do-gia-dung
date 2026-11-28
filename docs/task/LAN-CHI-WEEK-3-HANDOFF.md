@@ -13,9 +13,9 @@
 
 ## Kiểm chứng đã chạy
 
+- `cd client && npm test` — 83/83. Đã đồng bộ OpenAPI examples và assertion client với contract trả hàng hiện tại (dòng hàng/ảnh và detail `returnItems`/`photos`).
 - `node client/node_modules/vite/bin/vite.js build` — đạt; còn cảnh báo bundle JS lớn hơn 500 kB.
-- `server/tests/order-api.test.php` — 23/23.
-- `server/tests/review-service.test.php` — đạt kiểm tra validation/dispatch.
+- `server/tests/order-api.test.php` — 23/23; `server/tests/review-service.test.php` — đạt validation/dispatch. Chạy trong PHP container kiểm thử với `ORDER_STORAGE_MODE=disabled` cho test API skeleton.
 - `server/tests/run-order-mysql-tests.mjs --docker` — chạy trên MySQL/PHP cô lập; 49 kiểm tra đơn hàng/thanh toán/trả hàng, test race/idempotency, checklist 021/026, dashboard/CSV và kiểm thử MySQL mới cho review 30/90 ngày/ảnh/ẩn-khôi phục/audit đều qua.
 - OpenAPI JSON parse và `git diff --check` — đạt.
 - Không áp migration hay sửa dữ liệu DB dev/dùng chung. Migration 024/025/026 chỉ được áp trong các DB kiểm thử cô lập; container Browser E2E và volume kiểm thử riêng vẫn còn để phục vụ kiểm tra, không thuộc DB dev.
@@ -39,5 +39,6 @@
 3. Nhóm Trưởng review/merge code; sau review/backup mới áp migration 024–026 trên DB dev. Browser E2E giao diện đã chạy ở 1280×800 và 390×844 như ghi phía trên; DB dev/dùng chung chưa được cập nhật.
 4. `careCompletionRate` trên reports vẫn chờ nhóm chốt mẫu số; đây là phụ thuộc riêng, không được tính là lỗi đã xử lý bởi STT17/22.
 5. Thành viên khác cần kiểm tra chéo tiêu chí #5 và #9 trong tab `Test`; E2E và test cô lập có bằng chứng phía trên nhưng chưa có review chéo trên GitHub.
+6. Browser E2E riêng cho composer đánh giá và màn hình ADMIN kiểm duyệt STT17 chưa chạy; môi trường hiện chặn khởi chạy Chrome headless và CUA không kết nối được. Service/MySQL tests đã kiểm thử eligibility, ảnh, mốc 30/90 ngày, ẩn/khôi phục, quyền riêng tư và audit.
 
 Người làm trong bảng công việc vẫn là **Lan Chi**. Trạng thái đề nghị để bàn giao là **Chờ Nhóm Trưởng review/merge**, chưa đánh dấu hoàn tất nghiệm thu cuối.

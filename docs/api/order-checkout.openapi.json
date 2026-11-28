@@ -1200,7 +1200,9 @@
                     "severity": null,
                     "reason": "Product damaged on arrival.",
                     "createdAt": "2026-10-08T03:00:00+00:00",
-                    "updatedAt": "2026-10-08T03:00:00+00:00"
+                    "updatedAt": "2026-10-08T03:00:00+00:00",
+                    "items": [{ "orderItemId": "701", "productName": "HomeCare Air Fryer", "skuCode": "HC-AP-001", "quantity": 1, "unitPrice": 600000 }],
+                    "photos": ["/uploads/returns/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg"]
                   }
                 }
               }
@@ -3932,8 +3934,11 @@
                     "managerDecidedAt": null,
                     "receivedAt": null,
                     "inspectionChecklist": null,
+                    "returnItems": [{ "orderItemId": "701", "skuId": "12", "skuCode": "HC-AP-001", "productName": "HomeCare Air Fryer", "unitPrice": 600000, "quantity": 1, "resalableQuantity": null }],
+                    "photos": [],
                     "history": [],
                     "refundAmount": null,
+                    "refundMethod": null,
                     "refundStatus": null,
                     "refundCreatedAt": null,
                     "customer": { "name": "Nguyen Minh", "phone": "0900000000" },
@@ -4112,7 +4117,10 @@
                     "managerDecidedAt": null,
                     "receivedAt": null,
                     "inspectionChecklist": null,
+                    "returnItems": [{ "orderItemId": "701", "skuId": "12", "skuCode": "HC-AP-001", "productName": "HomeCare Air Fryer", "unitPrice": 600000, "quantity": 1, "resalableQuantity": null }],
+                    "photos": [],
                     "refundAmount": null,
+                    "refundMethod": null,
                     "refundStatus": null,
                     "refundCreatedAt": null,
                     "history": [{ "fromStatus": "requested", "toStatus": "pending_manager", "action": "sales_triage", "actorRole": "SALES", "actorName": "Sales staff", "note": "Function failure verified.", "details": { "severity": "MAJOR" }, "changedAt": "2026-11-04T03:05:00+00:00" }],
@@ -4318,7 +4326,10 @@
                     "managerDecidedAt": "2026-11-04T03:10:00+00:00",
                     "receivedAt": null,
                     "inspectionChecklist": null,
+                    "returnItems": [{ "orderItemId": "701", "skuId": "12", "skuCode": "HC-AP-001", "productName": "HomeCare Air Fryer", "unitPrice": 600000, "quantity": 1, "resalableQuantity": null }],
+                    "photos": [],
                     "refundAmount": null,
+                    "refundMethod": null,
                     "refundStatus": null,
                     "refundCreatedAt": null,
                     "history": [{ "fromStatus": "requested", "toStatus": "pending_manager", "action": "sales_triage", "actorRole": "SALES", "actorName": "Sales staff", "note": "Function failure verified.", "details": { "severity": "MAJOR" }, "changedAt": "2026-11-04T03:05:00+00:00" }, { "fromStatus": "pending_manager", "toStatus": "approved", "action": "admin_decision", "actorRole": "ADMIN", "actorName": "Administrator", "note": "Severe functional failure confirmed.", "details": { "decision": "APPROVE" }, "changedAt": "2026-11-04T03:10:00+00:00" }],
@@ -4561,6 +4572,8 @@
                     "managerDecidedAt": "2026-11-04T03:10:00+00:00",
                     "receivedAt": "2026-11-04T03:15:00+00:00",
                     "inspectionChecklist": { "packageReceived": true, "orderMatched": true, "allItemsPresent": true, "conditionAssessed": true, "notes": "All items and condition checked." },
+                    "returnItems": [{ "orderItemId": "701", "skuId": "12", "skuCode": "HC-AP-001", "productName": "HomeCare Air Fryer", "unitPrice": 600000, "quantity": 1, "resalableQuantity": 1 }],
+                    "photos": [],
                     "history": [{ "fromStatus": "requested", "toStatus": "pending_manager", "action": "sales_triage", "actorRole": "SALES", "actorName": "Sales staff", "note": "Function failure verified.", "details": { "severity": "MAJOR" }, "changedAt": "2026-11-04T03:05:00+00:00" }, { "fromStatus": "pending_manager", "toStatus": "approved", "action": "admin_decision", "actorRole": "ADMIN", "actorName": "Administrator", "note": "Severe functional failure confirmed.", "details": { "decision": "APPROVE" }, "changedAt": "2026-11-04T03:10:00+00:00" }, { "fromStatus": "approved", "toStatus": "refunded", "action": "warehouse_received_and_refunded", "actorRole": "WAREHOUSE", "actorName": "Warehouse staff", "note": "All items and condition checked.", "details": { "refundAmount": 600000, "refundStatus": "SIMULATED" }, "changedAt": "2026-11-04T03:15:00+00:00" }],
                     "refundStatus": "simulated",
                     "refundAmount": 600000,
