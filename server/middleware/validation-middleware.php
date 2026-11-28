@@ -168,7 +168,7 @@ function validateReturnMutation(array $input, string $operation): array
         if (!is_string($decision) || !in_array($decision, ['APPROVE', 'REJECT'], true)) invalidOrderInput('decision', 'Quyết định phải là APPROVE hoặc REJECT.');
         return ['decision' => $decision, 'reason' => orderText($input['reason'] ?? '', 'reason', 1, 500)];
     }
-    allowOrderFields($input, ['checklist']);
+    allowOrderFields($input, ['checklist', 'resalableQuantities']);
     $checklist = $input['checklist'] ?? null;
     if (!$checklist instanceof \stdClass) invalidOrderInput('checklist', 'Checklist nhận hàng không hợp lệ.');
     $values = get_object_vars($checklist);
@@ -176,11 +176,25 @@ function validateReturnMutation(array $input, string $operation): array
     foreach (['packageReceived', 'orderMatched', 'allItemsPresent', 'conditionAssessed'] as $field) {
         if (!array_key_exists($field, $values) || !is_bool($values[$field])) invalidOrderInput('checklist.' . $field, 'Mỗi mục checklist phải được xác nhận rõ ràng.');
     }
+    $rawItems = $input['resalableQuantities'] ?? null;
+    if (!is_array($rawItems) || array_is_list($rawItems) !== true || count($rawItems) < 1 || count($rawItems) > 100) invalidOrderInput('resalableQuantities', 'Đánh giá từ 1 đến 100 dòng hàng được yêu cầu trả.');
+    $items = []; $seen = [];
+    foreach ($rawItems as $index => $rawItem) {
+        if (!$rawItem instanceof \stdClass) invalidOrderInput("resalableQuantities.{$index}", 'Mỗi dòng cần mã sản phẩm và số lượng đủ điều kiện nhập lại.');
+        $item = get_object_vars($rawItem);
+        allowOrderFields($item, ['orderItemId', 'resalableQuantity']);
+        $orderItemId = orderDatabaseId($item['orderItemId'] ?? null, "resalableQuantities.{$index}.orderItemId");
+        if (isset($seen[$orderItemId])) invalidOrderInput('resalableQuantities', 'Không gửi trùng dòng sản phẩm.');
+        $seen[$orderItemId] = true;
+        $quantity = $item['resalableQuantity'] ?? null;
+        if (!is_int($quantity) || $quantity < 0) invalidOrderInput("resalableQuantities.{$index}.resalableQuantity", 'Số lượng nhập lại phải là số nguyên từ 0 trở lên.');
+        $items[] = ['orderItemId' => $orderItemId, 'resalableQuantity' => $quantity];
+    }
     return ['checklist' => [
         'packageReceived' => $values['packageReceived'], 'orderMatched' => $values['orderMatched'],
         'allItemsPresent' => $values['allItemsPresent'], 'conditionAssessed' => $values['conditionAssessed'],
         'notes' => orderText($values['notes'] ?? '', 'checklist.notes', 1, 500),
-    ]];
+    ], 'resalableQuantities' => $items];
 }
 
 // Chuẩn hóa quote/create, loại đầu vào giá/tồn/actor không thuộc contract.
@@ -253,14 +267,39 @@ function validateOrderMutation(array $input, string $operation): array
         return ['skuId' => orderDatabaseId($input['skuId'] ?? null, 'skuId'), 'quantity' => orderPositiveInteger($input['quantity'] ?? null, 'quantity')];
     }
     if ($operation === 'return') {
-        allowOrderFields($input, ['expectedVersion', 'issueCategory', 'reason']);
+        allowOrderFields($input, ['expectedVersion', 'issueCategory', 'reason', 'items', 'photos']);
         $category = $input['issueCategory'] ?? null;
         $categories = ['SAFETY_HAZARD', 'DEFECTIVE', 'TRANSIT_DAMAGE', 'WRONG_ITEM', 'MISSING_COMPONENT', 'SPEC_MISMATCH', 'COSMETIC_DAMAGE', 'PACKAGING_ONLY', 'BUYER_REMORSE', 'CUSTOMER_MISUSE', 'OTHER'];
         if (!is_string($category) || !in_array($category, $categories, true)) invalidOrderInput('issueCategory', 'Hãy chọn nhóm vấn đề phù hợp.');
+        $rawItems = $input['items'] ?? null;
+        if (!is_array($rawItems) || array_is_list($rawItems) !== true || count($rawItems) < 1 || count($rawItems) > 100) invalidOrderInput('items', 'Chọn từ 1 đến 100 dòng hàng trong đơn.');
+        $items = []; $seen = [];
+        foreach ($rawItems as $index => $rawItem) {
+        if ($rawItem instanceof \stdClass) $item = get_object_vars($rawItem);
+        elseif (is_array($rawItem)) $item = $rawItem;
+        else invalidOrderInput("items.{$index}", 'Mỗi dòng cần có ID sản phẩm trong đơn và số lượng.');
+            allowOrderFields($item, ['orderItemId', 'quantity']);
+            $orderItemId = orderDatabaseId($item['orderItemId'] ?? null, "items.{$index}.orderItemId");
+            if (isset($seen[$orderItemId])) invalidOrderInput('items', 'Không chọn trùng dòng sản phẩm trong đơn.');
+            $seen[$orderItemId] = true;
+            $items[] = ['orderItemId' => $orderItemId, 'quantity' => orderPositiveInteger($item['quantity'] ?? null, "items.{$index}.quantity")];
+        }
+        $rawPhotos = $input['photos'] ?? [];
+        $configuredLimit = getenv('RETURN_MAX_IMAGES');
+        $maxPhotos = $configuredLimit !== false && ctype_digit($configuredLimit) ? max(0, min(10, (int) $configuredLimit)) : 5;
+        if (!is_array($rawPhotos) || array_is_list($rawPhotos) !== true || count($rawPhotos) > $maxPhotos) invalidOrderInput('photos', "Đính kèm tối đa {$maxPhotos} ảnh bằng chứng.");
+        $photos = [];
+        foreach ($rawPhotos as $photo) {
+            if (!is_string($photo) || preg_match('#^/uploads/returns/[a-f0-9]{32}\\.(jpg|png|webp)$#D', $photo) !== 1) invalidOrderInput('photos', 'Ảnh bằng chứng phải được tải lên HomeCare.');
+            $photos[] = $photo;
+        }
+        if (count(array_unique($photos)) !== count($photos)) invalidOrderInput('photos', 'Danh sách ảnh bằng chứng không được trùng.');
         return [
             'expectedVersion' => orderPositiveInteger($input['expectedVersion'] ?? null, 'expectedVersion'),
             'issueCategory' => $category,
             'reason' => orderText($input['reason'] ?? '', 'reason', 1, 500),
+            'items' => $items,
+            'photos' => $photos,
         ];
     }
     if ($operation === 'reorder') {

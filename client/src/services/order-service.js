@@ -1,4 +1,5 @@
 import { ApiError, createApiClient } from './api-client.js';
+import { API_URL, uploadImage } from './http-client.js';
 
 const statuses = ['pending', 'confirmed', 'preparing', 'shipping', 'delivered', 'completed', 'cancelled'];
 const payments = ['unpaid', 'pending', 'paid', 'failed', 'refunded'];
@@ -10,7 +11,14 @@ const dateLabel = value => new Date(value).toLocaleString('vi-VN', { timeZone: '
 // API SKU là variant ID string; chỉ đổi tên tại biên service, không tính lại giá mua.
 export function mapLine(item) {
   if (!isId(item?.skuId) || !isId(item.skuCode) || typeof item.productName !== 'string' || !isMoney(item.unitPrice) || !Number.isSafeInteger(item.quantity) || item.quantity < 1) badResponse();
-  return { sku_id: item.skuId, sku: item.skuCode, name: item.productName, variant: item.variantName || '', price: item.unitPrice, quantity: item.quantity, warranty: item.warrantyMonths ?? 0, image: item.imageUrl || '', lineDiscount: item.discount ?? 0 };
+  return { orderItemId: item.orderItemId == null ? null : String(item.orderItemId), sku_id: item.skuId, sku: item.skuCode, name: item.productName, variant: item.variantName || '', price: item.unitPrice, quantity: item.quantity, warranty: item.warrantyMonths ?? 0, image: item.imageUrl || '', lineDiscount: item.discount ?? 0 };
+}
+
+export async function uploadReturnEvidencePhoto(file) {
+  const uploaded = await uploadImage(file, 'returns');
+  const target = new URL(uploaded, API_URL);
+  if (target.origin !== new URL(API_URL).origin) throw new Error('Ảnh bằng chứng phải được tải lên máy chủ HomeCare.');
+  return target.pathname;
 }
 
 export function validateTotals(totals) {
@@ -92,7 +100,13 @@ export function createOrderService(request = createApiClient()) {
     getSalesOrder: async (id, options) => mapOrder(await request(`/sales/orders/${idPath(id)}`, options), true),
     cancelOrder: async (id, input, options) => mapOrder(await mutation(`/orders/${idPath(id)}/cancel`, 'POST', { expectedVersion: input.expectedVersion, reason: input.reason }, options), true),
     createReturnRequest: async (id, input, options) => {
-      const result = mapReturnRequest(await mutation(`/orders/${idPath(id)}/returns`, 'POST', { expectedVersion: input.expectedVersion, issueCategory: input.issueCategory, reason: input.reason }, options));
+      const result = mapReturnRequest(await mutation(`/orders/${idPath(id)}/returns`, 'POST', {
+        expectedVersion: input.expectedVersion,
+        issueCategory: input.issueCategory,
+        reason: input.reason,
+        items: input.items,
+        photos: input.photos,
+      }, options));
       if (result.orderId !== String(id)) badResponse();
       return result;
     },

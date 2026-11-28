@@ -1099,7 +1099,7 @@
     "/orders/{orderId}/returns": {
       "post": {
         "operationId": "createReturnRequest",
-        "summary": "CUSTOMER owner only, DELIVERED/COMPLETED and PAID; one request/order. Opens staff review; no immediate refund or restock.",
+        "summary": "CUSTOMER owner only, DELIVERED/COMPLETED and PAID; one request/order with selected lines and optional evidence photos. Opens staff review; no immediate refund or restock.",
         "x-roles": [
           "CUSTOMER"
         ],
@@ -1155,7 +1155,9 @@
               "example": {
                 "expectedVersion": 5,
                 "issueCategory": "TRANSIT_DAMAGE",
-                "reason": "Product damaged on arrival."
+                "reason": "Product damaged on arrival.",
+                "items": [{ "orderItemId": "701", "quantity": 1 }],
+                "photos": ["/uploads/returns/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg"]
               }
             }
           }
@@ -1198,7 +1200,9 @@
                     "severity": null,
                     "reason": "Product damaged on arrival.",
                     "createdAt": "2026-10-08T03:00:00+00:00",
-                    "updatedAt": "2026-10-08T03:00:00+00:00"
+                    "updatedAt": "2026-10-08T03:00:00+00:00",
+                    "items": [{ "orderItemId": "701", "productName": "HomeCare Air Fryer", "skuCode": "HC-AP-001", "quantity": 1, "unitPrice": 600000 }],
+                    "photos": ["/uploads/returns/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg"]
                   }
                 }
               }
@@ -3930,8 +3934,11 @@
                     "managerDecidedAt": null,
                     "receivedAt": null,
                     "inspectionChecklist": null,
+                    "returnItems": [{ "orderItemId": "701", "skuId": "12", "skuCode": "HC-AP-001", "productName": "HomeCare Air Fryer", "unitPrice": 600000, "quantity": 1, "resalableQuantity": null }],
+                    "photos": [],
                     "history": [],
                     "refundAmount": null,
+                    "refundMethod": null,
                     "refundStatus": null,
                     "refundCreatedAt": null,
                     "customer": { "name": "Nguyen Minh", "phone": "0900000000" },
@@ -4110,7 +4117,10 @@
                     "managerDecidedAt": null,
                     "receivedAt": null,
                     "inspectionChecklist": null,
+                    "returnItems": [{ "orderItemId": "701", "skuId": "12", "skuCode": "HC-AP-001", "productName": "HomeCare Air Fryer", "unitPrice": 600000, "quantity": 1, "resalableQuantity": null }],
+                    "photos": [],
                     "refundAmount": null,
+                    "refundMethod": null,
                     "refundStatus": null,
                     "refundCreatedAt": null,
                     "history": [{ "fromStatus": "requested", "toStatus": "pending_manager", "action": "sales_triage", "actorRole": "SALES", "actorName": "Sales staff", "note": "Function failure verified.", "details": { "severity": "MAJOR" }, "changedAt": "2026-11-04T03:05:00+00:00" }],
@@ -4316,7 +4326,10 @@
                     "managerDecidedAt": "2026-11-04T03:10:00+00:00",
                     "receivedAt": null,
                     "inspectionChecklist": null,
+                    "returnItems": [{ "orderItemId": "701", "skuId": "12", "skuCode": "HC-AP-001", "productName": "HomeCare Air Fryer", "unitPrice": 600000, "quantity": 1, "resalableQuantity": null }],
+                    "photos": [],
                     "refundAmount": null,
+                    "refundMethod": null,
                     "refundStatus": null,
                     "refundCreatedAt": null,
                     "history": [{ "fromStatus": "requested", "toStatus": "pending_manager", "action": "sales_triage", "actorRole": "SALES", "actorName": "Sales staff", "note": "Function failure verified.", "details": { "severity": "MAJOR" }, "changedAt": "2026-11-04T03:05:00+00:00" }, { "fromStatus": "pending_manager", "toStatus": "approved", "action": "admin_decision", "actorRole": "ADMIN", "actorName": "Administrator", "note": "Severe functional failure confirmed.", "details": { "decision": "APPROVE" }, "changedAt": "2026-11-04T03:10:00+00:00" }],
@@ -4428,7 +4441,7 @@
     "/warehouse/returns/{returnId}/receive": {
       "post": {
         "operationId": "receiveReturnRequest",
-        "summary": "WAREHOUSE xác nhận checklist; sau đó ghi nhận hoàn tiền toàn bộ đơn mô phỏng, không tự nhập kho.",
+        "summary": "WAREHOUSE xác nhận checklist, số lượng đủ điều kiện nhập lại và hoàn tiền mô phỏng; không gọi ngân hàng.",
         "x-roles": [
           "WAREHOUSE"
         ],
@@ -4477,13 +4490,15 @@
                   "allItemsPresent": true,
                   "conditionAssessed": true,
                   "notes": "Đã kiểm tra đủ sản phẩm, phụ kiện và tình trạng."
-                }
+                },
+                "resalableQuantities": [{ "orderItemId": "201", "resalableQuantity": 1 }]
               },
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
                 "required": [
-                  "checklist"
+                  "checklist",
+                  "resalableQuantities"
                 ],
                 "properties": {
                   "checklist": {
@@ -4514,6 +4529,20 @@
                         "maxLength": 500
                       }
                     }
+                  },
+                  "resalableQuantities": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 100,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["orderItemId", "resalableQuantity"],
+                      "properties": {
+                        "orderItemId": { "type": "string", "pattern": "^[1-9][0-9]{0,19}$" },
+                        "resalableQuantity": { "type": "integer", "minimum": 0 }
+                      }
+                    }
                   }
                 }
               }
@@ -4522,7 +4551,7 @@
         },
         "responses": {
           "200": {
-            "description": "Trạng thái refunded và refundStatus simulated.",
+              "description": "Trạng thái refunded; response kèm số tiền, phương thức thanh toán gốc và trạng thái hoàn tiền mô phỏng.",
             "content": {
               "application/json": {
                 "example": {
@@ -4543,9 +4572,12 @@
                     "managerDecidedAt": "2026-11-04T03:10:00+00:00",
                     "receivedAt": "2026-11-04T03:15:00+00:00",
                     "inspectionChecklist": { "packageReceived": true, "orderMatched": true, "allItemsPresent": true, "conditionAssessed": true, "notes": "All items and condition checked." },
+                    "returnItems": [{ "orderItemId": "701", "skuId": "12", "skuCode": "HC-AP-001", "productName": "HomeCare Air Fryer", "unitPrice": 600000, "quantity": 1, "resalableQuantity": 1 }],
+                    "photos": [],
                     "history": [{ "fromStatus": "requested", "toStatus": "pending_manager", "action": "sales_triage", "actorRole": "SALES", "actorName": "Sales staff", "note": "Function failure verified.", "details": { "severity": "MAJOR" }, "changedAt": "2026-11-04T03:05:00+00:00" }, { "fromStatus": "pending_manager", "toStatus": "approved", "action": "admin_decision", "actorRole": "ADMIN", "actorName": "Administrator", "note": "Severe functional failure confirmed.", "details": { "decision": "APPROVE" }, "changedAt": "2026-11-04T03:10:00+00:00" }, { "fromStatus": "approved", "toStatus": "refunded", "action": "warehouse_received_and_refunded", "actorRole": "WAREHOUSE", "actorName": "Warehouse staff", "note": "All items and condition checked.", "details": { "refundAmount": 600000, "refundStatus": "SIMULATED" }, "changedAt": "2026-11-04T03:15:00+00:00" }],
                     "refundStatus": "simulated",
                     "refundAmount": 600000,
+                    "refundMethod": "COD",
                     "refundCreatedAt": "2026-11-04T03:15:00+00:00",
                     "customer": { "name": "Nguyen Minh", "phone": "0900000000" },
                     "order": { "code": "HC2026110001", "status": "completed", "paymentStatus": "refunded", "paymentMethod": "COD", "totalAmount": 600000, "placedAt": "2026-11-03T03:00:00+00:00", "shippingAddress": "12 Nguyen Hue, District 1, Ho Chi Minh City", "items": [{ "orderItemId": "701", "skuId": "12", "skuCode": "HC-AP-001", "productName": "HomeCare Air Fryer", "variantName": "6 liter", "unitPrice": 600000, "quantity": 1, "lineTotal": 600000, "imageUrl": "" }]}
@@ -4772,7 +4804,8 @@
         "required": [
           "expectedVersion",
           "issueCategory",
-          "reason"
+          "reason",
+          "items"
         ],
         "properties": {
           "expectedVersion": {
@@ -4787,7 +4820,38 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 500
+          },
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": { "$ref": "#/components/schemas/ReturnItemInput" }
+          },
+          "photos": {
+            "type": "array",
+            "maxItems": 5,
+            "items": { "type": "string", "pattern": "^/uploads/returns/[a-f0-9]{32}\\.(jpg|png|webp)$" }
           }
+        }
+      },
+      "ReturnItemInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["orderItemId", "quantity"],
+        "properties": {
+          "orderItemId": { "type": "string", "pattern": "^[1-9][0-9]{0,19}$" },
+          "quantity": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "ReturnRequestedLine": {
+        "type": "object",
+        "required": ["orderItemId", "productName", "skuCode", "quantity", "unitPrice"],
+        "properties": {
+          "orderItemId": { "type": "string", "pattern": "^[1-9][0-9]{0,19}$" },
+          "productName": { "type": "string" },
+          "skuCode": { "type": "string" },
+          "quantity": { "type": "integer", "minimum": 1 },
+          "unitPrice": { "type": "integer", "minimum": 0 }
         }
       },
       "ReturnIssueCategory": {
@@ -4807,20 +4871,20 @@
           "issueCategory",
           "reason",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "items",
+          "photos"
         ],
         "properties": {
           "id": {
             "type": "string",
             "minLength": 1,
-            "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
             "pattern": "^[1-9][0-9]{0,19}$",
             "maxLength": 20
           },
           "orderId": {
             "type": "string",
             "minLength": 1,
-            "description": "ID database dạng string, SKU = product_variants.id (chờ Lan Chi xác nhận).",
             "pattern": "^[1-9][0-9]{0,19}$",
             "maxLength": 20
           },
@@ -4853,6 +4917,14 @@
           "decisionReason": {
             "type": "string",
             "nullable": true
+          },
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ReturnRequestedLine" }
+          },
+          "photos": {
+            "type": "array",
+            "items": { "type": "string", "format": "uri-reference" }
           }
         }
       },

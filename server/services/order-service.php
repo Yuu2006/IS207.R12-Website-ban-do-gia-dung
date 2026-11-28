@@ -133,9 +133,14 @@ final class OrderService implements OrderServiceInterface
             $order = $model->find($id, $principal['id'], true);
             if ((int) $order['version'] !== $input['expectedVersion']) throw new ApiException(409, 'ORDER_VERSION_CONFLICT', 'Đơn hàng đã thay đổi.');
             if (!in_array($order['order_status'], ['DELIVERED', 'COMPLETED'], true) || $order['payment_status'] !== 'PAID') throw new ApiException(409, 'RETURN_UNAVAILABLE', 'Chỉ tạo yêu cầu trả hàng cho đơn đã giao và thanh toán.');
+            $window = getenv('RETURN_WINDOW_DAYS');
+            if ($window === false || $window === '' || !ctype_digit($window) || (int) $window < 1 || (int) $window > 60) throw new ApiException(503, 'RETURN_WINDOW_NOT_CONFIGURED', 'Nhóm chưa chốt thời hạn trả hàng; chưa thể tiếp nhận yêu cầu.');
+            $ageDays = $model->returnWindowAgeDays($id);
+            if ($ageDays === null) throw new ApiException(409, 'RETURN_DELIVERY_DATE_MISSING', 'Chưa có thời điểm giao hàng xác nhận cho đơn này.');
+            if ($ageDays > (int) $window) throw new ApiException(409, 'RETURN_WINDOW_EXPIRED', 'Đã quá thời hạn trả hàng áp dụng cho đơn này.');
             $payments = new PaymentModel($model->pdo);
             $payments->assertSettled($order, $payments->lock($id));
-            return $model->insertReturnRequest($order, $principal, $input['issueCategory'], $input['reason']);
+            return $model->insertReturnRequest($order, $principal, $input);
         });
     }
 }

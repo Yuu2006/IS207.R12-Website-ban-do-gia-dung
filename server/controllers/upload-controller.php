@@ -41,7 +41,10 @@ function uploadImage(): void
         'products' => 'products',
         'banners' => 'banners',
         'brands' => 'brands',
-        'avatars' => 'avatars'
+        'avatars' => 'avatars',
+        'reviews' => 'reviews',
+        'checklists' => 'checklists',
+        'returns' => 'returns',
     ];
 
     if (!isset($allowedTypes[$type])) {

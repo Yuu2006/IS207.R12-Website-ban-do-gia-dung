@@ -10,6 +10,7 @@ use function HomeCare\OrderApi\{orderMoney, orderTransition, validateOrderList, 
 
 putenv('CHECKOUT_SHIPPING_VND=30000');
 putenv('CHECKOUT_FREE_SHIPPING_MIN_VND=500000');
+putenv('RETURN_WINDOW_DAYS=14');
 
 // Guard all modes, including schema creation/shutdown, to the runner's private loopback DB.
 $name = getenv('DB_NAME');
@@ -34,6 +35,8 @@ if ($mode === 'init') {
     $pdo->exec(file_get_contents(__DIR__ . '/../db/migrations/008_order_runtime.sql'));
     $pdo->exec(file_get_contents(__DIR__ . '/../db/migrations/014_payment_ledger.sql'));
     $pdo->exec(file_get_contents(__DIR__ . '/../db/migrations/015_return_refund_reporting.sql'));
+    $pdo->exec(file_get_contents(__DIR__ . '/../db/migrations/024_product_review_lifecycle.sql'));
+    $pdo->exec(file_get_contents(__DIR__ . '/../db/migrations/025_return_line_items.sql'));
     $pdo->exec('CREATE TABLE test_cart_versions (cart_id BIGINT UNSIGNED PRIMARY KEY, version BIGINT UNSIGNED NOT NULL DEFAULT 1) ENGINE=InnoDB');
     foreach (['CUSTOMER', 'CUSTOMER', 'SALES', 'ADMIN', 'WAREHOUSE', 'CUSTOMER', 'CUSTOMER', 'CUSTOMER', 'CUSTOMER', 'CUSTOMER'] as $index => $role) {
         $statement = $pdo->prepare('INSERT INTO users (id, full_name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)');
@@ -43,7 +46,7 @@ if ($mode === 'init') {
     $pdo->exec("INSERT INTO brands (id, name) VALUES (1, 'Test brand')");
     $pdo->exec("INSERT INTO products (id, category_id, brand_id, product_code, name, slug, warranty_months) VALUES (1, 1, 1, 'TEST-P', 'Snapshot product', 'test-product', 24)");
     $pdo->exec("INSERT INTO product_variants (id, product_id, sku, variant_name, price, stock_quantity) VALUES (1, 1, 'TEST-1', 'White', 600000, 100), (2, 1, 'TEST-LAST', 'Black', 800000, 1)");
-    echo "Baseline + 008/014/015 migrations applied to a fresh isolated DB; fixture cart version is test-only.\n";
+    echo "Baseline + 008/014/015/024/025 migrations applied to a fresh isolated DB; fixture cart version is test-only.\n";
     exit;
 }
 $pdo->exec("USE `{$name}`");
@@ -117,6 +120,10 @@ function createAs(array $principal, array $input, string $key): array {
     return $checkout->createOrder($principal, $input + ['quoteFingerprint' => $quote['quoteFingerprint'], 'note' => 'Test note'], $key)['order'];
 }
 function create(array $input, string $key): array { return createAs(actor(), $input, $key); }
+function returnInput(string $orderId, int $version, string $category, string $reason, ?string $itemId = null, int $quantity = 1): array {
+    $itemId ??= (string) sql('SELECT id FROM order_items WHERE order_id = ? AND is_deleted = 0 ORDER BY id LIMIT 1', [$orderId]);
+    return ['expectedVersion' => $version, 'issueCategory' => $category, 'reason' => $reason, 'items' => [['orderItemId' => $itemId, 'quantity' => $quantity]], 'photos' => []];
+}
 if ($mode === 'prepare-race') {
     $result = [];
     foreach ([8, 9] as $id) {
@@ -311,14 +318,15 @@ check('completion without device/care owner adapter cannot silently finish an or
     ensure(sql('SELECT order_status FROM orders WHERE id = ?', [$id]) === 'DELIVERED');
     ensure((int) sql('SELECT version FROM orders WHERE id = ?', [$id]) === 5);
 });
-check('return request rejects foreign owner and pending state', function () use ($orders, $id) { errorCode(fn () => $orders->createReturnRequest(actor(2), $id, ['expectedVersion' => 5, 'issueCategory' => 'OTHER', 'reason' => 'Test'], 'return-foreign-key'), 'ORDER_NOT_FOUND'); });
-$returned = $orders->createReturnRequest(actor(), $id, ['expectedVersion' => 5, 'issueCategory' => 'TRANSIT_DAMAGE', 'reason' => 'Damaged package'], 'return-first-unique-key');
-check('return replay is stable, separate lifecycle, no stock/payment/order mutation', function () use ($orders, $id, $returned) { ensure($orders->createReturnRequest(actor(), $id, ['expectedVersion' => 5, 'issueCategory' => 'TRANSIT_DAMAGE', 'reason' => 'Damaged package'], 'return-first-unique-key') == $returned); ensure((int) sql('SELECT version FROM orders WHERE id = ?', [$id]) === 5); ensure((int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === 99); ensure(sql('SELECT status FROM payments WHERE order_id = ?', [$id]) === 'PAID'); ensure(sql('SELECT COUNT(*) FROM order_return_status_history WHERE return_request_id = ?', [$returned['id']]) === 1); });
-check('duplicate return with a new key is rejected', function () use ($orders, $id) { errorCode(fn () => $orders->createReturnRequest(actor(), $id, ['expectedVersion' => 5, 'issueCategory' => 'OTHER', 'reason' => 'Again'], 'return-second-unique-key'), 'RETURN_REQUEST_EXISTS'); });
+check('return request rejects foreign owner and pending state', function () use ($orders, $id) { errorCode(fn () => $orders->createReturnRequest(actor(2), $id, returnInput($id, 5, 'OTHER', 'Test'), 'return-foreign-key'), 'ORDER_NOT_FOUND'); });
+$returnInput = returnInput($id, 5, 'TRANSIT_DAMAGE', 'Damaged package');
+$returned = $orders->createReturnRequest(actor(), $id, $returnInput, 'return-first-unique-key');
+check('return replay is stable, separate lifecycle, no stock/payment/order mutation', function () use ($orders, $id, $returned, $returnInput) { ensure($orders->createReturnRequest(actor(), $id, $returnInput, 'return-first-unique-key') == $returned); ensure((int) sql('SELECT version FROM orders WHERE id = ?', [$id]) === 5); ensure((int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === 99); ensure(sql('SELECT status FROM payments WHERE order_id = ?', [$id]) === 'PAID'); ensure(sql('SELECT COUNT(*) FROM order_return_status_history WHERE return_request_id = ?', [$returned['id']]) === 1); });
+check('duplicate return with a new key is rejected', function () use ($orders, $id) { errorCode(fn () => $orders->createReturnRequest(actor(), $id, returnInput($id, 5, 'OTHER', 'Again'), 'return-second-unique-key'), 'RETURN_REQUEST_EXISTS'); });
 $cancelId = create(cart(), 'checkout-to-cancel-key')['id'];
-check('return unavailable before delivery', function () use ($orders, $cancelId) { errorCode(fn () => $orders->createReturnRequest(actor(), $cancelId, ['expectedVersion' => 1, 'issueCategory' => 'OTHER', 'reason' => 'Early'], 'return-early-unique-key'), 'RETURN_UNAVAILABLE'); });
+check('return unavailable before delivery', function () use ($orders, $cancelId) { errorCode(fn () => $orders->createReturnRequest(actor(), $cancelId, returnInput($cancelId, 1, 'OTHER', 'Early'), 'return-early-unique-key'), 'RETURN_UNAVAILABLE'); });
 check('cancel and replay restore exactly once; new stale key cannot restore twice', function () use ($orders, $cancelId) { $input = ['expectedVersion' => 1, 'reason' => 'No longer needed']; $result = $orders->cancelOrder(actor(), $cancelId, $input, 'cancel-first-unique-key'); ensure($orders->cancelOrder(actor(), $cancelId, $input, 'cancel-first-unique-key') == $result); errorCode(fn () => $orders->cancelOrder(actor(), $cancelId, $input, 'cancel-second-unique-key'), 'ORDER_VERSION_CONFLICT'); ensure((int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === 99); ensure((int) sql("SELECT COUNT(*) FROM inventory_movements WHERE movement_type = 'RELEASE' AND order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)", [$cancelId]) === 1); });
-check('return unavailable for cancelled order', function () use ($orders, $cancelId) { errorCode(fn () => $orders->createReturnRequest(actor(), $cancelId, ['expectedVersion' => 2, 'issueCategory' => 'OTHER', 'reason' => 'After cancellation'], 'return-cancelled-key'), 'RETURN_UNAVAILABLE'); ensure((int) sql('SELECT COUNT(*) FROM order_return_requests WHERE order_id = ?', [$cancelId]) === 0); });
+check('return unavailable for cancelled order', function () use ($orders, $cancelId) { errorCode(fn () => $orders->createReturnRequest(actor(), $cancelId, returnInput($cancelId, 2, 'OTHER', 'After cancellation'), 'return-cancelled-key'), 'RETURN_UNAVAILABLE'); ensure((int) sql('SELECT COUNT(*) FROM order_return_requests WHERE order_id = ?', [$cancelId]) === 0); });
 $returnDesk = new ReturnRefundService($pdo, new ReturnRefundModel($pdo));
 check('return API queue is staff-only and mutating actions enforce CSRF', function () use ($returnDesk): void {
     $salesSession = ['user' => actor(3, 'SALES'), 'expiresAt' => time() + 3600, 'csrfToken' => 'return-api-csrf'];
@@ -333,7 +341,8 @@ check('return API queue is staff-only and mutating actions enforce CSRF', functi
 $minorOrderId = createAs(actor(8), cart(8), 'return-minor-order-key')['id'];
 sql("UPDATE orders SET order_status = 'DELIVERED', payment_status = 'PAID' WHERE id = ?", [$minorOrderId]);
 sql("UPDATE payments SET status = 'PAID', paid_at = UTC_TIMESTAMP() WHERE order_id = ?", [$minorOrderId]);
-$minorRequest = $orders->createReturnRequest(actor(8), $minorOrderId, ['expectedVersion' => 1, 'issueCategory' => 'COSMETIC_DAMAGE', 'reason' => 'Small cosmetic scratch'], 'return-minor-request-key');
+sql("INSERT INTO shipments (order_id, status, delivered_at) VALUES (?, 'DELIVERED', UTC_TIMESTAMP())", [$minorOrderId]);
+$minorRequest = $orders->createReturnRequest(actor(8), $minorOrderId, returnInput($minorOrderId, 1, 'COSMETIC_DAMAGE', 'Small cosmetic scratch'), 'return-minor-request-key');
 $minorDetailSession = ['user' => actor(3, 'SALES'), 'expiresAt' => time() + 3600, 'csrfToken' => 'return-api-csrf'];
 $minorDetailResponse = HomeCare\OrderApi\handleOrderApi('GET', '/returns/' . $minorRequest['id'], [], '', [], $minorDetailSession, returnRefundService: $returnDesk);
 check('return detail API exposes customer category, order and initial audit to staff', function () use ($minorDetailResponse) { ensure($minorDetailResponse['status'] === 200 && $minorDetailResponse['body']['data']['issueCategory'] === 'COSMETIC_DAMAGE' && count($minorDetailResponse['body']['data']['history']) === 1); });
@@ -353,26 +362,29 @@ ensure($approvedResponse['status'] === 200 && $approvedReturn['status'] === 'app
 $stockBeforeReceipt = (int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1');
 $receipt = ['packageReceived' => true, 'orderMatched' => true, 'allItemsPresent' => true, 'conditionAssessed' => true, 'notes' => 'Đã đối chiếu sản phẩm, phụ kiện và tình trạng thực tế.'];
 $incompleteReceipt = array_replace($receipt, ['allItemsPresent' => false]);
-$incompleteResponse = returnApiMutation('/warehouse/returns/' . $returned['id'] . '/receive', ['checklist' => $incompleteReceipt], actor(5, 'WAREHOUSE'), 'return-incomplete-receipt-key', $returnDesk);
+$returnLineId = $returned['items'][0]['orderItemId'];
+$resalableQuantities = [['orderItemId' => $returnLineId, 'resalableQuantity' => 1]];
+$incompleteResponse = returnApiMutation('/warehouse/returns/' . $returned['id'] . '/receive', ['checklist' => $incompleteReceipt, 'resalableQuantities' => $resalableQuantities], actor(5, 'WAREHOUSE'), 'return-incomplete-receipt-key', $returnDesk);
 check('warehouse cannot refund when any receipt checklist item is incomplete', function () use ($incompleteResponse, $returned, $id, $stockBeforeReceipt) {
     ensure($incompleteResponse['status'] === 409 && $incompleteResponse['body']['errors']['code'] === 'RETURN_INSPECTION_INCOMPLETE');
     ensure(sql('SELECT status FROM order_return_requests WHERE id = ?', [$returned['id']]) === 'APPROVED');
     ensure(sql('SELECT payment_status FROM orders WHERE id = ?', [$id]) === 'PAID' && (int) sql('SELECT COUNT(*) FROM order_simulated_refunds WHERE order_id = ?', [$id]) === 0);
     ensure((int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === $stockBeforeReceipt);
 });
-$receivedResponse = returnApiMutation('/warehouse/returns/' . $returned['id'] . '/receive', ['checklist' => $receipt], actor(5, 'WAREHOUSE'), 'return-warehouse-receipt-key', $returnDesk);
+$receivedResponse = returnApiMutation('/warehouse/returns/' . $returned['id'] . '/receive', ['checklist' => $receipt, 'resalableQuantities' => $resalableQuantities], actor(5, 'WAREHOUSE'), 'return-warehouse-receipt-key', $returnDesk);
 $receivedReturn = $receivedResponse['body']['data'];
 ensure($receivedResponse['status'] === 200);
-check('approved return records one simulated full refund after warehouse checklist with no restock', function () use ($returnDesk, $returned, $receivedReturn, $receipt, $id, $stockBeforeReceipt) {
-    ensure($receivedReturn['status'] === 'refunded' && $receivedReturn['refundStatus'] === 'simulated' && $receivedReturn['refundAmount'] === 600000, 'Refund DTO mismatch: ' . json_encode($receivedReturn));
+check('approved return records one simulated refund after checklist and restocks only inspected saleable units', function () use ($returnDesk, $returned, $receivedReturn, $receipt, $id, $stockBeforeReceipt, $resalableQuantities, $returnLineId) {
+    ensure($receivedReturn['status'] === 'refunded' && $receivedReturn['refundStatus'] === 'simulated' && $receivedReturn['refundAmount'] === 600000 && $receivedReturn['refundMethod'] === 'COD', 'Refund DTO mismatch: ' . json_encode($receivedReturn));
     ensure(count($receivedReturn['history']) === 4 && $receivedReturn['inspectionChecklist'] == $receipt, 'History or inspection checklist mismatch.');
     ensure(sql('SELECT payment_status FROM orders WHERE id = ?', [$id]) === 'REFUNDED' && sql('SELECT status FROM payments WHERE order_id = ?', [$id]) === 'REFUNDED', 'Payment/order status mismatch.');
     ensure((int) sql('SELECT COUNT(*) FROM order_simulated_refunds WHERE order_id = ?', [$id]) === 1, 'Refund ledger count mismatch.');
     ensure((int) sql("SELECT COUNT(*) FROM payment_events e JOIN payments p ON p.id = e.payment_id WHERE p.order_id = ? AND e.event_type = 'REFUND_SIMULATED'", [$id]) === 1, 'Return refund must write one payment ledger event.');
-    ensure((int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === $stockBeforeReceipt, 'Return receipt changed sellable stock.');
-    $replay = $returnDesk->receive(actor(5, 'WAREHOUSE'), $returned['id'], ['checklist' => $receipt], 'return-warehouse-receipt-key');
+    ensure((int) sql('SELECT stock_quantity FROM product_variants WHERE id = 1') === $stockBeforeReceipt + 1, 'Only the inspected resalable quantity should return to stock.');
+    ensure((int) sql("SELECT COUNT(*) FROM inventory_movements WHERE movement_type = 'RETURN_RESTOCK' AND order_item_id = ?", [$returnLineId]) === 1, 'Return restock must have one audit movement.');
+    $replay = $returnDesk->receive(actor(5, 'WAREHOUSE'), $returned['id'], ['checklist' => $receipt, 'resalableQuantities' => $resalableQuantities], 'return-warehouse-receipt-key');
     ensure($replay == $receivedReturn, 'Idempotent replay response changed: ' . json_encode([$receivedReturn, $replay], JSON_UNESCAPED_UNICODE));
-    errorCode(fn () => $returnDesk->receive(actor(5, 'WAREHOUSE'), $returned['id'], ['checklist' => $receipt], 'return-warehouse-new-key'), 'RETURN_NOT_APPROVED');
+    errorCode(fn () => $returnDesk->receive(actor(5, 'WAREHOUSE'), $returned['id'], ['checklist' => $receipt, 'resalableQuantities' => $resalableQuantities], 'return-warehouse-new-key'), 'RETURN_NOT_APPROVED');
 });
 $reportService = new ReportService($pdo, new ReportModel($pdo));
 $reportRange = ['from' => (new DateTimeImmutable('now', new DateTimeZone('Asia/Ho_Chi_Minh')))->format('Y-m-d'), 'to' => (new DateTimeImmutable('now', new DateTimeZone('Asia/Ho_Chi_Minh')))->format('Y-m-d')];

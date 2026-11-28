@@ -280,13 +280,15 @@ test('mock reorder merges current catalog SKU once and respects cart version', a
   await assert.rejects(service.reorder('HC2026100001', input, { idempotencyKey: crypto.randomUUID() }), isError(409, 'CART_VERSION_CONFLICT'));
 });
 
-test('return service whitelists version/category/reason and validates response', async () => {
+test('return service whitelists version/category/reason/selected lines/photos and validates response', async () => {
   let received;
   const result = api.paths['/orders/{orderId}/returns'].post.responses['201'].content['application/json'].example.data;
+  const items = [{ orderItemId: '701', quantity: 1 }];
+  const photos = ['/uploads/returns/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg'];
   const service = createOrderService(async (path, input) => { received = { path, input }; return result; });
-  assert.deepEqual(await service.createReturnRequest('101', { expectedVersion: 5, issueCategory: 'TRANSIT_DAMAGE', reason: 'Hỏng khi nhận', actorId: 'attacker', approved: true, refundAmount: 9999 }, options), result);
+  assert.deepEqual(await service.createReturnRequest('101', { expectedVersion: 5, issueCategory: 'TRANSIT_DAMAGE', reason: 'Hỏng khi nhận', items, photos, actorId: 'attacker', approved: true, refundAmount: 9999 }, options), result);
   assert.equal(received.path, '/orders/101/returns');
-  assert.deepEqual(received.input.body, { expectedVersion: 5, issueCategory: 'TRANSIT_DAMAGE', reason: 'Hỏng khi nhận' });
+  assert.deepEqual(received.input.body, { expectedVersion: 5, issueCategory: 'TRANSIT_DAMAGE', reason: 'Hỏng khi nhận', items, photos });
   await assert.rejects(createOrderService(async () => ({ ...result, status: 'paid' })).createReturnRequest('101', {}, options), isError(200, 'INVALID_API_RESPONSE'));
 });
 
@@ -312,6 +314,8 @@ test('return workflow service encodes filters, detail, role actions and idempote
     createdAt: '2026-11-04T03:00:00+00:00',
     updatedAt: '2026-11-04T03:00:00+00:00',
     order: { items: [] },
+    returnItems: [],
+    photos: [],
     customer: { name: 'Nguyễn Minh', phone: '0900000000' },
   };
   const calls = [];

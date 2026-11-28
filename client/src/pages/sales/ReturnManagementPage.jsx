@@ -2,6 +2,7 @@
 import { AlertTriangle, Check, ClipboardCheck, PackageCheck, RefreshCw, Search, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../context/auth-context.js';
 import { createReturnRefundService } from '../../services/return-refund-service.js';
+import { API_URL } from '../../services/http-client.js';
 import './return-management.css';
 
 const statusLabels = { requested: 'Chờ phân loại', pending_manager: 'Chờ quản lý duyệt', approved: 'Đã duyệt · chờ nhận hàng', rejected: 'Từ chối', refunded: 'Đã ghi nhận hoàn tiền' };
@@ -34,17 +35,24 @@ export default function ReturnManagementPage() {
   const [busy, setBusy] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [error, setError] = useState('');
+  const [errorStatus, setErrorStatus] = useState(0);
   const [severityInput, setSeverityInput] = useState('MAJOR');
   const [triageNote, setTriageNote] = useState('');
   const [decisionReason, setDecisionReason] = useState('');
   const [checklist, setChecklist] = useState(emptyChecklist);
+  const [resalableQuantities, setResalableQuantities] = useState({});
   const pendingMutation = useRef(null);
+  const detailPanelRef = useRef(null);
   const activeReturnId = useRef('');
   activeReturnId.current = selectedId;
   const salesCanTriage = user?.role === 'SALES';
   const adminCanDecide = user?.role === 'ADMIN';
   const warehouseCanReceive = user?.role === 'WAREHOUSE';
-  const checklistReady = ['packageReceived', 'orderMatched', 'allItemsPresent', 'conditionAssessed'].every(field => checklist[field]) && checklist.notes.trim();
+  const checklistReady = ['packageReceived', 'orderMatched', 'allItemsPresent', 'conditionAssessed'].every(field => checklist[field]) && checklist.notes.trim()
+    && detail?.returnItems?.length > 0 && detail.returnItems.every(item => {
+      const quantity = resalableQuantities[item.orderItemId];
+      return quantity !== '' && /^\d+$/.test(String(quantity)) && Number.isSafeInteger(Number(quantity)) && Number(quantity) >= 0 && Number(quantity) <= item.quantity;
+    });
 
   // Load filtered queue from the API; list filters and pagination are enforced server-side.
   useEffect(() => {
@@ -57,7 +65,7 @@ export default function ReturnManagementPage() {
         setPagination(result.pagination);
         setSelectedId(current => result.items.some(item => item.id === current) ? current : (result.items[0]?.id || ''));
       })
-      .catch(failure => { if (failure.name !== 'AbortError') setError(failure.message); })
+      .catch(failure => { if (failure.name !== 'AbortError') { setError(failure.message); setErrorStatus(failure.status); } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [service, status, severity, search, page, refresh]);
@@ -73,11 +81,25 @@ export default function ReturnManagementPage() {
     setDecisionReason('');
     setChecklist(emptyChecklist());
     service.detail(selectedId, { signal: controller.signal })
-      .then(setDetail)
-      .catch(failure => { if (failure.name !== 'AbortError') setError(failure.message); })
+      .then(result => {
+        setDetail(result);
+        setResalableQuantities(Object.fromEntries(result.returnItems.map(item => [item.orderItemId, item.resalableQuantity ?? ''])));
+      })
+      .catch(failure => { if (failure.name !== 'AbortError') { setError(failure.message); setErrorStatus(failure.status); } })
       .finally(() => { if (!controller.signal.aborted) setDetailLoading(false); });
     return () => controller.abort();
-  }, [service, selectedId]);
+  }, [service, selectedId, refresh]);
+
+  // Bring the detail below the queue into view after a customer request is selected on mobile.
+  function selectRequest(id) {
+    setSelectedId(id);
+    setChecklist(emptyChecklist());
+    if (window.matchMedia('(min-width: 701px)').matches) return;
+    window.requestAnimationFrame(() => detailPanelRef.current?.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'start',
+    }));
+  }
 
   async function submitMutation(kind, body, apply) {
     if (!detail || busy) return;
@@ -100,6 +122,7 @@ export default function ReturnManagementPage() {
     } catch (failure) {
       if (!(failure.status === 0 || failure.status >= 500 || failure.code === 'INVALID_API_RESPONSE')) pendingMutation.current = null;
       setError(failure.message);
+      setErrorStatus(failure.status);
     } finally { setBusy(false); }
   }
 
@@ -121,17 +144,17 @@ export default function ReturnManagementPage() {
       <label><span>Mức độ</span><select value={severity} onChange={event => { setSeverity(event.target.value); setPage(1); }}><option value="">Tất cả mức độ</option>{Object.entries(severityLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <form className="rr-search" onSubmit={searchQueue}><label htmlFor="rr-search-input">Tìm mã đơn hoặc khách hàng</label><div><Search size={17} aria-hidden="true" /><input id="rr-search-input" value={searchDraft} onChange={event => setSearchDraft(event.target.value)} placeholder="Mã đơn, tên khách hàng" /><button type="submit">Tìm</button></div></form>
     </div>
-    {error && <div className="rr-alert" role="alert"><AlertTriangle size={18} />{error}<button type="button" onClick={() => setError('')} aria-label="Đóng thông báo">×</button></div>}
+    {error && <div className="rr-alert" role="alert"><AlertTriangle size={18} /><span>{error}</span>{errorStatus === 409 && <button className="rr-reload" type="button" onClick={() => { setError(''); setErrorStatus(0); setRefresh(value => value + 1); }}>Tải lại yêu cầu</button>}<button type="button" onClick={() => { setError(''); setErrorStatus(0); }} aria-label="Đóng thông báo">×</button></div>}
     <div className="rr-workspace">
       <aside className="rr-list" aria-label="Danh sách yêu cầu trả hàng">
-        {loading ? <div className="rr-state"><RefreshCw size={20} className="rr-spin" />Đang tải yêu cầu…</div> : rows.length === 0 ? <div className="rr-state"><PackageCheck size={28} /><strong>Không có yêu cầu phù hợp</strong><span>Thử bỏ bớt bộ lọc để xem yêu cầu khác.</span></div> : rows.map(item => <button key={item.id} type="button" className={'rr-list-item' + (selectedId === item.id ? ' is-active' : '')} onClick={() => { setSelectedId(item.id); setChecklist(emptyChecklist()); }}>
+        {loading ? <div className="rr-state"><RefreshCw size={20} className="rr-spin" />Đang tải yêu cầu…</div> : rows.length === 0 ? <div className="rr-state"><PackageCheck size={28} /><strong>Không có yêu cầu phù hợp</strong><span>Thử bỏ bớt bộ lọc để xem yêu cầu khác.</span></div> : rows.map(item => <button key={item.id} type="button" className={'rr-list-item' + (selectedId === item.id ? ' is-active' : '')} onClick={() => selectRequest(item.id)}>
           <span className="rr-list-top"><strong>#{item.orderCode}</strong><small>{formatDate(item.createdAt)}</small></span>
           <span className="rr-list-customer">{item.customerName}</span>
           <span className="rr-list-bottom"><Badge status={item.status} />{item.severity && <span className={'rr-severity rr-severity--' + item.severity}>{severityLabels[item.severity]}</span>}</span>
         </button>)}
         {!loading && pagination.totalPages > 1 && <div className="rr-pagination"><button type="button" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Trước</button><span>{page}/{pagination.totalPages}</span><button type="button" disabled={page >= pagination.totalPages} onClick={() => setPage(value => value + 1)}>Sau</button></div>}
       </aside>
-      <main className="rr-detail">
+      <main className="rr-detail" ref={detailPanelRef}>
         {detailLoading ? <div className="rr-state"><RefreshCw size={20} className="rr-spin" />Đang tải chi tiết…</div> : !detail ? <div className="rr-state rr-state--large"><ClipboardCheck size={36} /><strong>Chọn một yêu cầu</strong><span>Chi tiết và các bước xử lý hiển thị tại đây.</span></div> : <>
           <div className="rr-detail-head"><div><span className="rr-eyebrow">ĐƠN HÀNG #{detail.order.code}</span><h2>{detail.customer.name}</h2><p>{detail.customer.phone} · gửi lúc {formatDate(detail.createdAt)}</p></div><Badge status={selectedStatus} /></div>
           <div className="rr-summary-grid">
@@ -157,13 +180,15 @@ export default function ReturnManagementPage() {
               <button className="rr-primary" type="button" disabled={busy || !decisionReason.trim()} onClick={() => { const body = { decision: 'APPROVE', reason: decisionReason.trim() }; submitMutation('decision', body, options => service.decide(detail.id, body, options)); }}>{busy ? 'Đang lưu…' : 'Duyệt yêu cầu'}</button>
             </div>
           </form>}
-          {warehouseCanReceive && selectedStatus === 'approved' && <form className="rr-action-card" onSubmit={event => { event.preventDefault(); const body = { checklist }; submitMutation('receive', body, options => service.receive(detail.id, body, options)); }}>
-            <h3><ClipboardCheck size={19} />Nhận hàng và kiểm tra</h3><p>Hoàn tất checklist sau khi đối chiếu hàng thực nhận. Hoàn tiền được ghi nhận mô phỏng toàn bộ đơn sau bước này; không tự động nhập lại tồn kho.</p>
+          {warehouseCanReceive && selectedStatus === 'approved' && <form className="rr-action-card" onSubmit={event => { event.preventDefault(); const body = { checklist, resalableQuantities: detail.returnItems.map(item => ({ orderItemId: item.orderItemId, resalableQuantity: Number(resalableQuantities[item.orderItemId]) })) }; submitMutation('receive', body, options => service.receive(detail.id, body, options)); }}>
+            <h3><ClipboardCheck size={19} />Nhận hàng và kiểm tra</h3><p>Hoàn tất checklist sau khi đối chiếu hàng thực nhận. Hoàn tiền vẫn là mô phỏng, không gọi ngân hàng; chỉ số lượng được đánh dấu đủ điều kiện mới nhập lại kho.</p>
             <div className="rr-checklist">{[['packageReceived', 'Đã nhận kiện hàng trả'], ['orderMatched', 'Sản phẩm khớp với đơn hàng'], ['allItemsPresent', 'Đã nhận đủ sản phẩm/phụ kiện theo đơn'], ['conditionAssessed', 'Đã kiểm tra và ghi nhận tình trạng']].map(([field, label]) => <label key={field}><input type="checkbox" checked={checklist[field]} disabled={busy} onChange={event => setChecklist(current => ({ ...current, [field]: event.target.checked }))} /><span><Check size={14} aria-hidden="true" />{label}</span></label>)}</div>
+            <div className="rr-return-inspection"><h4>Số lượng đủ điều kiện nhập lại</h4>{detail.returnItems.map(item => <label key={item.orderItemId}><span>{item.productName}<small>{item.skuCode} · yêu cầu trả {item.quantity}</small></span><input type="number" min="0" max={item.quantity} step="1" value={resalableQuantities[item.orderItemId]} required disabled={busy} onChange={event => setResalableQuantities(current => ({ ...current, [item.orderItemId]: event.target.value }))} /><small>đơn vị (0 nếu không thể bán lại)</small></label>)}</div>
             <label>Ghi chú kiểm tra<textarea value={checklist.notes} onChange={event => setChecklist(current => ({ ...current, notes: event.target.value }))} maxLength={500} required disabled={busy} placeholder="Tình trạng thực tế và phụ kiện đã đối chiếu" /></label>
             <button className="rr-primary" type="submit" disabled={busy || !checklistReady}>{busy ? 'Đang ghi nhận…' : 'Xác nhận nhận hàng & hoàn tiền mô phỏng'}</button>
           </form>}
-          {detail.refundStatus && <div className="rr-refund-result"><PackageCheck size={20} /><div><strong>Đã ghi nhận hoàn tiền mô phỏng</strong><span>{formatMoney(detail.refundAmount)} · {formatDate(detail.refundCreatedAt)} · Không gọi ngân hàng</span></div></div>}
+          {detail.returnItems.length > 0 && <section className="rr-section"><h3>Sản phẩm khách yêu cầu trả</h3><ul className="rr-products">{detail.returnItems.map(item => <li key={item.orderItemId}><span><strong>{item.productName}</strong><small>{item.skuCode} · yêu cầu trả {item.quantity} · đơn giá {formatMoney(item.unitPrice)}</small></span>{item.resalableQuantity !== null && <strong>Nhập lại {item.resalableQuantity}</strong>}</li>)}</ul>{detail.photos.length > 0 && <div className="rr-return-photos" aria-label="Ảnh bằng chứng do khách gửi">{detail.photos.map(photo => <a key={photo} href={`${API_URL}${photo}`} target="_blank" rel="noreferrer"><img src={`${API_URL}${photo}`} alt="Ảnh bằng chứng yêu cầu trả hàng" loading="lazy" /></a>)}</div>}</section>}
+          {detail.refundStatus && <div className="rr-refund-result"><PackageCheck size={20} /><div><strong>Đã ghi nhận hoàn tiền mô phỏng</strong><span>{formatMoney(detail.refundAmount)} · phương thức {detail.refundMethod} · {detail.refundStatus} · {formatDate(detail.refundCreatedAt)} · Không gọi ngân hàng</span></div></div>}
           <section className="rr-section rr-history"><h3>Lịch sử xử lý</h3><ol>{detail.history.map((entry, index) => <li key={entry.action + '-' + index}><span className="rr-history-dot" /><div><strong>{statusLabels[entry.toStatus] || entry.toStatus}</strong><small>{entry.actorName} · {entry.actorRole} · {formatDate(entry.changedAt)}</small>{entry.note && <p>{entry.note}</p>}</div></li>)}</ol></section>
         </>}
       </main>

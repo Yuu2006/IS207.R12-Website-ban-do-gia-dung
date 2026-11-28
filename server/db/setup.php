@@ -34,6 +34,9 @@ function setupMigrations(): array
         ['name' => '019_wishlists', 'probe' => ['table', 'wishlists']],
         ['name' => '020_query_indexes', 'probe' => ['index', 'orders', 'idx_orders_placed_at']],
         ['name' => '021_installation_checklists', 'probe' => ['table', 'installation_checklist_events']],
+        ['name' => '024_product_review_lifecycle', 'probe' => ['table', 'product_review_followups']],
+        ['name' => '025_return_line_items', 'probe' => ['table', 'order_return_request_items']],
+        ['name' => '026_installation_checklist_reference_photo', 'probe' => ['column', 'installation_checklists', 'reference_photo_url']],
     ];
 }
 

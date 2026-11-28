@@ -184,27 +184,58 @@ final class OrderModel
     }
 
     // Separate return lifecycle: this read never changes order/payment/stock.
+    public function returnWindowAgeDays(string $orderId): ?int
+    {
+        $statement = $this->pdo->prepare("SELECT COALESCE(s.delivered_at, (SELECT MIN(h.changed_at) FROM order_status_history h WHERE h.order_id = o.id AND h.status = 'DELIVERED' AND h.is_deleted = 0)) AS delivered_at
+            FROM orders o LEFT JOIN shipments s ON s.order_id = o.id AND s.is_deleted = 0 WHERE o.id = ? AND o.is_deleted = 0");
+        $statement->execute([$orderId]);
+        $deliveredAt = $statement->fetchColumn();
+        if (!$deliveredAt) return null;
+        $age = $this->pdo->prepare('SELECT GREATEST(0, TIMESTAMPDIFF(DAY, ?, UTC_TIMESTAMP()))');
+        $age->execute([$deliveredAt]);
+        return (int) $age->fetchColumn();
+    }
+
     public function returnRequest(string $orderId): ?array
     {
         $statement = $this->pdo->prepare('SELECT id, order_id, status, issue_category, severity, reason, decision_reason, created_at, updated_at FROM order_return_requests WHERE order_id = ? AND is_deleted = 0');
         $statement->execute([$orderId]);
         $row = $statement->fetch(\PDO::FETCH_ASSOC);
-        return $row ? [
+        if (!$row) return null;
+        $itemQuery = $this->pdo->prepare('SELECT ri.order_item_id, ri.quantity, oi.product_name, oi.sku, oi.unit_price FROM order_return_request_items ri JOIN order_items oi ON oi.id = ri.order_item_id WHERE ri.return_request_id = ? ORDER BY ri.id');
+        $itemQuery->execute([$row['id']]);
+        $items = array_map(static fn(array $item): array => ['orderItemId' => (string) $item['order_item_id'], 'productName' => $item['product_name'], 'skuCode' => $item['sku'], 'quantity' => (int) $item['quantity'], 'unitPrice' => orderMoney($item['unit_price'])], $itemQuery->fetchAll(\PDO::FETCH_ASSOC));
+        $photoQuery = $this->pdo->prepare('SELECT photo_url FROM order_return_photos WHERE return_request_id = ? ORDER BY sort_order, id');
+        $photoQuery->execute([$row['id']]);
+        return [
             'id' => (string) $row['id'], 'orderId' => (string) $row['order_id'], 'status' => strtolower($row['status']),
             'issueCategory' => $row['issue_category'], 'severity' => $row['severity'] === null ? null : strtolower($row['severity']),
             'reason' => $row['reason'], 'decisionReason' => $row['decision_reason'],
             'createdAt' => orderIsoDate($row['created_at']), 'updatedAt' => orderIsoDate($row['updated_at']),
-        ] : null;
+            'items' => $items, 'photos' => array_column($photoQuery->fetchAll(\PDO::FETCH_ASSOC), 'photo_url'),
+        ];
     }
 
     // Exactly one request per order until a team-approved adjudication/reopen policy is added.
-    public function insertReturnRequest(array $order, array $actor, string $issueCategory, string $reason): array
+    public function insertReturnRequest(array $order, array $actor, array $input): array
     {
         if ($this->returnRequest((string) $order['id'])) throw new ApiException(409, 'RETURN_REQUEST_EXISTS', 'Đơn đã có yêu cầu trả hàng.');
         $statement = $this->pdo->prepare('INSERT INTO order_return_requests (order_id, customer_id, issue_category, reason, created_at, updated_at) VALUES (?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP())');
-        $statement->execute([$order['id'], $actor['id'], $issueCategory, $reason]);
+        $statement->execute([$order['id'], $actor['id'], $input['issueCategory'], $input['reason']]);
+        $returnId = (string) $this->pdo->lastInsertId();
+        $lineQuery = $this->pdo->prepare('SELECT id, quantity FROM order_items WHERE order_id = ? AND id = ? AND is_deleted = 0 FOR UPDATE');
+        $lineInsert = $this->pdo->prepare('INSERT INTO order_return_request_items (return_request_id, order_item_id, quantity) VALUES (?, ?, ?)');
+        foreach ($input['items'] as $item) {
+            $lineQuery->execute([$order['id'], $item['orderItemId']]);
+            $line = $lineQuery->fetch(\PDO::FETCH_ASSOC);
+            if (!$line) throw new ApiException(422, 'RETURN_ITEM_INVALID', 'Một dòng sản phẩm không thuộc đơn này.');
+            if ($item['quantity'] > (int) $line['quantity']) throw new ApiException(422, 'RETURN_QUANTITY_INVALID', 'Số lượng trả vượt số lượng đã mua.');
+            $lineInsert->execute([$returnId, $line['id'], $item['quantity']]);
+        }
+        $photoInsert = $this->pdo->prepare('INSERT INTO order_return_photos (return_request_id, photo_url, sort_order, created_at) VALUES (?, ?, ?, UTC_TIMESTAMP())');
+        foreach ($input['photos'] as $index => $photo) $photoInsert->execute([$returnId, $photo, $index]);
         $return = $this->returnRequest((string) $order['id']);
-        $this->appendReturnHistory((string) $return['id'], null, 'REQUESTED', 'CUSTOMER_REQUESTED', $actor, $reason, ['issueCategory' => $issueCategory]);
+        $this->appendReturnHistory((string) $return['id'], null, 'REQUESTED', 'CUSTOMER_REQUESTED', $actor, $input['reason'], ['issueCategory' => $input['issueCategory'], 'items' => $input['items'], 'photoCount' => count($input['photos'])]);
         return $return;
     }
 

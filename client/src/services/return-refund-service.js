@@ -9,7 +9,7 @@ const badResponse = () => { throw new ApiError('Dữ liệu trả hàng từ má
 function mapReturn(item, detail = false) {
   if (!isId(item?.id) || !isId(item.orderId) || !statuses.includes(item.status) || typeof item.reason !== 'string' || Number.isNaN(Date.parse(item.createdAt))) badResponse();
   if (item.severity !== null && !severities.includes(item.severity)) badResponse();
-  if (detail && (!item.order || !Array.isArray(item.order.items) || !Array.isArray(item.history) || !item.customer)) badResponse();
+  if (detail && (!item.order || !Array.isArray(item.order.items) || !Array.isArray(item.returnItems) || !Array.isArray(item.photos) || !Array.isArray(item.history) || !item.customer)) badResponse();
   return item;
 }
 

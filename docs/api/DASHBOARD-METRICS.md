@@ -58,7 +58,7 @@ Ví dụ chỉ mô tả shape khi nguồn dữ liệu chưa sẵn sàng, **khôn
 
 ### CSV giao dịch Task 30 hiện có
 
-`GET /admin/reports/revenue.csv?from=YYYY-MM-DD&to=YYYY-MM-DD` chỉ dành cho ADMIN. Ngày bao gồm cả hai đầu theo `Asia/Ho_Chi_Minh`, tối đa 366 ngày. Một dòng SALE dương được ghi vào lần đầu lịch sử đơn chuyển `COMPLETED`, nếu thanh toán đã xác nhận `PAID` (bao gồm đơn đã hoàn sau đó); mỗi khoản hoàn mô phỏng tạo một dòng REFUND âm theo thời gian ghi sổ; NET_TOTAL bằng tổng SALE trừ REFUND trong kỳ. Refund hiện hoàn toàn bộ `orders.total_amount`, gồm phí giao hàng, sau SALES phân loại, ADMIN duyệt mức MAJOR/CRITICAL và WAREHOUSE xác nhận đủ checklist. Đây là sổ mô phỏng; không gọi ngân hàng và không tự nhập hàng trả lại vào tồn. Schema/route cần migration `015_return_refund_reporting.sql`.
+`GET /admin/reports/revenue.csv?from=YYYY-MM-DD&to=YYYY-MM-DD` chỉ dành cho ADMIN. Ngày bao gồm cả hai đầu theo `Asia/Ho_Chi_Minh`, tối đa 366 ngày. Một dòng SALE dương được ghi vào lần đầu lịch sử đơn chuyển `COMPLETED`, nếu thanh toán đã xác nhận `PAID` (bao gồm đơn đã hoàn sau đó); mỗi khoản hoàn mô phỏng tạo một dòng REFUND âm theo thời gian ghi sổ; NET_TOTAL bằng tổng SALE trừ REFUND trong kỳ. Refund hiện ghi toàn bộ `orders.total_amount`, gồm phí giao hàng, sau SALES phân loại, ADMIN duyệt mức MAJOR/CRITICAL và WAREHOUSE xác nhận đủ checklist. Đây là sổ mô phỏng; không gọi ngân hàng. Kho chỉ nhập lại số lượng được kiểm tra là còn bán được và ghi `inventory_movements`. Quy tắc hoàn tiền khi chỉ trả một phần hàng đang chờ nhóm chốt trước nghiệm thu. Schema/route cần migration `015_return_refund_reporting.sql` và `025_return_line_items.sql`.
 
 ### Response đã triển khai
 

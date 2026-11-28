@@ -137,6 +137,8 @@ try {
     else { assert.equal(results.filter(result => result.ok).length, 1); assert.equal(results.filter(result => result.status === 409).length, 1); }
     console.log((await callWeek4('verify-race', JSON.stringify(input))).output.trim());
   }
+  const reviewSuite = fileURLToPath(new URL('./review-mysql.test.php', import.meta.url));
+  console.log((await run(php, [...phpArgs, reviewSuite])).output.trim());
   console.log('PASS: isolated MySQL integration, payment ledger, care, chatbot/dashboard and two-process races.');
 } finally {
   // Remove only container IDs created by this invocation, including their own anonymous test volume.
