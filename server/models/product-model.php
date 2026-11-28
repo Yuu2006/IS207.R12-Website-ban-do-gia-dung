@@ -245,7 +245,7 @@ function updateProduct(int $id, array $input): bool
 
     return $stmt->rowCount() > 0;
 }
-function deleteProduct(int $id): bool
+function deleteProduct(int $id, ?callable $beforeCommit = null): bool
 {
     $pdo = db();
 
@@ -276,6 +276,10 @@ function deleteProduct(int $id): bool
               AND is_deleted = 0
         ");
         $stmt->execute(['product_id' => $id]);
+
+        if ($beforeCommit !== null) {
+            $beforeCommit();
+        }
 
         $pdo->commit();
         return true;

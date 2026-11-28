@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/audit-model.php';
+
 // Chỉ lớp model ghi fit_rules; mỗi thay đổi và snapshot được commit cùng transaction.
 class FitRuleModel
 {
@@ -80,6 +82,7 @@ class FitRuleModel
             $id = (int) $this->pdo->lastInsertId();
             $row = $this->rule($id);
             $this->insertVersion($row, 'CREATE', $actorId);
+            (new AuditModel($this->pdo))->record($actorId, 'ADMIN', 'FIT_RULE_CREATED', 'fit_rule', $id, ['ruleKey' => $row['rule_key'], 'version' => (int) $row['version'], 'status' => $row['status']]);
             $this->pdo->commit();
             return $row;
         } catch (Throwable $error) {
@@ -103,6 +106,7 @@ class FitRuleModel
             $update->execute([...array_values($values), $actorId, $id]);
             $row = $this->rule($id);
             $this->insertVersion($row, $action, $actorId);
+            (new AuditModel($this->pdo))->record($actorId, 'ADMIN', 'FIT_RULE_' . ($action === 'DEACTIVATE' ? 'DEACTIVATED' : 'UPDATED'), 'fit_rule', $id, ['ruleKey' => $row['rule_key'], 'version' => (int) $row['version'], 'status' => $row['status']]);
             $this->pdo->commit();
             return $row;
         } catch (Throwable $error) {

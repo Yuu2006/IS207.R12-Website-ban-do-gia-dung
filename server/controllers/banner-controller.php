@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../utils/catalog-audit.php';
 
 /**
  * GET /api/banners
@@ -245,6 +246,7 @@ function createBanner(): void
 
     try {
         $pdo = db();
+        $pdo->beginTransaction();
         $stmt = $pdo->prepare("
             INSERT INTO banners
                 (title, image_url, target_url, starts_at, ends_at, sort_order, is_active, is_deleted)
@@ -252,14 +254,23 @@ function createBanner(): void
                 (:title, :image_url, :target_url, :starts_at, :ends_at, :sort_order, :is_active, 0)
         ");
         $stmt->execute($data);
+        $bannerId = (int) $pdo->lastInsertId();
+        recordCatalogAudit($pdo, 'CATALOG_BANNER_CREATED', 'banner', $bannerId, [
+            'isActive' => (bool) $data['is_active'],
+            'sortOrder' => (int) $data['sort_order'],
+        ]);
+        $pdo->commit();
 
         http_response_code(201);
         echo json_encode([
             'success' => true,
             'message' => 'Tạo banner thành công.',
-            'data' => ['id' => (int) $pdo->lastInsertId()]
+            'data' => ['id' => $bannerId]
         ], JSON_UNESCAPED_UNICODE);
     } catch (Throwable $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         error_log($e->getMessage());
         http_response_code(500);
         echo json_encode([
@@ -281,6 +292,17 @@ function updateBanner(int $id): void
 
     try {
         $pdo = db();
+        $pdo->beginTransaction();
+
+        $exists = $pdo->prepare('SELECT id FROM banners WHERE id = :id AND COALESCE(is_deleted, 0) = 0 FOR UPDATE');
+        $exists->execute(['id' => $id]);
+        if (!$exists->fetchColumn()) {
+            $pdo->rollBack();
+            http_response_code(404);
+            echo json_encode(['success' => false, 'message' => 'Không tìm thấy banner.'], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+
         $data['id'] = $id;
 
         $stmt = $pdo->prepare("
@@ -297,22 +319,10 @@ function updateBanner(int $id): void
         ");
         $stmt->execute($data);
 
-        if ($stmt->rowCount() === 0) {
-            $check = $pdo->prepare("
-                SELECT id FROM banners
-                WHERE id = :id AND COALESCE(is_deleted, 0) = 0
-            ");
-            $check->execute(['id' => $id]);
-
-            if (!$check->fetchColumn()) {
-                http_response_code(404);
-                echo json_encode([
-                    'success' => false,
-                    'message' => 'Không tìm thấy banner.'
-                ], JSON_UNESCAPED_UNICODE);
-                return;
-            }
-        }
+        recordCatalogAudit($pdo, 'CATALOG_BANNER_UPDATED', 'banner', $id, [
+            'changedFields' => ['title', 'image_url', 'target_url', 'starts_at', 'ends_at', 'sort_order', 'is_active'],
+        ]);
+        $pdo->commit();
 
         http_response_code(200);
         echo json_encode([
@@ -320,6 +330,9 @@ function updateBanner(int $id): void
             'message' => 'Cập nhật banner thành công.'
         ], JSON_UNESCAPED_UNICODE);
     } catch (Throwable $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         error_log($e->getMessage());
         http_response_code(500);
         echo json_encode([
@@ -337,6 +350,7 @@ function deleteBanner(int $id): void
 {
     try {
         $pdo = db();
+        $pdo->beginTransaction();
         $stmt = $pdo->prepare("
             UPDATE banners
             SET is_deleted = 1, is_active = 0
@@ -345,6 +359,7 @@ function deleteBanner(int $id): void
         $stmt->execute(['id' => $id]);
 
         if ($stmt->rowCount() === 0) {
+            $pdo->rollBack();
             http_response_code(404);
             echo json_encode([
                 'success' => false,
@@ -353,12 +368,18 @@ function deleteBanner(int $id): void
             return;
         }
 
+        recordCatalogAudit($pdo, 'CATALOG_BANNER_DELETED', 'banner', $id);
+        $pdo->commit();
+
         http_response_code(200);
         echo json_encode([
             'success' => true,
             'message' => 'Xóa banner thành công.'
         ], JSON_UNESCAPED_UNICODE);
     } catch (Throwable $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         error_log($e->getMessage());
         http_response_code(500);
         echo json_encode([

@@ -11,7 +11,7 @@
 | BOT-01..06 | `components/chatbot/ChatbotWidget.jsx`, `services/chatbot-service.js` | `POST /api/chatbot/messages`, catalog-search, FAQ ACTIVE do ADMIN duyệt; rule-based không LLM, metadata unit/type được kiểm; xem `docs/api/CHATBOT-DESIGN-CONTRACT.md` |
 | CART / PROMO / CHK / PAY | `/cart`, checkout HTTP, QR chuyển khoản chờ đối soát, kết quả VNPay, bill khách và chứng từ nhân viên | Giỏ/version, snapshot giá/voucher/kho, COD, BANK_TRANSFER xác nhận thủ công có audit, VNPay Sandbox ký/IPN, expiry CLI, chứng từ bất biến, ADMIN hoàn toàn bộ mô phỏng cho đơn đã hủy + đã thu tiền; cần migration 014/cấu hình và test merchant thật |
 | ORD / RET | orders/returns | Order, ReturnRefund |
-| NOTI | notifications | Notification |
+| NOTI-01 (STT 18) | `customer/NotificationsPage.jsx`, `services/notification-service.js`, badge chưa đọc tại `AppShell.jsx` & `Header.jsx` | `notification-*`, `send-reminders.php`; migrations `022_notifications_audit.sql` + `023_owned_device_returns.sql`; thông báo đơn/trả/thanh toán/bảo trì/bảo hành idempotent theo `(recipient_id, event_key)`, kiểm tra chủ sở hữu và allowlist đường dẫn nội bộ |
 | SER / WAR | warranty | Serial, Warranty |
 | REP | repair | Repair |
 | TEC | technician | Technician, Repair |
@@ -20,7 +20,7 @@
 | SUP | suppliers | Supplier |
 | PRD | admin catalog | Product, Category, Brand, Inventory |
 | ADM-PRO | promotion | Voucher, Product |
-| USR | users/RBAC | User, Auth |
+| USR-01..02 (STT 18) | `admin/UserAdminPage.jsx`, `services/admin-user-service.js`, route guard 4 vai trò cố định tại `AppRoutes.jsx` | `admin-user-*`, `role-middleware.php`; migration `017_admin_user_management.sql`; tìm/lọc/tạo/sửa/khóa/mở tài khoản có lý do, giữ lịch sử nghiệp vụ, bảo vệ ADMIN cuối và thu hồi phiên ngay |
 | REV | moderation | Review |
-| DASH / RPT / AUD | dashboard/reports/logs | Report, Audit |
+| AUD-01 (STT 18) | `admin/AuditLogPage.jsx`, `services/audit-service.js` (chỉ đọc cho ADMIN, lọc theo thao tác/loại dữ liệu/actor/ngày) | `audit-*`, `utils/catalog-audit.php`; migration `022_notifications_audit.sql`; ghi nhận login/logout, quản trị user, catalog/SKU/ảnh/thông số/banner, quy tắc & lượt FitCheck, quy tắc bảo trì, đơn/thanh toán/trả hàng và điều chỉnh kho |
 | DASH-01 / RPT-03 | `admin/ReportAdminPage.jsx` có API, bộ lọc và CSV; giữ nguyên overview `/admin` | `GET /admin/dashboard`, CSV doanh thu, nguồn đếm FitCheck/TCO/care/FIT-02; tỷ lệ bảo trì giữ null chờ TV2/TV3 chốt |

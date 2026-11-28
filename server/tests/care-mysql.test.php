@@ -14,6 +14,8 @@ use HomeCare\OrderApi\ApiException as OrderApiException;
 use HomeCare\OrderApi\MysqlDeviceCareCompletion;
 use HomeCare\OrderApi\OrderModel;
 use HomeCare\OrderApi\OrderService;
+use HomeCare\OrderApi\ReturnRefundModel;
+use HomeCare\OrderApi\ReturnRefundService;
 
 $name = getenv('DB_NAME');
 $port = getenv('DB_PORT');
@@ -237,6 +239,39 @@ careAssert($cycleTwoDate->fetchColumn() === $cycleTwoDueDate, 'Editing a care ru
 $updatedProductRule = $care->updateCareRule($admin, $productRule['id'], careRuleInput('product', 'clean_filter', ['firstDueDays' => 40, 'intervalDays' => 121]));
 careAssert($updatedProductRule['version'] === 2, 'Rule updates should advance the configuration version.');
 careRejected(404, fn () => $care->updateCareRule($admin, '999999', careRuleInput('product', 'missing_rule')));
+
+$returnOrder = createDeliveredCareOrder($pdo, 'return', 1);
+$orders->updateSalesStatus(careActor(3, 'SALES'), $returnOrder['id'], ['expectedVersion' => 1, 'toStatus' => 'completed'], 'care-return-complete-' . $returnOrder['suffix']);
+$pdo->prepare('UPDATE care_tasks SET due_date = UTC_DATE() WHERE owned_device_id IN (SELECT id FROM owned_devices WHERE order_item_id = ?)')->execute([$returnOrder['itemId']]);
+$pdo->prepare('UPDATE owned_devices SET warranty_start_date = DATE_SUB(UTC_DATE(), INTERVAL 23 MONTH) WHERE order_item_id = ?')->execute([$returnOrder['itemId']]);
+$returnRequest = $orders->createReturnRequest($customer, $returnOrder['id'], ['expectedVersion' => 2, 'issueCategory' => 'TRANSIT_DAMAGE', 'reason' => 'Product has major functional damage'], 'care-return-request-' . $returnOrder['suffix']);
+$returnDesk = new ReturnRefundService($pdo, new ReturnRefundModel($pdo));
+$returnDesk->triage(careActor(3, 'SALES'), $returnRequest['id'], ['severity' => 'MAJOR', 'note' => 'Verified a major functional defect.'], 'care-return-triage-' . $returnOrder['suffix']);
+$returnDesk->decide(careActor(4, 'ADMIN'), $returnRequest['id'], ['decision' => 'APPROVE', 'reason' => 'Evidence supports a major defect.'], 'care-return-approve-' . $returnOrder['suffix']);
+$returnReceipt = ['checklist' => ['packageReceived' => true, 'orderMatched' => true, 'allItemsPresent' => true, 'conditionAssessed' => true, 'notes' => 'Received and inspected in the isolated test.']];
+$stockBeforeReturn = (int) $pdo->query('SELECT stock_quantity FROM product_variants WHERE id = 30')->fetchColumn();
+$receivedReturn = $returnDesk->receive(careActor(5, 'WAREHOUSE'), $returnRequest['id'], $returnReceipt, 'care-return-receive-' . $returnOrder['suffix']);
+$returnedDevice = $pdo->prepare('SELECT id, status, return_request_id, returned_at, returned_by FROM owned_devices WHERE order_item_id = ?');
+$returnedDevice->execute([$returnOrder['itemId']]);
+$returnedDeviceRow = $returnedDevice->fetch(PDO::FETCH_ASSOC);
+careAssert($receivedReturn['status'] === 'refunded', 'The approved warehouse receipt should finish the simulated return.');
+careAssert($returnedDeviceRow && $returnedDeviceRow['status'] === 'RETURNED' && (string) $returnedDeviceRow['return_request_id'] === (string) $returnRequest['id'] && $returnedDeviceRow['returned_at'] !== null && (int) $returnedDeviceRow['returned_by'] === 5, 'Warehouse receipt must retain returned-device provenance.');
+careAssert($care->getOwnedDevice($customer, (string) $returnedDeviceRow['id'])['status'] === 'RETURNED', 'The customer can still read the returned ownership record.');
+$returnedList = $care->listOwnedDevices($customer, ['status' => 'RETURNED']);
+careAssert(count($returnedList['items']) === 1 && $returnedList['items'][0]['id'] === (string) $returnedDeviceRow['id'], 'Returned devices must appear in their own customer filter.');
+careAssert((int) $pdo->query("SELECT COUNT(*) FROM owned_devices WHERE id = " . (int) $returnedDeviceRow['id'] . " AND status = 'ACTIVE'")->fetchColumn() === 0, 'Returned devices must leave the active-device collection.');
+careRejected(409, fn () => $care->updateOwnedDevice($customer, (string) $returnedDeviceRow['id'], ['status' => 'ACTIVE']));
+careRejected(409, fn () => $care->updateOwnedDevice($customer, (string) $returnedDeviceRow['id'], ['serialNumber' => 'RETURNED-EDIT']));
+$returnedTask = $pdo->prepare('SELECT id FROM care_tasks WHERE owned_device_id = ? ORDER BY id LIMIT 1');
+$returnedTask->execute([$returnedDeviceRow['id']]);
+$returnedTaskId = (string) $returnedTask->fetchColumn();
+careRejected(409, fn () => $care->completeCareTask($customer, $returnedTaskId));
+careRejected(409, fn () => $care->postponeCareTask($customer, $returnedTaskId, ['newDueDate' => $futureDate, 'reason' => 'Returned device']));
+$reminders = new NotificationModel($pdo);
+careAssert($reminders->dueCareTasks(1) === [], 'Care reminders must exclude a returned device.');
+careAssert($reminders->expiringWarranties(1) === [], 'Warranty reminders must exclude a returned device.');
+careAssert((int) $pdo->query('SELECT stock_quantity FROM product_variants WHERE id = 30')->fetchColumn() === $stockBeforeReturn, 'Receiving a return must not restock sellable inventory without a disposition decision.');
+careAssert((int) $pdo->query('SELECT COUNT(*) FROM owned_devices WHERE order_item_id = ' . (int) $returnOrder['itemId'])->fetchColumn() === 1, 'Return processing must preserve one ownership record rather than creating a duplicate.');
 
 $chatResult = $chatbot->searchCatalog(['q' => 'TCO-20-A', 'limit' => '4']);
 careAssert(count($chatResult['items']) === 1 && $chatResult['items'][0]['sku'] === 'TCO-20-A', 'Chatbot lookup should return the current active SKU.');

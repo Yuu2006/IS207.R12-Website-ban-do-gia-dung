@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/audit-model.php';
 
 // HOME-01/FIT-01: mọi truy vấn hồ sơ phòng đều lọc theo chủ sở hữu; tên cột chỉ đến từ whitelist của service.
 class RoomFitModel
@@ -63,12 +64,61 @@ class RoomFitModel
         return $query->fetchAll();
     }
 
-    // Retry cùng requestKey không tăng lượt dùng trên dashboard.
-    public function recordFitCheck(string $requestKey, int $userId, string $result): void
+    // Retry cùng requestKey không tăng lượt dùng trên dashboard và không nhân đôi audit; khác payload trả 409.
+    public function recordFitCheck(string $requestKey, int $userId, string $result, ?int $productId = null, ?int $roomProfileId = null): void
     {
-        $this->pdo->prepare("INSERT INTO decision_events (request_key, user_id, event_type, fit_result) VALUES (?, ?, 'FIT_CHECK', ?) ON DUPLICATE KEY UPDATE request_key = request_key")->execute([$requestKey, $userId, $result]);
-        $q = $this->pdo->prepare('SELECT user_id, event_type, fit_result FROM decision_events WHERE request_key = ?');
-        $q->execute([$requestKey]); $event = $q->fetch(PDO::FETCH_ASSOC);
-        if (!$event || (int) $event['user_id'] !== $userId || $event['event_type'] !== 'FIT_CHECK' || $event['fit_result'] !== $result) throw new ApiException('requestKey đã dùng cho yêu cầu khác. Hãy tạo mã mới.', 409);
+        $ownsTransaction = !$this->pdo->inTransaction();
+        if ($ownsTransaction) $this->pdo->beginTransaction();
+
+        try {
+            $insert = $this->pdo->prepare("INSERT INTO decision_events (request_key, user_id, event_type, fit_result) VALUES (?, ?, 'FIT_CHECK', ?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)");
+            $insert->execute([$requestKey, $userId, $result]);
+            $created = $insert->rowCount() === 1;
+
+            $lookup = $this->pdo->prepare('SELECT id, user_id, event_type, fit_result FROM decision_events WHERE request_key = ? FOR UPDATE');
+            $lookup->execute([$requestKey]);
+            $event = $lookup->fetch(PDO::FETCH_ASSOC);
+            if (!$event) throw new RuntimeException('FitCheck decision event was not persisted.');
+
+            $conflict = (int) $event['user_id'] !== $userId
+                || $event['event_type'] !== 'FIT_CHECK'
+                || $event['fit_result'] !== $result;
+
+            if (!$created && !$conflict && $productId !== null && $roomProfileId !== null) {
+                $auditLookup = $this->pdo->prepare("SELECT details FROM audit_logs WHERE action = 'FIT_CHECK_COMPLETED' AND entity_type = 'decision_event' AND entity_id = ? ORDER BY id LIMIT 1");
+                $auditLookup->execute([(int) $event['id']]);
+                $auditDetails = $auditLookup->fetchColumn();
+                if ($auditDetails !== false) {
+                    try {
+                        $details = json_decode((string) $auditDetails, true, 32, JSON_THROW_ON_ERROR);
+                        $conflict = !is_array($details)
+                            || (int) ($details['productId'] ?? 0) !== $productId
+                            || (int) ($details['roomProfileId'] ?? 0) !== $roomProfileId;
+                    } catch (JsonException) {
+                        $conflict = true;
+                    }
+                }
+            }
+
+            if ($conflict) {
+                throw new ApiException('requestKey đã dùng cho yêu cầu khác. Hãy tạo mã mới.', 409, ['requestKey' => 'Hãy tạo requestKey mới.']);
+            }
+
+            if ($created) {
+                (new AuditModel($this->pdo))->record(
+                    $userId,
+                    'CUSTOMER',
+                    'FIT_CHECK_COMPLETED',
+                    'decision_event',
+                    (int) $event['id'],
+                    ['requestKey' => $requestKey, 'productId' => $productId, 'roomProfileId' => $roomProfileId, 'result' => $result]
+                );
+            }
+
+            if ($ownsTransaction) $this->pdo->commit();
+        } catch (Throwable $error) {
+            if ($ownsTransaction && $this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw $error;
+        }
     }
 }

@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../utils/catalog-audit.php';
 
 /**
  * GET /api/brands
@@ -188,19 +189,28 @@ function createBrand(): void
 
     try {
         $pdo = db();
+        $pdo->beginTransaction();
         $stmt = $pdo->prepare("
             INSERT INTO brands (name, logo_url, description, is_active, is_deleted)
             VALUES (:name, :logo_url, :description, :is_active, 0)
         ");
         $stmt->execute($data);
+        $brandId = (int) $pdo->lastInsertId();
+        recordCatalogAudit($pdo, 'CATALOG_BRAND_CREATED', 'brand', $brandId, [
+            'isActive' => (bool) $data['is_active'],
+        ]);
+        $pdo->commit();
 
         http_response_code(201);
         echo json_encode([
             'success' => true,
             'message' => 'Tạo thương hiệu thành công.',
-            'data' => ['id' => (int) $pdo->lastInsertId()]
+            'data' => ['id' => $brandId]
         ], JSON_UNESCAPED_UNICODE);
     } catch (PDOException $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         error_log($e->getMessage());
 
         if ($e->getCode() === '23000') {
@@ -218,6 +228,9 @@ function createBrand(): void
             'message' => 'Không thể tạo thương hiệu.'
         ], JSON_UNESCAPED_UNICODE);
     } catch (Throwable $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         error_log($e->getMessage());
         http_response_code(500);
         echo json_encode([
@@ -239,6 +252,16 @@ function updateBrand(int $id): void
 
     try {
         $pdo = db();
+        $pdo->beginTransaction();
+
+        $check = $pdo->prepare('SELECT id FROM brands WHERE id = :id AND COALESCE(is_deleted, 0) = 0 FOR UPDATE');
+        $check->execute(['id' => $id]);
+        if (!$check->fetchColumn()) {
+            $pdo->rollBack();
+            http_response_code(404);
+            echo json_encode(['success' => false, 'message' => 'Không tìm thấy thương hiệu.'], JSON_UNESCAPED_UNICODE);
+            return;
+        }
 
         $stmt = $pdo->prepare("
             UPDATE brands
@@ -251,20 +274,10 @@ function updateBrand(int $id): void
         $data['id'] = $id;
         $stmt->execute($data);
 
-        $check = $pdo->prepare("
-            SELECT id FROM brands
-            WHERE id = :id AND COALESCE(is_deleted, 0) = 0
-        ");
-        $check->execute(['id' => $id]);
-
-        if (!$check->fetchColumn()) {
-            http_response_code(404);
-            echo json_encode([
-                'success' => false,
-                'message' => 'Không tìm thấy thương hiệu.'
-            ], JSON_UNESCAPED_UNICODE);
-            return;
-        }
+        recordCatalogAudit($pdo, 'CATALOG_BRAND_UPDATED', 'brand', $id, [
+            'changedFields' => ['name', 'logo_url', 'description', 'is_active'],
+        ]);
+        $pdo->commit();
 
         http_response_code(200);
         echo json_encode([
@@ -272,6 +285,9 @@ function updateBrand(int $id): void
             'message' => 'Cập nhật thương hiệu thành công.'
         ], JSON_UNESCAPED_UNICODE);
     } catch (PDOException $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         error_log($e->getMessage());
 
         if ($e->getCode() === '23000') {
@@ -289,6 +305,9 @@ function updateBrand(int $id): void
             'message' => 'Không thể cập nhật thương hiệu.'
         ], JSON_UNESCAPED_UNICODE);
     } catch (Throwable $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         error_log($e->getMessage());
         http_response_code(500);
         echo json_encode([
@@ -348,6 +367,8 @@ function deleteBrand(int $id): void
             WHERE id = :id
         ");
         $stmt->execute(['id' => $id]);
+
+        recordCatalogAudit($pdo, 'CATALOG_BRAND_DELETED', 'brand', $id);
 
         $pdo->commit();
 

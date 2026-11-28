@@ -35,6 +35,7 @@
 .care-status { flex: 0 0 auto; padding: 4px 8px; border-radius: 4px; background: #fff7e6; color: #b54708; font-size: 10px; font-weight: 700; }
 .care-status--completed { background: #ecfdf3; color: #027a48; }
 .care-status--postponed { background: #eef4ff; color: #3538cd; }
+.care-status--returned { background: #fef3f2; color: #b42318; }
 .care-task__meta { display: flex; flex-wrap: wrap; gap: 12px; color: #667085; font-size: 11px; }
 .care-task__meta span { display: inline-flex; align-items: center; gap: 5px; }
 .care-task__reason { color: #667085 !important; font-size: 11px !important; }

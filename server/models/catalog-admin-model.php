@@ -52,7 +52,7 @@ class CatalogAdminModel
     }
 
     // Trả false nếu SKU không tồn tại; 409 nếu còn tồn. Khóa dòng để không đua với điều chỉnh kho.
-    public function softDeleteVariant(int $id): bool
+    public function softDeleteVariant(int $id, ?callable $afterDelete = null): bool
     {
         $this->pdo->beginTransaction();
         try {
@@ -67,6 +67,7 @@ class CatalogAdminModel
             if ((int) $others->fetchColumn() === 0) throw new ApiException('Không thể xóa SKU cuối cùng; hãy ngừng bán sản phẩm.', 409);
             if ((int) $stock > 0) throw new ApiException('SKU còn tồn kho; hãy điều chỉnh tồn về 0 trước khi xóa.', 409);
             $this->pdo->prepare('UPDATE product_variants SET is_deleted = 1, is_active = 0 WHERE id = ?')->execute([$id]);
+            if ($afterDelete !== null) $afterDelete($row);
             $this->pdo->commit();
             return true;
         } catch (Throwable $error) {
@@ -82,6 +83,22 @@ class CatalogAdminModel
         try {
             $stmt = $this->pdo->prepare('SELECT id FROM products WHERE id = ? AND is_deleted = 0 FOR UPDATE');
             $stmt->execute([$productId]);
+            $result = $stmt->fetchColumn() ? $work() : null;
+            $this->pdo->commit();
+            return $result;
+        } catch (Throwable $error) {
+            $this->pdo->rollBack();
+            throw $error;
+        }
+    }
+
+    // Serialize attribute creation for one category and keep its audit row atomic with the insert.
+    public function transactionOnCategory(int $categoryId, callable $work): mixed
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $stmt = $this->pdo->prepare('SELECT id FROM categories WHERE id = ? AND is_deleted = 0 FOR UPDATE');
+            $stmt->execute([$categoryId]);
             $result = $stmt->fetchColumn() ? $work() : null;
             $this->pdo->commit();
             return $result;

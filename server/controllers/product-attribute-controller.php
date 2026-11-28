@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../utils/catalog-audit.php';
 
 /**
  * GET /api/categories/{id}/attributes
@@ -210,6 +211,7 @@ function updateProductAttributeValues(int $productId): void
 
         $pdo->beginTransaction();
 
+        $updatedAttributeIds = [];
         foreach ($input['attributes'] as $item) {
             if (
                 !is_array($item)
@@ -270,6 +272,13 @@ function updateProductAttributeValues(int $productId): void
                 'value_text' => $valueText,
                 'value_number' => $valueNumber,
                 'value_boolean' => $valueBoolean
+            ]);
+            $updatedAttributeIds[] = (int) $attribute['id'];
+        }
+
+        if ($updatedAttributeIds !== []) {
+            recordCatalogAudit($pdo, 'CATALOG_PRODUCT_ATTRIBUTES_UPDATED', 'product', $productId, [
+                'attributeIds' => array_values(array_unique($updatedAttributeIds)),
             ]);
         }
 

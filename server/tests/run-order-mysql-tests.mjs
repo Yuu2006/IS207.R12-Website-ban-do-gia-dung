@@ -19,6 +19,8 @@ const suite = fileURLToPath(new URL('./order-mysql.test.php', import.meta.url));
 const tcoSuite = fileURLToPath(new URL('./tco-mysql.test.php', import.meta.url));
 const careSuite = fileURLToPath(new URL('./care-mysql.test.php', import.meta.url));
 const chatbotSuite = fileURLToPath(new URL('./chatbot-dashboard-mysql.test.php', import.meta.url));
+const notificationSuite = fileURLToPath(new URL('./notification-mysql.test.php', import.meta.url));
+const reminderJob = fileURLToPath(new URL('../scripts/send-reminders.php', import.meta.url));
 const tempParent = await realpath(tmpdir());
 const root = await mkdtemp(join(tempParent, 'homecare-order-mysql-'));
 const portProbe = createServer();
@@ -27,7 +29,7 @@ await once(portProbe, 'listening');
 const port = portProbe.address().port;
 await new Promise(resolve => portProbe.close(resolve));
 if (port === 3306) throw new Error('Refusing default MySQL port.');
-const env = { ...process.env, ORDER_MYSQL_TEST: 'isolated', DB_HOST: '127.0.0.1', DB_PORT: String(port), DB_NAME: 'homecare_order_test_' + Date.now(), DB_USER: 'root', DB_PASSWORD: '' };
+const env = { ...process.env, ORDER_MYSQL_TEST: 'isolated', ORDER_STORAGE_MODE: 'mysql', DB_HOST: '127.0.0.1', DB_PORT: String(port), DB_NAME: 'homecare_order_test_' + Date.now(), DB_USER: 'root', DB_PASSWORD: '' };
 const run = (binary, args, allowedFailure = false) => new Promise((resolve, reject) => {
   if (dockerMode && binary === php) {
     args = ['exec', phpContainer, 'php', ...args.map(arg => arg.startsWith(projectRoot) ? '/workspace/' + arg.slice(projectRoot.length).replaceAll('\\', '/') : arg)];
@@ -44,6 +46,7 @@ const call = (...args) => run(php, [...phpArgs, suite, ...args]);
 const callTco = (...args) => run(php, [...phpArgs, tcoSuite, ...args]);
 const callCare = (...args) => run(php, [...phpArgs, careSuite, ...args]);
 const callChatbot = (...args) => run(php, [...phpArgs, chatbotSuite, ...args]);
+const callNotification = (...args) => run(php, [...phpArgs, notificationSuite, ...args]);
 let server;
 let log = '';
 try {
@@ -52,7 +55,7 @@ try {
     console.log('Building the project PHP image; creating private MySQL/PHP containers with no published ports.');
     await run('docker', ['build', '-t', 'homecare-week4-test:local', fileURLToPath(new URL('../', import.meta.url))]);
     databaseContainer = (await run('docker', ['run', '-d', '-e', 'MYSQL_ALLOW_EMPTY_PASSWORD=yes', 'mysql:8.4', `--port=${port}`, '--mysqlx=OFF', '--innodb-buffer-pool-size=64M'])).output.trim();
-    phpContainer = (await run('docker', ['run', '-d', '--network', `container:${databaseContainer}`, ...['ORDER_MYSQL_TEST', 'DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'].flatMap(key => ['-e', `${key}=${env[key]}`]), '--mount', `type=bind,source=${projectRoot},target=/workspace,readonly`, 'homecare-week4-test:local', 'sleep', 'infinity'])).output.trim();
+    phpContainer = (await run('docker', ['run', '-d', '--network', `container:${databaseContainer}`, ...['ORDER_MYSQL_TEST', 'ORDER_STORAGE_MODE', 'DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'].flatMap(key => ['-e', `${key}=${env[key]}`]), '--mount', `type=bind,source=${projectRoot},target=/workspace,readonly`, 'homecare-week4-test:local', 'sleep', 'infinity'])).output.trim();
   } else {
   console.log((await run(mysqld, ['--version'])).output.trim());
   await run(mysqld, ['--no-defaults', '--initialize-insecure', `--datadir=${join(root, 'data')}`, '--console']);
@@ -68,12 +71,13 @@ try {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   if (!ready) throw new Error(`MySQL did not become ready: ${log}`);
-  for (const file of ['tco-service.test.php', 'chatbot-rules.test.php', 'room-fit-evaluate.test.php', 'db-setup.test.php']) {
+  for (const file of ['tco-service.test.php', 'chatbot-rules.test.php', 'room-fit-evaluate.test.php', 'db-setup.test.php', 'notification-audit.test.php', 'admin-user-management-test.php']) {
     console.log((await run(php, [...phpArgs, fileURLToPath(new URL(file, import.meta.url))])).output.trim());
   }
   console.log((await call('init')).output.trim());
   console.log((await callTco('init')).output.trim());
   console.log((await callCare('init')).output.trim());
+  console.log((await call('apply-shared-migrations')).output.trim());
   console.log((await call('test')).output.trim());
   console.log((await callTco('test')).output.trim());
   console.log((await callCare('test')).output.trim());
@@ -137,7 +141,24 @@ try {
     else { assert.equal(results.filter(result => result.ok).length, 1); assert.equal(results.filter(result => result.status === 409).length, 1); }
     console.log((await callWeek4('verify-race', JSON.stringify(input))).output.trim());
   }
-  console.log('PASS: isolated MySQL integration, payment ledger, care, chatbot/dashboard and two-process races.');
+  // Run notifications/audit after order/care/chat/week4 suites so their exact fixture counts stay stable.
+  const notificationResult = await callNotification('test');
+  console.log(notificationResult.output.trim());
+  const fixtureMatch = notificationResult.output.match(/^REMINDER_FIXTURES=(.+)$/m);
+  if (!fixtureMatch) throw new Error('Notification suite did not return reminder fixture identifiers.');
+  const reminderFixtures = JSON.parse(fixtureMatch[1]);
+  const firstReminderRun = await run(php, [...phpArgs, reminderJob]);
+  console.log(firstReminderRun.output.trim());
+  if (!/Care reminders created: [1-9][0-9]*/.test(firstReminderRun.output) || !/Warranty reminders created: [1-9][0-9]*/.test(firstReminderRun.output)) {
+    throw new Error('Reminder CLI did not create both eligible fixture reminders.');
+  }
+  const repeatedReminderRun = await run(php, [...phpArgs, reminderJob]);
+  console.log(repeatedReminderRun.output.trim());
+  if (!/Care reminders created: 0/.test(repeatedReminderRun.output) || !/Warranty reminders created: 0/.test(repeatedReminderRun.output)) {
+    throw new Error('Repeated reminder CLI run emitted duplicate notifications.');
+  }
+  console.log((await callNotification('verify-reminders', JSON.stringify(reminderFixtures))).output.trim());
+  console.log('PASS: isolated MySQL integration, payment ledger, care, chatbot/dashboard, week4, notification/audit and two-process races.');
 } finally {
   // Remove only container IDs created by this invocation, including their own anonymous test volume.
   for (const container of [phpContainer, databaseContainer]) {

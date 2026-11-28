@@ -118,6 +118,22 @@ final class OrderService implements OrderServiceInterface
             }
             $model->transition($order, $principal, $input, $decision);
             if ($decision['to'] === 'completed') $this->completion->createDevicesAndCare($model->pdo, $principal, $model->find($id, null), $model->itemsFor([$id])[$id] ?? []);
+            $inventoryState = $decision['to'] === 'shipping' ? 'CONSUMED' : ($decision['to'] === 'cancelled' ? 'RELEASED' : $order['inventory_state']);
+            (new \AuditModel($model->pdo))->record((int) $principal['id'], $principal['role'], 'ORDER_STATUS_CHANGED', 'order', (int) $id, [
+                'fromStatus' => $decision['from'], 'toStatus' => $decision['to'], 'paymentStatus' => $decision['payment'],
+                'paymentMethod' => $order['payment_method'], 'inventoryState' => $inventoryState,
+            ]);
+            $notifications = new \NotificationModel($model->pdo);
+            if (!$customer) {
+                $labels = ['pending' => 'chờ xác nhận', 'confirmed' => 'đã xác nhận', 'preparing' => 'đang chuẩn bị', 'shipping' => 'đang giao', 'delivered' => 'đã giao', 'completed' => 'hoàn thành', 'cancelled' => 'đã hủy'];
+                $label = $labels[$decision['to']] ?? 'được cập nhật';
+                $notifications->create((int) $order['customer_id'], 'order:' . $id . ':status:' . ((int) $order['version'] + 1), 'ORDER', 'Cập nhật đơn hàng', 'Đơn hàng #' . $order['order_code'] . ' ' . $label . '.', '/orders/' . $id);
+            } elseif ($decision['to'] === 'cancelled') {
+                $notifications->create((int) $order['customer_id'], 'order:' . $id . ':status:' . ((int) $order['version'] + 1), 'ORDER', 'Đã hủy đơn hàng', 'Đơn hàng #' . $order['order_code'] . ' đã được hủy theo yêu cầu của bạn.', '/orders/' . $id);
+                foreach ($notifications->activeRecipientIds('SALES') as $recipientId) {
+                    $notifications->create($recipientId, 'order:' . $id . ':cancelled-by-customer', 'ORDER', 'Khách hàng đã hủy đơn', 'Đơn hàng #' . $order['order_code'] . ' đã bị khách hàng hủy trước khi giao.', '/sales/orders');
+                }
+            }
             return $model->detail($id, $customer ? $principal['id'] : null, !$customer);
         });
     }
@@ -135,7 +151,16 @@ final class OrderService implements OrderServiceInterface
             if (!in_array($order['order_status'], ['DELIVERED', 'COMPLETED'], true) || $order['payment_status'] !== 'PAID') throw new ApiException(409, 'RETURN_UNAVAILABLE', 'Chỉ tạo yêu cầu trả hàng cho đơn đã giao và thanh toán.');
             $payments = new PaymentModel($model->pdo);
             $payments->assertSettled($order, $payments->lock($id));
-            return $model->insertReturnRequest($order, $principal, $input['issueCategory'], $input['reason']);
+            $request = $model->insertReturnRequest($order, $principal, $input['issueCategory'], $input['reason']);
+            (new \AuditModel($model->pdo))->record((int) $principal['id'], $principal['role'], 'RETURN_REQUESTED', 'return_request', (int) $request['id'], [
+                'orderId' => (int) $order['id'], 'issueCategory' => $input['issueCategory'], 'status' => 'REQUESTED',
+            ]);
+            $notifications = new \NotificationModel($model->pdo);
+            $notifications->create((int) $principal['id'], 'return:' . $request['id'] . ':requested', 'RETURN', 'Đã tiếp nhận yêu cầu trả hàng', 'Yêu cầu trả hàng cho đơn #' . $order['order_code'] . ' đã được tiếp nhận.', '/orders/' . $order['id']);
+            foreach ($notifications->activeRecipientIds('SALES') as $recipientId) {
+                $notifications->create($recipientId, 'return:' . $request['id'] . ':requested', 'RETURN', 'Có yêu cầu trả hàng mới', 'Đơn #' . $order['order_code'] . ' cần được phân loại.', '/sales/returns');
+            }
+            return $request;
         });
     }
 }
