@@ -28,6 +28,7 @@
 - Desktop: chạy lại luồng CUSTOMER → SALES MAJOR → ADMIN duyệt → WAREHOUSE nhận/kiểm → hoàn tiền mô phỏng trên đơn demo khác. Kết quả `refunded`, khoản hoàn 6.490.000₫, không gọi ngân hàng.
 - FIT-02 trên mobile: lưu đủ 4/4 mục, nhận trạng thái hoàn tất lần đầu và phiên bản 1; mở “Lịch sử checklist (20 bản gần nhất)” thấy bản ghi 4/4. Sau đó `/admin/reports` hiển thị checklist hoàn tất lần đầu từ 0 lên 1.
 - Tải CSV báo cáo thành công; file có header và các dòng `SALE`, `REFUND`, `NET_TOTAL`. CSV được kiểm tra sau luồng trả hàng mobile.
+- Đối chiếu số liệu CSV kỳ 01–28/11/2026: 4 giao dịch `SALE` cộng 72.430.000₫, `REFUND` -39.680.000₫, `NET_TOTAL` 32.750.000₫; phép tính khớp. MySQL test xác nhận checklist nhận hàng thiếu trả 409 mà không đổi kho/ledger; khi đủ checklist chỉ nhập lại số lượng được đánh giá bán lại, ghi một `RETURN_RESTOCK`, một refund mô phỏng và replay cùng idempotency key không phát sinh lần hai.
 - Kiểm tra xung đột từ hai tab: tab thứ hai gửi thao tác trên chi tiết cũ, nhận HTTP 409, hiển thị nút **Tải lại yêu cầu**; bấm nút thì trạng thái chi tiết cập nhật theo dữ liệu hiện tại.
 - Các return E2E trên chỉ dùng DB và tài khoản demo. `RETURN_WINDOW_DAYS=14` được dùng cho đơn demo gần ngày; `60` chỉ dùng tạm trong container E2E để kiểm tra đơn demo cũ trên desktop. Đây là cấu hình test, không phải quyết định chính sách của nhóm. Container MySQL kiểm thử chưa có migrations 022/023 của STT18 nên E2E này không nghiệm thu tích hợp STT18.
 
@@ -37,5 +38,6 @@
 2. Ghép audit log/thông báo và cập nhật `owned_devices.status` từ nhánh STT18 sau khi nhánh đó merge; đồng bộ thứ tự migration 022/023 vào `server/db/setup.php` trước khi merge các migration 024–026.
 3. Nhóm Trưởng review/merge code; sau review/backup mới áp migration 024–026 trên DB dev. Browser E2E giao diện đã chạy ở 1280×800 và 390×844 như ghi phía trên; DB dev/dùng chung chưa được cập nhật.
 4. `careCompletionRate` trên reports vẫn chờ nhóm chốt mẫu số; đây là phụ thuộc riêng, không được tính là lỗi đã xử lý bởi STT17/22.
+5. Thành viên khác cần kiểm tra chéo tiêu chí #5 và #9 trong tab `Test`; E2E và test cô lập có bằng chứng phía trên nhưng chưa có review chéo trên GitHub.
 
 Người làm trong bảng công việc vẫn là **Lan Chi**. Trạng thái đề nghị để bàn giao là **Chờ Nhóm Trưởng review/merge**, chưa đánh dấu hoàn tất nghiệm thu cuối.
