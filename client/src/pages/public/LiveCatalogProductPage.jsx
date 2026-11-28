@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { API_URL } from '../../services/http-client.js';
 import { getProduct, getProductAttributes } from '../../services/catalog-service.js';
 import { useOrderService } from '../../context/OrderServiceContext.jsx';
+import ProductReviews from '../../components/reviews/ProductReviews.jsx';
 import '../customer/care-pages.css';
 
 const money = value => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(Number(value || 0));
@@ -157,5 +158,6 @@ export default function LiveCatalogProductPage() {
         {Object.entries(baseSpecifications).map(([name, value]) => <div key={name}><dt>{name}</dt><dd>{String(value)}</dd></div>)}
       </dl>
     </section>}
+    <ProductReviews productId={product.id} productName={product.name} />
   </main>;
 }

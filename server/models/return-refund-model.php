@@ -59,6 +59,17 @@ final class ReturnRefundModel
         $items = array_map(fn ($item) => ['orderItemId' => (string) $item['id'], 'skuId' => (string) $item['variant_id'], 'skuCode' => $item['sku'],
             'productName' => $item['product_name'], 'variantName' => $item['variant_name'], 'unitPrice' => orderMoney($item['unit_price']),
             'quantity' => (int) $item['quantity'], 'lineTotal' => orderMoney($item['line_total']), 'imageUrl' => $item['image_url'] ?? ''], $lines->fetchAll(\PDO::FETCH_ASSOC));
+        $returnItemsQuery = $this->pdo->prepare('SELECT ri.order_item_id, ri.quantity, ri.resalable_quantity, oi.variant_id, oi.product_name, oi.sku, oi.unit_price
+            FROM order_return_request_items ri JOIN order_items oi ON oi.id = ri.order_item_id
+            WHERE ri.return_request_id = ? ORDER BY ri.id');
+        $returnItemsQuery->execute([$id]);
+        $returnItems = array_map(static fn(array $item): array => [
+            'orderItemId' => (string) $item['order_item_id'], 'skuId' => (string) $item['variant_id'], 'skuCode' => $item['sku'],
+            'productName' => $item['product_name'], 'unitPrice' => orderMoney($item['unit_price']), 'quantity' => (int) $item['quantity'],
+            'resalableQuantity' => $item['resalable_quantity'] === null ? null : (int) $item['resalable_quantity'],
+        ], $returnItemsQuery->fetchAll(\PDO::FETCH_ASSOC));
+        $photosQuery = $this->pdo->prepare('SELECT photo_url FROM order_return_photos WHERE return_request_id = ? ORDER BY sort_order, id');
+        $photosQuery->execute([$id]);
         $checklist = $row['inspection_checklist'] === null ? null : json_decode($row['inspection_checklist'], true, 32, JSON_THROW_ON_ERROR);
         $historyStatement = $this->pdo->prepare('SELECT h.from_status, h.to_status, h.action, h.actor_role, h.note, h.details, h.changed_at, u.full_name AS actor_name
             FROM order_return_status_history h JOIN users u ON u.id = h.actor_id
@@ -81,7 +92,9 @@ final class ReturnRefundModel
             'triagedAt' => $row['triaged_at'] === null ? null : orderIsoDate($row['triaged_at']),
             'managerDecidedAt' => $row['manager_decided_at'] === null ? null : orderIsoDate($row['manager_decided_at']),
             'receivedAt' => $row['received_at'] === null ? null : orderIsoDate($row['received_at']), 'inspectionChecklist' => $checklist,
+            'returnItems' => $returnItems, 'photos' => array_column($photosQuery->fetchAll(\PDO::FETCH_ASSOC), 'photo_url'),
             'refundAmount' => $row['refund_amount'] === null ? null : orderMoney($row['refund_amount']),
+            'refundMethod' => $row['refund_status'] === null ? null : $row['payment_method'],
             'refundStatus' => $row['refund_status'] === null ? null : strtolower($row['refund_status']),
             'refundCreatedAt' => $row['refund_created_at'] === null ? null : orderIsoDate($row['refund_created_at']),
             'history' => $history,
@@ -123,8 +136,33 @@ final class ReturnRefundModel
     }
 
     // Record receipt and the full-order refund atomically after warehouse inspection.
-    public function receiveAndRefund(array $return, array $order, array $actor, array $payment, array $checklist, int $amount): void
+    public function receiveAndRefund(array $return, array $order, array $actor, array $payment, array $checklist, array $resalableQuantities, int $amount): void
     {
+        $returnItemsQuery = $this->pdo->prepare('SELECT ri.order_item_id, ri.quantity, oi.variant_id FROM order_return_request_items ri JOIN order_items oi ON oi.id = ri.order_item_id WHERE ri.return_request_id = ? ORDER BY oi.variant_id, oi.id FOR UPDATE');
+        $returnItemsQuery->execute([$return['id']]);
+        $returnItems = $returnItemsQuery->fetchAll(\PDO::FETCH_ASSOC);
+        $submitted = [];
+        foreach ($resalableQuantities as $item) $submitted[$item['orderItemId']] = $item['resalableQuantity'];
+        if (count($returnItems) !== count($submitted)) throw new ApiException(422, 'RETURN_INSPECTION_LINES', 'Cần đánh giá số lượng nhập lại cho mọi dòng hàng đã yêu cầu.');
+        $updateReturnItem = $this->pdo->prepare('UPDATE order_return_request_items SET resalable_quantity = ? WHERE return_request_id = ? AND order_item_id = ?');
+        $stockUpdate = $this->pdo->prepare('UPDATE product_variants SET stock_quantity = stock_quantity + ? WHERE id = ?');
+        $stockRead = $this->pdo->prepare('SELECT stock_quantity FROM product_variants WHERE id = ? FOR UPDATE');
+        $movement = $this->pdo->prepare('INSERT INTO inventory_movements (variant_id, order_item_id, movement_type, quantity_change, quantity_before, quantity_after, reference_code, note, performed_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        foreach ($returnItems as $item) {
+            $orderItemId = (string) $item['order_item_id'];
+            if (!array_key_exists($orderItemId, $submitted) || $submitted[$orderItemId] > (int) $item['quantity']) {
+                throw new ApiException(422, 'RETURN_INSPECTION_LINES', 'Số lượng nhập lại phải nằm trong số lượng đã yêu cầu.');
+            }
+            $resalable = $submitted[$orderItemId];
+            $updateReturnItem->execute([$resalable, $return['id'], $orderItemId]);
+            if ($resalable === 0) continue;
+            $stockRead->execute([$item['variant_id']]);
+            $before = $stockRead->fetchColumn();
+            if ($before === false || (int) $before + $resalable > 4294967295) throw new ApiException(409, 'RETURN_RESTOCK_CONFLICT', 'Không thể cập nhật tồn kho cho sản phẩm trả về.');
+            $stockUpdate->execute([$resalable, $item['variant_id']]);
+            $movement->execute([$item['variant_id'], $orderItemId, 'RETURN_RESTOCK', $resalable, $before, (int) $before + $resalable,
+                'RETURN-' . $return['id'] . '-ITEM-' . $orderItemId . '-RESTOCK', 'Hàng trả đã được kho xác nhận đủ điều kiện bán lại.', $actor['id']]);
+        }
         $insert = $this->pdo->prepare("INSERT INTO order_simulated_refunds (order_id, return_request_id, payment_id, amount, status, recorded_by, created_at) VALUES (?, ?, ?, ?, 'SIMULATED', ?, UTC_TIMESTAMP())");
         $insert->execute([$order['id'], $return['id'], $payment['id'], $amount, $actor['id']]);
         $paymentUpdate = $this->pdo->prepare("UPDATE payments SET status = 'REFUNDED' WHERE id = ? AND status = 'PAID'");
@@ -138,7 +176,7 @@ final class ReturnRefundModel
         $requestUpdate = $this->pdo->prepare("UPDATE order_return_requests SET status = 'REFUNDED', received_by = ?, received_at = UTC_TIMESTAMP(), inspection_checklist = ?, updated_at = UTC_TIMESTAMP() WHERE id = ? AND status = 'APPROVED'");
         $requestUpdate->execute([$actor['id'], $checklistJson, $return['id']]);
         if ($requestUpdate->rowCount() !== 1) throw new ApiException(409, 'RETURN_STATE_CONFLICT', 'Yêu cầu trả hàng đã thay đổi.');
-        $this->recordHistory((string) $return['id'], 'APPROVED', 'REFUNDED', 'WAREHOUSE_RECEIVED_AND_REFUNDED', $actor, $checklist['notes'], ['checklist' => $checklist, 'refundAmount' => $amount, 'refundStatus' => 'SIMULATED']);
+        $this->recordHistory((string) $return['id'], 'APPROVED', 'REFUNDED', 'WAREHOUSE_RECEIVED_AND_REFUNDED', $actor, $checklist['notes'], ['checklist' => $checklist, 'returnItems' => $resalableQuantities, 'refundAmount' => $amount, 'refundStatus' => 'SIMULATED']);
     }
 
     // Write the transition event in the same transaction as the state mutation.

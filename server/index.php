@@ -14,7 +14,7 @@ use function HomeCare\OrderApi\handleOrderApi;
 use const HomeCare\OrderApi\MAX_ORDER_BODY_BYTES;
 
 // `php -S` dùng index.php làm router cho mọi URL: để server tự trả ảnh upload (Apache đã làm qua .htaccess).
-if (PHP_SAPI === 'cli-server' && preg_match('#^/uploads/(products|banners|brands|avatars)/[a-f0-9]{32}\.(jpg|png|webp)$#', parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '')) return false;
+if (PHP_SAPI === 'cli-server' && preg_match('#^/uploads/(products|banners|brands|avatars|reviews|checklists|returns)/[a-f0-9]{32}\.(jpg|png|webp)$#', parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '')) return false;
 
 ini_set('display_errors', '0');
 header('Content-Type: application/json; charset=utf-8');
@@ -86,7 +86,7 @@ try {
 
     // Catalog/kho/upload tự xuất response và gọi requireAdmin()/requireSessionRole().
     if ($isCatalog) {
-        $catalogRoutes = ['product' => 'handleProductRoutes', 'category' => 'handleCategoryRoutes', 'brand' => 'handleBrandRoutes', 'product-attribute' => 'handleProductAttributeRoutes', 'tco' => 'handleTcoRoutes', 'care' => 'handleCareRoutes', 'chatbot' => 'handleChatbotRoutes', 'inventory-movement' => 'handleInventoryMovementRoutes', 'inventory' => 'handleInventoryRoutes', 'banner' => 'handleBannerRoutes', 'upload' => 'handleUploadRoutes', 'catalog-admin' => 'handleCatalogAdminRoutes', 'fit-rule' => 'handleFitRuleRoutes', 'room-fit' => 'handleRoomFitRoutes', 'installation-checklist' => 'handleInstallationChecklistRoutes'];
+        $catalogRoutes = ['review' => 'handleReviewRoutes', 'product' => 'handleProductRoutes', 'category' => 'handleCategoryRoutes', 'brand' => 'handleBrandRoutes', 'product-attribute' => 'handleProductAttributeRoutes', 'tco' => 'handleTcoRoutes', 'care' => 'handleCareRoutes', 'chatbot' => 'handleChatbotRoutes', 'inventory-movement' => 'handleInventoryMovementRoutes', 'inventory' => 'handleInventoryRoutes', 'banner' => 'handleBannerRoutes', 'upload' => 'handleUploadRoutes', 'catalog-admin' => 'handleCatalogAdminRoutes', 'fit-rule' => 'handleFitRuleRoutes', 'room-fit' => 'handleRoomFitRoutes', 'installation-checklist' => 'handleInstallationChecklistRoutes'];
         foreach ($catalogRoutes as $file => $handler) {
             require_once __DIR__ . "/routes/{$file}-routes.php";
             if ($handler($method, $path)) exit;

@@ -31,7 +31,8 @@ if ($mode === 'init') {
     $missing = $reports->dashboard($admin, $range);
     week4Assert($missing['decisionTools']['installationChecklistsCompleted']===null && $missing['metricSources']['installationChecklistsCompleted']['status']==='UNAVAILABLE','Absent migration must not become a fake zero');
     $pdo->exec(file_get_contents(__DIR__.'/../db/migrations/021_installation_checklists.sql'));
-    echo "PASS: checklist metric is unavailable before 021; migration applied only to isolated DB.\n"; exit;
+    $pdo->exec(file_get_contents(__DIR__.'/../db/migrations/026_installation_checklist_reference_photo.sql'));
+    echo "PASS: checklist metric is unavailable before 021; migrations 021 and 026 applied only to isolated DB.\n"; exit;
 }
 if ($mode === 'prepare-race') {
     $roomId = $rooms->createRoom(1, ['name'=>'Isolated checklist race']);
@@ -58,11 +59,13 @@ week4Reject(403,fn()=>$checklists->get($admin,$query));
 week4Reject(401,fn()=>$checklists->get([],$query));
 week4Reject(404,fn()=>$checklists->get(['id'=>'2','role'=>'CUSTOMER'],$query));
 $all=array_fill_keys(array_keys(InstallationChecklistService::ITEMS),true);
-$body=$query+['checks'=>array_replace($all,['spaceMeasured'=>false]),'expectedVersion'=>0,'requestKey'=>week4Uuid()];
+$referencePhoto='/uploads/checklists/'.str_repeat('c',32).'.webp';
+$body=$query+['checks'=>array_replace($all,['spaceMeasured'=>false]),'expectedVersion'=>0,'requestKey'=>week4Uuid(),'referencePhotoUrl'=>$referencePhoto];
 week4Reject(422,fn()=>$checklists->save($owner,array_replace($body,['checks'=>array_replace($all,['spaceMeasured'=>'true'])])));
 week4Reject(422,fn()=>$checklists->save($owner,$body+['customerId'=>2]));
 $saved=$checklists->save($owner,$body);
 week4Assert($saved===$checklists->save($owner,$body) && $saved['version']===1 && !$saved['completed'],'Partial save/replay changed result');
+week4Assert(count($saved['history'])===1 && $saved['history'][0]['version']===1 && $saved['history'][0]['referencePhotoUrl']===$referencePhoto,'POST save must immediately include its latest history entry and attached reference photo.');
 week4Reject(409,fn()=>$checklists->save($owner,array_replace($body,['checks'=>$all])));
 week4Reject(409,fn()=>$checklists->save($owner,array_replace($body,['requestKey'=>week4Uuid()])));
 $complete=$checklists->save($owner,array_replace($body,['checks'=>$all,'expectedVersion'=>1,'requestKey'=>week4Uuid()]));

@@ -51,8 +51,8 @@ final class InstallationChecklistModel
                 $q->execute([$id]);
                 if ((int) $q->fetchColumn() !== $input['expectedVersion']) throw new ApiException('Checklist đã thay đổi. Hãy tải lại trước khi lưu.', 409);
                 $completed = !in_array(false, $input['checks'], true);
-                $q = $this->pdo->prepare('UPDATE installation_checklists SET checks_json = ?, version = version + 1, first_completed_at = CASE WHEN ? = 1 THEN COALESCE(first_completed_at, UTC_TIMESTAMP()) ELSE first_completed_at END, updated_at = UTC_TIMESTAMP() WHERE id = ?');
-                $q->execute([json_encode($input['checks'], JSON_THROW_ON_ERROR), (int) $completed, $id]);
+                $q = $this->pdo->prepare('UPDATE installation_checklists SET checks_json = ?, reference_photo_url = ?, version = version + 1, first_completed_at = CASE WHEN ? = 1 THEN COALESCE(first_completed_at, UTC_TIMESTAMP()) ELSE first_completed_at END, updated_at = UTC_TIMESTAMP() WHERE id = ?');
+                $q->execute([json_encode($input['checks'], JSON_THROW_ON_ERROR), $input['referencePhotoUrl'], (int) $completed, $id]);
                 $result = $this->read($customerId, $input['productId'], $input['roomProfileId']);
                 $this->pdo->prepare('UPDATE installation_checklist_events SET checklist_id = ?, response_json = ?, created_at = UTC_TIMESTAMP() WHERE id = ?')->execute([$id, json_encode($result, JSON_THROW_ON_ERROR), $event['id']]);
             }
@@ -68,7 +68,7 @@ final class InstallationChecklistModel
         $q->execute([$customerId, $checklistId]);
         return array_map(static function (array $row): array {
             $snapshot = json_decode($row['response_json'], true, 32, JSON_THROW_ON_ERROR);
-            return ['version' => (int) $snapshot['version'], 'checks' => json_decode($snapshot['checks_json'], true, 8, JSON_THROW_ON_ERROR), 'savedAt' => str_replace(' ', 'T', $row['created_at']) . 'Z'];
+            return ['version' => (int) $snapshot['version'], 'checks' => json_decode($snapshot['checks_json'], true, 8, JSON_THROW_ON_ERROR), 'referencePhotoUrl' => $snapshot['reference_photo_url'] ?? null, 'savedAt' => str_replace(' ', 'T', $row['created_at']) . 'Z'];
         }, $q->fetchAll(PDO::FETCH_ASSOC));
     }
 }

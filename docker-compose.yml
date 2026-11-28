@@ -43,6 +43,9 @@ services:
       STORE_NAME: ${STORE_NAME:-HomeCare}
       STORE_ADDRESS: ${STORE_ADDRESS:-}
       STORE_PHONE: ${STORE_PHONE:-}
+      REVIEW_MAX_IMAGES: ${REVIEW_MAX_IMAGES:-5}
+      RETURN_MAX_IMAGES: ${RETURN_MAX_IMAGES:-5}
+      RETURN_WINDOW_DAYS: ${RETURN_WINDOW_DAYS:-}
     ports:
       - "8080:80"
     depends_on:

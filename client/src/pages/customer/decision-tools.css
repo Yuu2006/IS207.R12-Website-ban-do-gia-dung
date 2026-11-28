@@ -73,3 +73,7 @@
 .dt-installation-item { display: flex; align-items: flex-start; gap: 10px; line-height: 1.6; }
 .dt-installation-item input { margin-top: 5px; flex-shrink: 0; width: 18px; height: 18px; accent-color: #0f5f73; }
 .dt-installation details { margin-top: 16px; }
+.dt-installation-reference { display: grid; gap: 8px; margin: 14px 0; }
+.dt-installation-reference > label { font-weight: 650; }
+.dt-installation-reference__preview { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.dt-installation-reference__preview img { width: min(100%, 240px); max-height: 180px; object-fit: cover; border-radius: 8px; border: 1px solid #dbe3ea; }

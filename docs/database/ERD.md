@@ -137,9 +137,14 @@ erDiagram
     orders ||--o{ order_documents : "chứng từ"
     orders ||--o{ shipments : "giao hàng"
     orders ||--o{ order_return_requests : "yêu cầu trả"
+    order_return_requests ||--o{ order_return_request_items : "các dòng trả"
+    order_return_request_items }o--|| order_items : "dòng đơn gốc"
+    order_return_requests ||--o{ order_return_photos : "ảnh bằng chứng"
     order_return_requests ||--o{ order_return_status_history : "lịch sử"
     order_return_requests ||--o| order_simulated_refunds : "hoàn tiền mô phỏng"
     payments ||--o| order_simulated_refunds : "khoản thu gốc"
+    product_variants ||--o{ inventory_movements : "cập nhật tồn"
+    order_items ||--o{ inventory_movements : "dòng phát sinh"
     users ||--o{ order_idempotency : "khóa chống gửi lặp"
     orders {
         bigint id PK
@@ -154,6 +159,21 @@ erDiagram
         varchar inventory_state "RESERVED | CONSUMED | RELEASED | UNTRACKED"
         bigint version
         datetime placed_at
+    }
+
+    order_return_request_items {
+        bigint id PK
+        bigint return_request_id FK
+        bigint order_item_id FK
+        int quantity "số lượng khách yêu cầu"
+        int resalable_quantity "NULL trước kiểm tra kho; chỉ số lượng bán lại được mới hoàn kho"
+    }
+
+    order_return_photos {
+        bigint id PK
+        bigint return_request_id FK
+        varchar photo_url
+        smallint sort_order
     }
     order_items {
         bigint id PK
@@ -194,6 +214,9 @@ erDiagram
     product_variants ||--o{ care_rule_supplies : "SKU vật tư"
     users ||--o{ chatbot_faqs : "updated_by"
     order_items ||--o{ product_reviews : "đánh giá"
+    product_reviews ||--o{ product_review_photos : "ảnh"
+    product_reviews ||--o{ product_review_followups : "bối cảnh 30/90 ngày"
+    users ||--o{ audit_logs : "ẩn/khôi phục đánh giá"
     decision_events {
         bigint id PK
         char request_key UK
@@ -207,7 +230,40 @@ erDiagram
         enum status "DRAFT | ACTIVE | INACTIVE"
         int version
     }
+    product_reviews {
+        bigint id PK
+        bigint order_item_id FK "unique"
+        bigint customer_id FK
+        tinyint rating
+        text content "immutable after submit"
+        decimal room_area_m2
+        smallint household_size
+        varchar usage_frequency
+        varchar noise_perception
+        varchar consumption_perception
+        varchar cleaning_ease
+        boolean is_visible
+    }
+    product_review_photos {
+        bigint id PK
+        bigint review_id FK
+        varchar photo_url
+        smallint sort_order
+    }
+    product_review_followups {
+        bigint id PK
+        bigint review_id FK
+        smallint milestone_days "unique 30 or 90"
+        decimal room_area_m2
+        smallint household_size
+        varchar usage_frequency
+        varchar noise_perception
+        varchar consumption_perception
+        varchar cleaning_ease
+    }
 ```
+
+Migration 024 bổ sung ảnh và phản hồi bối cảnh riêng, không ghi đè nội dung đánh giá gốc. PUBLIC chỉ đọc review đang hiển thị, không nhận dữ liệu định danh khách hàng; ADMIN chỉ đổi `is_visible` và phải ghi lý do vào `audit_logs`. 30-day reflection mở từ ngày 30 đến trước ngày 90; 90-day reflection mở từ ngày 90. Index `product_reviews.idx_reviews_context_rating` phục vụ lọc rating/bối cảnh.
 
 ## 6. Bảng phạm vi cũ (giữ, không dùng trong MVP)
 
@@ -226,5 +282,6 @@ FIT-02 tuần 4 thêm migration 021: `installation_checklists` FK tới `users`,
 | Hoàn tiền theo kỳ | `order_simulated_refunds.idx_simulated_refund_created` |
 | Lượt FitCheck/TCO theo kỳ | `decision_events.idx_decision_type_date`, `idx_decision_created` (020) |
 | Wishlist của khách | `wishlists.idx_wishlist_user_created` |
+| Rating/context review | `product_reviews.idx_reviews_context_rating`; `product_review_followups.uq_review_followup_milestone` |
 
 Đã kiểm bằng `EXPLAIN` trên dữ liệu seed: trước migration 020, lọc `orders.placed_at` quét toàn bảng và gom lịch sử `COMPLETED` quét toàn index; sau 020 lần lượt dùng `range` và `ref`. Bảng catalog (~60 sản phẩm, ~70 SKU) quét toàn bảng vẫn nhanh nên chưa thêm index cho cảnh báo tồn.

@@ -71,7 +71,7 @@ final class ReturnRefundService
             $lockedPayments = $payments->lock((string) $order['id']);
             $payments->assertSettled($order, $lockedPayments);
             $paid = array_values(array_filter($lockedPayments, static fn ($payment) => $payment['status'] === 'PAID'));
-            $this->model->receiveAndRefund($request, $order, $principal, $paid[0], $input['checklist'], orderMoney($order['total_amount']));
+            $this->model->receiveAndRefund($request, $order, $principal, $paid[0], $input['checklist'], $input['resalableQuantities'], orderMoney($order['total_amount']));
             return $this->model->detail($id);
         });
     }
