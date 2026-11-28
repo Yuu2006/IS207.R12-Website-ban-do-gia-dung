@@ -32,6 +32,13 @@
 - Kiểm tra xung đột từ hai tab: tab thứ hai gửi thao tác trên chi tiết cũ, nhận HTTP 409, hiển thị nút **Tải lại yêu cầu**; bấm nút thì trạng thái chi tiết cập nhật theo dữ liệu hiện tại.
 - Các return E2E trên chỉ dùng DB và tài khoản demo. `RETURN_WINDOW_DAYS=14` được dùng cho đơn demo gần ngày; `60` chỉ dùng tạm trong container E2E để kiểm tra đơn demo cũ trên desktop. Đây là cấu hình test, không phải quyết định chính sách của nhóm. Container MySQL kiểm thử chưa có migrations 022/023 của STT18 nên E2E này không nghiệm thu tích hợp STT18.
 
+## Browser E2E — STT17 (2026-11-28)
+
+- Dựng frontend/API bằng nhánh PR #24 và một MySQL mới, cô lập trong Compose project `stt17-review-e2e`; migration 024 cùng seed demo được áp trên volume kiểm thử riêng. Không dùng `homecare_local` hoặc DB dev/dùng chung.
+- CUSTOMER đăng nhập, mở sản phẩm có dòng hàng thuộc đơn `COMPLETED`, gửi đánh giá 5 sao. Trang sản phẩm hiện đánh giá mới và vẫn giữ liên kết với giao dịch đã hoàn tất.
+- ADMIN mở `/admin/reviews`, thấy đánh giá mới ở đầu danh sách, ẩn bằng lý do hợp lệ rồi khôi phục bằng lý do riêng. UI báo thành công ở cả hai bước; sau khôi phục, đánh giá xuất hiện lại trên trang sản phẩm.
+- E2E này kiểm chứng composer, danh sách kiểm duyệt và vòng đời ẩn/khôi phục trên browser. Ảnh, quyền riêng tư, eligibility, REV-03 và audit vẫn được bao phủ bởi service/MySQL tests ở trên.
+
 ## Cần xử lý trước khi nghiệm thu cuối
 
 1. Nhóm chốt thời hạn nhận trả `RETURN_WINDOW_DAYS` (7/14/30 ngày) và quy tắc số tiền hoàn khi khách chỉ trả một phần hàng. Hiện code giữ quy tắc cũ hoàn toàn bộ tổng đơn, vì vậy không được coi một phần hàng/tiền hoàn đã nghiệm thu cho tới khi chốt và cập nhật rule tương ứng. `.env.example` để trống thời hạn; API từ chối tạo yêu cầu bằng 503 khi chưa cấu hình.
@@ -39,6 +46,6 @@
 3. Nhóm Trưởng review/merge code; sau review/backup mới áp migration 024–026 trên DB dev. Browser E2E giao diện đã chạy ở 1280×800 và 390×844 như ghi phía trên; DB dev/dùng chung chưa được cập nhật.
 4. `careCompletionRate` trên reports vẫn chờ nhóm chốt mẫu số; đây là phụ thuộc riêng, không được tính là lỗi đã xử lý bởi STT17/22.
 5. Thành viên khác cần kiểm tra chéo tiêu chí #5 và #9 trong tab `Test`; E2E và test cô lập có bằng chứng phía trên nhưng chưa có review chéo trên GitHub.
-6. Browser E2E riêng cho composer đánh giá và màn hình ADMIN kiểm duyệt STT17 chưa chạy; môi trường hiện chặn khởi chạy Chrome headless và CUA không kết nối được. Service/MySQL tests đã kiểm thử eligibility, ảnh, mốc 30/90 ngày, ẩn/khôi phục, quyền riêng tư và audit.
+6. STT17 đã có browser E2E CUSTOMER gửi đánh giá → ADMIN ẩn/khôi phục → kiểm tra đánh giá hiển thị lại. Thành viên khác vẫn cần review chéo tiêu chí #5/#9; không thay thế review độc lập bằng E2E do người triển khai tự chạy.
 
 Người làm trong bảng công việc vẫn là **Lan Chi**. Trạng thái đề nghị để bàn giao là **Chờ Nhóm Trưởng review/merge**, chưa đánh dấu hoàn tất nghiệm thu cuối.
